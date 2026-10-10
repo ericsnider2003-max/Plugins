@@ -82,3 +82,6 @@ Open plan for 0.9.0 (lean RED mode, time-to-empty, lean plugin sets, cheaper fir
 
 ## 0.10.0 notes
 Built from docs/RESEARCH-usage-reduction.md items 1,3,5,6,8,9,10 (anomaly alarm, lean env switches, subagent cache TTL, 200-line lint, resume advice, memory note, crosscheck). Not built: #2 trim A/B self-test, #4 skill/MCP description budgets (opt-in only, can reduce skill triggering), #7 cheap-first cascade. User: Claude runs out first; Codex drains faster per hour but has under a week of history, so run `/usage-max anomaly` after a day of use.
+
+## 0.11.0 notes
+Built the open research items: scripts/trimtest.mjs (+hook/trim wiring, `usage-max trim`), scripts/budgets.mjs (`usage-max budgets`), cascade text in skills/routing/SKILL.md and codex/AGENTS.usage-max.md. Remaining ideas: Codex-side loop/Read guards; auto-handoff at cold cache; Codex trim self-test equivalent (Codex already has trim-stats.json but no retry measure).

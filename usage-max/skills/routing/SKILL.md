@@ -37,6 +37,12 @@ Every ~20 messages or at a task boundary, write `handoff.md` (goal, key context,
 - `NEEDS_SONNET` / `NEEDS_OPUS` + concrete reason + failure history; one retry per tier, max two failed attempts, then stop and surface to the human.
 - Subagent (sidechain) turns must stay on Haiku/Sonnet; `usage-check` flags any sidechain Opus turn and any model above the Opus 5.5 ceiling.
 
+## Cheap first, verify, then escalate (cascade)
+
+- Mechanical work (rename, format, boilerplate, a fix with a failing test to aim at) starts on the cheapest capable tier. The verifier is the test run, linter or reviewer, never the worker's own say-so.
+- Pass: done. Fail: one retry with the failure output, then escalate one tier with the failure history (never straight to the top). Design, ambiguous bugs and anything without a way to check stay on the hub from the start: a cascade only pays when a cheap check can tell right from wrong.
+- Count it: a task that needed escalation twice in a row means the tier was wrong; start that kind of task one tier up next time.
+
 ## Maximize the plan
 
 The goal is the most finished work per week: no waste, and no unused allowance at reset.

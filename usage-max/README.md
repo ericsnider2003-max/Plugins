@@ -2,6 +2,11 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.11.0 (Oct 10 2026) — the open research items
+- **Trim self-test (`/usage-max trim`).** The Claude shell-output trim now measures itself: bytes removed, and how often the same command was re-run within 3 minutes of a trim (a re-run means the model needed what was cut). Above 30% re-runs, after 10 samples, trim switches itself off; `usage-max trim on` re-enables. Shown in `savings`. Independent tests of output trimming disagree with vendor claims, so this decides on your own data.
+- **Description budgets, opt-in (`/usage-max budgets on|off`).** Smaller skill-list and MCP description budgets (`SLASH_COMMAND_TOOL_CHAR_BUDGET` 4000, `CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH` 1000) to shrink the first turn. Off by default because rarely used skills may trigger less; only keys it wrote are ever removed.
+- **Cheap-first cascade.** The routing skill and the Codex block now say: start mechanical work on the cheapest tier, let tests/linter judge, retry once with the error, then escalate one step; hard or unverifiable work starts higher.
+
 ## 0.10.0 (Oct 10 2026) — burn alarm, background-spend switches, instruction lint
 - **`/usage-max anomaly`** (also shown in `savings`): compares the last 3 hours with your own hourly median (needs about a day of history) and, when it is 3x higher, names the biggest contributor (session, model, effort). Claude in list-price dollars, Codex in tokens (Codex logs carry no price). Catches loops, stuck tasks, Fast mode or a plugin that started spending, on either plan.
 - **Lean mode now also switches off background spend while tightening:** auto memory in AMBER and RED, scheduled tasks in RED (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_CRON`). GREEN removes them again, and a value you set yourself is never touched.

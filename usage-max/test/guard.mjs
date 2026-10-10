@@ -125,4 +125,22 @@ await t("context lint flags an instruction file over 200 lines", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-")); fs.writeFileSync(path.join(d, "CLAUDE.md"), "- rule\n".repeat(250));
   const r = scan({ home: d, cwd: d }); assert.ok(r.advice.some((a) => /250 lines|lines \(Anthropic/.test(a.why)));
 });
+await t("trim self-test: counts bytes, flags retries, switches itself off, and can be turned back on", async () => {
+  const T = await import(pathToFileURL(path.join(root, "scripts/trimtest.mjs")).href); const d = fs.mkdtempSync(path.join(os.tmpdir(), "tt-"));
+  assert.match(T.report(d), /no trimmed commands/); T.recordBytes(d, 4000, 1000);
+  for (let i = 0; i < 9; i++) T.recordRewrite(d, "npm test " + i, 1000 + i); assert.equal(T.isDisabled(d), false, "below the sample size nothing switches off");
+  const r = T.recordRewrite(d, "npm test 0", 2000); assert.equal(r.retry, true); assert.equal(T.isDisabled(d), false, "1 retry in 10 is fine");
+  for (let i = 0; i < 4; i++) T.recordRewrite(d, "npm test " + i, 3000 + i); assert.equal(T.isDisabled(d), true, "5 retries in 14 (>30%) switches trim off");
+  assert.match(T.report(d), /measured.*bytes removed/s); assert.match(T.report(d), /status\s+OFF/); T.setEnabled(d, true); assert.equal(T.isDisabled(d), false);
+  T.recordRewrite(d, "pytest", 9e9); assert.equal(T.recordRewrite(d, "pytest", 9e9 + 4 * 60e3).retry, false, "a re-run after 3 minutes is not a retry");
+});
+await t("budgets: opt-in writes only its own keys, never overrides yours, off removes only what it wrote", async () => {
+  const B = await import(pathToFileURL(path.join(root, "scripts/budgets.mjs")).href); const s = { env: { KEEP: "1" } }, ap = {};
+  assert.equal(B.apply(s, true, ap), true); assert.equal(s.env.SLASH_COMMAND_TOOL_CHAR_BUDGET, "4000"); assert.equal(s.env.KEEP, "1");
+  assert.equal(B.apply(s, false, ap), true); assert.ok(!("SLASH_COMMAND_TOOL_CHAR_BUDGET" in s.env)); assert.equal(s.env.KEEP, "1");
+  const mine = { env: { SLASH_COMMAND_TOOL_CHAR_BUDGET: "12000" } }, ap2 = {}; B.apply(mine, true, ap2); assert.equal(mine.env.SLASH_COMMAND_TOOL_CHAR_BUDGET, "12000", "your own value wins"); B.apply(mine, false, ap2); assert.equal(mine.env.SLASH_COMMAND_TOOL_CHAR_BUDGET, "12000");
+});
+await t("cascade guidance is in the routing skill and the Codex block stays small", () => {
+  assert.match(fs.readFileSync(path.join(root, "skills/routing/SKILL.md"), "utf8"), /Cheap first, verify, then escalate/); assert.ok(fs.statSync(path.join(root, "codex/AGENTS.usage-max.md")).size < 1536);
+});
 console.log(`${n} passing`);
