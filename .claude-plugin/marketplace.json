@@ -1,0 +1,13 @@
+{
+  "name": "eric-plugins",
+  "owner": { "name": "Eric" },
+  "description": "Eric's Claude Code plugins.",
+  "plugins": [
+    {
+      "name": "usage-max",
+      "source": "./usage-max",
+      "description": "Keep every AI plan lasting to reset: automatic budget governor, model routing, context diet, and usage reports for Claude Code (plus a Codex port).",
+      "version": "0.1.0"
+    }
+  ]
+}
