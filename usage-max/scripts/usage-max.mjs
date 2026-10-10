@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { oldSyncedCopies, DISABLE_OLD } from "./dupes.mjs";
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const home = process.env.USAGE_MAX_HOME || os.homedir();
 const S = (f) => path.join(root, "scripts", f);
@@ -33,7 +34,7 @@ function balance() {
   return 0;
 }
 
-function doctor() {
+async function doctor() {
   const out = []; const ok = (m) => out.push(`  ok   ${m}`); const bad = (m, fix) => out.push(`  FIX  ${m}${fix ? `\n       -> ${fix}` : ""}`);
   const st = json(path.join(home, ".claude", "settings.json")); const gov = json(path.join(home, ".claude", "usage-max", "governor.json")) || {}; const lim = json(path.join(home, ".claude", "usage-max", "limits.json"));
   console.log("usage-max doctor — Claude Code");
@@ -45,6 +46,12 @@ function doctor() {
   }
   lim ? ok(`real plan % captured ${Math.round((Date.now() - Date.parse(lim.capturedAt)) / 60000)} min ago`) : bad("no plan % captured yet", "it appears after the first reply once the status line renders (needs a claude.ai login)");
   gov.calib ? ok(`governor calibrated (${gov.calib.source}), mode ${String(gov.mode).toUpperCase()}${gov.surplus ? "+SURPLUS" : ""}`) : bad("governor not calibrated", "will learn from the status line, or: usage-max budget calibrate <pct> --resets <date>");
+  const mine = (json(path.join(root, ".claude-plugin", "plugin.json")) || {}).version || "?";
+  let latest = null;
+  try { const r = await fetch("https://raw.githubusercontent.com/ericsnider2003-max/Plugins/main/usage-max/.claude-plugin/plugin.json", { signal: AbortSignal.timeout(4000) }); if (r.ok) latest = (await r.json()).version; } catch {}
+  latest === null ? ok(`version ${mine} (could not reach GitHub to compare)`) : latest === mine ? ok(`version ${mine} is the latest on main`) : bad(`version ${mine}, latest on main is ${latest}`, "it updates itself at the next Claude Code start (auto-update); or: claude plugin marketplace update eric-plugins");
+  const old = oldSyncedCopies(home, root);
+  old.length ? bad(`older uploaded copy usage-max ${old[0].version} is enabled next to this one (every hook runs twice)`, DISABLE_OLD) : ok("no duplicate uploaded copy");
   for (const h of ["session-start", "budget", "bash-trim", "ledger"]) fs.existsSync(path.join(root, "hooks", `${h}.mjs`)) ? 0 : bad(`hook ${h}.mjs missing`);
   console.log(out.join("\n"));
   console.log("\nusage-max doctor — Codex");
@@ -81,4 +88,4 @@ const map = {
   route: () => { console.log("route/handoff are model tasks: follow commands/usage-max.md."); return 0; },
   handoff: () => map.route()
 };
-process.exit((map[sub] || (() => { console.log(`unknown subcommand "${sub}". Try: status doctor budget gate check diagnose audit diet rescue balance codex route handoff`); return 2; }))());
+process.exit(await (map[sub] || (async () => { console.log(`unknown subcommand "${sub}". Try: status doctor budget gate check diagnose audit diet rescue balance codex route handoff`); return 2; }))());

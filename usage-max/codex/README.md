@@ -13,9 +13,12 @@ Tested offline (27 tests, `node test/run.mjs`).
 ChatGPT web/app: no hooks exist; see chatgpt/CUSTOM-INSTRUCTIONS.md (manual policy).
 Weights are relative (luna 1, sol 20, astra 65) per code; calibration absorbs the scale.
 
+## Stable install location
+`install.mjs` copies the Codex scripts to `~/.usage-max-codex/bin` (with a `VERSION` file) and writes only that path into `~/.codex`. The Claude plugin cache path changes on every update, so the Claude-side refreshes this copy when the plugin version changes (re-run `node <plugin>/codex/scripts/install.mjs` if `doctor` says hooks point elsewhere).
+
 ## Codex checklist (read this if it "does nothing")
 1. `node scripts/install.mjs`
-2. Start Codex, run `/hooks`, and **trust the usage-max hooks**. Codex silently skips untrusted hooks. Re-trust after moving or reinstalling the plugin (the path is part of the hook identity).
+2. Start Codex, run `/hooks`, and **trust the usage-max hooks**. Codex silently skips untrusted hooks. No re-trust is needed after plugin updates: the installer copies the scripts to a stable `~/.usage-max-codex/bin` and hooks/notify point there, so the path (the hook's identity) never changes.
 3. `node scripts/codex-governor.mjs doctor` tells you exactly what is missing. Calibration is automatic after your first Codex turn (the plan % is read from Codex's own `rate_limits`).
 
 ## Surplus mode

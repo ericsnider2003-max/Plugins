@@ -116,6 +116,7 @@ await ta("ttlAdvice: needs enough sessions, then recommends the cheaper cache li
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "umttl-")); fs.mkdirSync(path.join(dir, "p"));
   const mk = (gapMin, sessions, id0) => { for (let sI = 0; sI < sessions; sI++) { const L = []; let t0 = Date.now() - 3 * 3600e3; for (let i = 0; i < 6; i++) { L.push(JSON.stringify({ type: "assistant", timestamp: new Date(t0).toISOString(), isSidechain: false, message: { id: `${id0}${sI}-${i}`, model: "claude-opus-5-5", content: [], usage: { input_tokens: 5, output_tokens: 200, cache_creation_input_tokens: 2000, cache_read_input_tokens: 80000, cache_creation: { ephemeral_1h_input_tokens: 2000 } } } })); t0 += gapMin * 60e3; } fs.writeFileSync(path.join(dir, "p", `${id0}${sI}.jsonl`), L.join("\n") + "\n"); } };
   const ttl = await import(pathToFileURL(path.join(root, "scripts/ttl.mjs")).href);
+  assert.equal((await ttl.ttlAdvice(dir, { budgetMs: -1 })).sessions, 0); /* an exhausted time budget returns immediately */
   mk(2, 3, "a"); assert.equal((await ttl.ttlAdvice(dir)).recommend, null); // too few sessions
   mk(2, 6, "b"); assert.equal((await ttl.ttlAdvice(dir)).recommend, "5m"); // quick back-and-forth: 5m cache is cheaper
   fs.rmSync(path.join(dir, "p"), { recursive: true }); fs.mkdirSync(path.join(dir, "p")); mk(20, 6, "c"); assert.equal((await ttl.ttlAdvice(dir)).recommend, "1h"); // long gaps: 5m would keep missing
@@ -128,4 +129,16 @@ await ta("ttlAdvice: needs enough sessions, then recommends the cheaper cache li
   process.env.USAGE_MAX_HOME = SANDBOX; }
 { const m = await import(pathToFileURL(path.join(root, "scripts/meter.mjs")).href); const dd2 = fs.mkdtempSync(path.join(os.tmpdir(), "umsym-")); const real = path.join(dd2, "real.json"), link = path.join(dd2, "link.json"); fs.writeFileSync(real, "{}", { mode: 0o600 }); fs.symlinkSync(real, link);
   t("writeJsonAtomic follows symlinks and preserves the mode", () => { m.writeJsonAtomic(link, { a: 1 }); assert.ok(fs.lstatSync(link).isSymbolicLink()); assert.deepEqual(JSON.parse(fs.readFileSync(real, "utf8")), { a: 1 }); assert.equal(fs.statSync(real).mode & 0o777, 0o600); }); }
+{ const dupes = await import(pathToFileURL(path.join(root, "scripts/dupes.mjs")).href);
+  t("finds an older uploaded usage-max copy but not the running one", () => { const h = fs.mkdtempSync(path.join(os.tmpdir(), "umdup2-")); const d = path.join(h, ".claude/plugins/synced/org_acct/usage-max"); fs.mkdirSync(path.join(d, ".claude-plugin"), { recursive: true }); fs.writeFileSync(path.join(d, ".claude-plugin/plugin.json"), JSON.stringify({ name: "usage-max", version: "0.1.0" }));
+    assert.equal(dupes.oldSyncedCopies(h, "/somewhere/else")[0].version, "0.1.0"); assert.equal(dupes.oldSyncedCopies(h, d).length, 0); assert.equal(dupes.oldSyncedCopies(path.join(h, "nope"), "").length, 0); });
+  await ta("profile pins the marketplace to main and completes an entry added by `claude plugin marketplace add`", async () => { const h = fs.mkdtempSync(path.join(os.tmpdir(), "umkm-")); fs.mkdirSync(path.join(h, ".claude"), { recursive: true });
+    fs.writeFileSync(path.join(h, ".claude/settings.json"), JSON.stringify({ extraKnownMarketplaces: { "eric-plugins": { source: { source: "github", repo: "ericsnider2003-max/Plugins" } }, other: { source: { source: "github", repo: "x/y" } } } }));
+    await prof.apply({ write: true, home: h }); const km = JSON.parse(fs.readFileSync(path.join(h, ".claude/settings.json"), "utf8")).extraKnownMarketplaces; assert.equal(km["eric-plugins"].source.ref, "main"); assert.equal(km["eric-plugins"].autoUpdate, true); assert.deepEqual(km.other, { source: { source: "github", repo: "x/y" } });
+    const h2 = fs.mkdtempSync(path.join(os.tmpdir(), "umkm2-")); await prof.apply({ write: true, home: h2 }); assert.equal(JSON.parse(fs.readFileSync(path.join(h2, ".claude/settings.json"), "utf8")).extraKnownMarketplaces["eric-plugins"].source.ref, "main"); });
+  t("SessionStart refreshes the stable Codex copy when Codex support was installed (and only then)", () => { const ver = JSON.parse(fs.readFileSync(path.join(root, ".claude-plugin/plugin.json"), "utf8")).version;
+    const run3 = (h) => spawnSync("node", [path.join(root, "hooks/session-start.mjs")], { input: "{}", encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: h, USAGE_MAX_AUTOAPPLY: "off" } });
+    const a = fs.mkdtempSync(path.join(os.tmpdir(), "umsync1-")); run3(a); assert.equal(fs.existsSync(path.join(a, ".usage-max-codex")), false);
+    const b = fs.mkdtempSync(path.join(os.tmpdir(), "umsync2-")); fs.mkdirSync(path.join(b, ".usage-max-codex/bin"), { recursive: true }); fs.writeFileSync(path.join(b, ".usage-max-codex/bin/VERSION"), "0.0.1"); run3(b);
+    assert.equal(fs.readFileSync(path.join(b, ".usage-max-codex/bin/VERSION"), "utf8").trim(), ver); assert.ok(fs.existsSync(path.join(b, ".usage-max-codex/bin/scripts/codex-hook.mjs"))); }); }
 console.log(`${n} passing`);

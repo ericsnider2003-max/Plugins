@@ -15,7 +15,7 @@ import { ttlAdvice } from "./ttl.mjs";
 import { ownedSet, loadApplied, saveApplied } from "./owned.mjs";
 
 export const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-export const MARKETPLACE = { name: "eric-plugins", repo: "ericsnider2003-max/Plugins" };
+export const MARKETPLACE = { name: "eric-plugins", repo: "ericsnider2003-max/Plugins", ref: "main" }; // pinned to main: auto-update never depends on the repo's default branch
 const OWNED_BY_GOVERNOR = new Set(["model", "effortLevel", "modelSettings"]);
 const fwd = (p) => p.replace(/\\/g, "/");
 const homeDir = () => process.env.USAGE_MAX_HOME || os.homedir();
@@ -60,9 +60,13 @@ export function computeProfile(settings, { profile, launcher, modelWant = null, 
   if (!sl) { next.statusLine = ours; changes.push(`statusLine: undefined -> ${JSON.stringify(ours)}`); }
   else if (typeof sl.command === "string" && sl.command.includes("usage-max.") === false && /[\\/]\.claude[\\/]usage-max[\\/]statusline\.mjs/.test(sl.command)) { if (JSON.stringify(sl) !== JSON.stringify(ours)) { next.statusLine = ours; changes.push(`statusLine: ${JSON.stringify(sl)} -> ${JSON.stringify(ours)}`); } }
   else if (JSON.stringify(sl) !== JSON.stringify(ours)) kept.push("statusLine (you already have your own; the governor then needs `budget calibrate`)");
-  if (!next.extraKnownMarketplaces || !next.extraKnownMarketplaces[MARKETPLACE.name]) {
-    next.extraKnownMarketplaces = { ...(next.extraKnownMarketplaces || {}), [MARKETPLACE.name]: { source: { source: "github", repo: MARKETPLACE.repo }, autoUpdate: true } };
-    changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}: added (auto-update on)`);
+  const km = next.extraKnownMarketplaces && next.extraKnownMarketplaces[MARKETPLACE.name];
+  if (!km) {
+    next.extraKnownMarketplaces = { ...(next.extraKnownMarketplaces || {}), [MARKETPLACE.name]: { source: { source: "github", repo: MARKETPLACE.repo, ref: MARKETPLACE.ref }, autoUpdate: true } };
+    changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}: added (pinned to ${MARKETPLACE.ref}, auto-update on)`);
+  } else if (km.source && km.source.repo === MARKETPLACE.repo) { // ours (maybe added by `claude plugin marketplace add`): fill in only what is missing
+    if (km.autoUpdate === undefined) { km.autoUpdate = true; changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}.autoUpdate: undefined -> true`); }
+    if (!km.source.ref) { km.source.ref = MARKETPLACE.ref; changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}.source.ref: undefined -> "${MARKETPLACE.ref}"`); }
   }
   return { next, changes, kept };
 }

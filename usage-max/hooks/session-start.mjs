@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { aboveCeiling } from "../scripts/ceiling.mjs";
 import { readOther, balanceAdvice } from "../scripts/shared.mjs";
+import { oldSyncedCopies, DISABLE_OLD } from "../scripts/dupes.mjs";
 
 // Resolve from this file, not CLAUDE_PLUGIN_ROOT: that env var can be inherited from another plugin's process.
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -55,6 +56,13 @@ try {
   } catch {}
   if (applied && applied.wrote) notes.push(`auto-applied the usage profile (${applied.changes.filter((c) => !c.startsWith("statusLine: left")).length} settings${applied.backup ? `; backup ${applied.backup}` : ""}) — takes effect in NEW sessions`);
 
+  try { // the old claude.ai-uploaded copy running next to this one would double every hook
+    const old = oldSyncedCopies(home, pluginRoot);
+    if (old.length && !/[\\/]plugins[\\/]synced[\\/]/.test(pluginRoot)) notes.push(`an older uploaded copy (usage-max ${old[0].version}) is still enabled and doubles every hook: ${DISABLE_OLD}`);
+  } catch {}
+  try { // Codex scripts live in a stable folder; refresh them when this plugin updated (only if Codex support was installed)
+    if (fs.existsSync(path.join(home, ".usage-max-codex", "bin"))) { const { syncBin } = await import("../codex/scripts/sync.mjs"); syncBin({ root: pluginRoot, home }); }
+  } catch {}
   const settings = readJson(path.join(home, ".claude", "settings.json")) || {};
   let model = null;
   let source = null;

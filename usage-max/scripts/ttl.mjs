@@ -4,10 +4,13 @@ import fs from "node:fs";
 import { listJsonlFiles, normalizeUsage, parseTimestamp } from "./lib.mjs";
 import { priceFor, replayTtl } from "./pricing.mjs";
 
-export async function ttlAdvice(projectsDir, { days = 14, minSessions = 5, nowMs = Date.now(), margin = 0.03 } = {}) {
+export async function ttlAdvice(projectsDir, { days = 14, minSessions = 5, nowMs = Date.now(), margin = 0.03, budgetMs = 3000 } = {}) {
+  const deadline = Date.now() + budgetMs; // hooks have a hard timeout: report what we have rather than risk it
   const since = nowMs - days * 86400000;
   let actual = 0, sim5m = 0, sessions = 0;
-  for (const file of await listJsonlFiles(projectsDir)) {
+  const files = (await listJsonlFiles(projectsDir)).map((f) => { try { return { f, m: fs.statSync(f).mtimeMs }; } catch { return null; } }).filter((x) => x && x.m >= since).sort((a, b) => b.m - a.m).map((x) => x.f); // newest first, only the window
+  for (const file of files) {
+    if (Date.now() > deadline) break;
     if (file.includes("/subagents/") || file.includes("\\subagents\\")) continue;
     const seen = new Set(), turns = [];
     let text = ""; try { text = fs.readFileSync(file, "utf8"); } catch { continue; }
