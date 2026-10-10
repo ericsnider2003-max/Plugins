@@ -76,3 +76,6 @@ Codex handoff P1-P4 shipped: Windows-safe trim wrapper (plain words only, off on
 
 ## 0.8.0 notes
 Guards in usage-max/scripts/guard.mjs + hooks/guard.mjs (cold cache, compact nudge, loop, Read hints, subagent cap), ctxfiles.mjs (`context`), digest, queue, chat-prefs. Tests: usage-max/test/guard.mjs (in CI) and live.mjs check 6. Not built: Codex-side equivalents of loop/Read guards.
+
+## NEXT: see docs/PLAN-0.9.0.md
+Open plan for 0.9.0 (lean RED mode, time-to-empty, lean plugin sets, cheaper first pass, background-burn check). A new session should start there.

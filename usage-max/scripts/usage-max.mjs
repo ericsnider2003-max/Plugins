@@ -11,7 +11,7 @@
 //   digest          what the guards did (counts) + Codex measured savings
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
 //   chat-prefs      paste-once text for Claude.ai / Cowork / ChatGPT (chats have no hooks)
-//   enable-here [dir]  make every session on a repo load usage-max (writes <dir>/.claude/settings.json; commit it)
+//   enable-here [dir] [--lean a,b]  (--lean: turn every other installed plugin off for that repo) make every session on a repo load usage-max (writes <dir>/.claude/settings.json; commit it)
 //   codex <sub>     doctor|status|install|models|calibrate|mode|diet|gate (the Codex side)
 //   route|handoff   handled by the model (see commands/usage-max.md)
 import { spawnSync } from "node:child_process";
@@ -24,6 +24,8 @@ import { oldSyncedCopies, DISABLE_OLD } from "./dupes.mjs";
 import { readJson as rj, writeJsonAtomic } from "./meter.mjs";
 import { MARKETPLACE } from "./profile.mjs";
 import * as G from "./guard.mjs";
+import { diet } from "./plugin-diet.mjs";
+import { findBackground } from "./background.mjs";
 import { dataDir } from "./meter.mjs";
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const home = process.env.USAGE_MAX_HOME || os.homedir();
@@ -36,7 +38,9 @@ const [sub = "status", ...rest] = process.argv.slice(2);
 // Make EVERY session on a repo load usage-max with no upload and no per-machine install: the repo's own project settings point at
 // the GitHub marketplace (pinned to main, auto-update). Cloud/desktop sessions, local terminals and teammates all pick it up.
 // Never overwrites: existing keys are kept, an explicit "false" for the plugin is respected, invalid JSON is left alone.
-function enableHere(dirArg) {
+function enableHere(args) {
+  const li = args.indexOf("--lean"); const keep = li >= 0 ? String(args[li + 1] || "").split(",").map((x) => x.trim()).filter(Boolean) : null;
+  const dirArg = args.filter((a, i) => !a.startsWith("--") && !(li >= 0 && i === li + 1))[0];
   const dir = path.resolve(dirArg || process.cwd());
   const f = path.join(dir, ".claude", "settings.json");
   let s = {};
@@ -47,6 +51,12 @@ function enableHere(dirArg) {
   s.enabledPlugins = { ...(s.enabledPlugins || {}) };
   if (s.enabledPlugins["usage-max@eric-plugins"] === undefined) { s.enabledPlugins["usage-max@eric-plugins"] = true; changes.push("usage-max@eric-plugins enabled"); }
   else if (s.enabledPlugins["usage-max@eric-plugins"] === false) console.log("usage-max is explicitly turned OFF in that file; leaving it off.");
+  if (keep) { // lean set: everything you have installed that is not on the keep list is turned off for THIS repo only
+    const off = diet({ home, cwd: dir }).rows.map((r) => r.id).filter((id) => id !== "usage-max@eric-plugins" && !keep.some((k) => id === k || id.split("@")[0] === k) && s.enabledPlugins[id] === undefined);
+    for (const id of off) s.enabledPlugins[id] = false;
+    if (off.length) changes.push(`${off.length} other plugin(s) off for this repo (kept: ${keep.join(", ")})`);
+    for (const k of keep) { const id = Object.keys(s.enabledPlugins).find((x) => x.split("@")[0] === k); if (!id) console.log(`note: "${k}" is not an installed plugin name here, nothing to keep for it`); }
+  }
   if (changes.length) { writeJsonAtomic(f, s); console.log(`${f}\n  added: ${changes.join("; ")}\nCommit and push this file: every session on this repo (cloud, desktop app, terminal) then loads usage-max automatically.`); }
   else console.log(`${f}: already set up.`);
   return 0;
@@ -97,6 +107,8 @@ async function doctor(fix = false) {
   const old = oldSyncedCopies(home, root);
   old.length ? bad(`older uploaded copy usage-max ${old[0].version} is enabled next to this one (every hook runs twice)`, DISABLE_OLD) : ok("no duplicate uploaded copy");
   for (const h of ["session-start", "budget", "bash-trim", "ledger", "guard"]) fs.existsSync(path.join(root, "hooks", `${h}.mjs`)) ? 0 : bad(`hook ${h}.mjs missing`);
+  const bg = findBackground();
+  bg.length ? bad(`${bg.length} job(s) can keep spending your plan while you are away: ${bg.slice(0, 3).map((b) => b.text).join(" | ")}`, "usage-max rescue halt   (lists how to stop each kind; nothing is stopped for you)") : ok("no scheduled claude/codex jobs or headless runs found");
   console.log(out.join("\n"));
   console.log("\nusage-max doctor — Codex");
   return run(C("codex-governor.mjs"), ["doctor"]);
@@ -121,7 +133,7 @@ function status() {
 }
 
 const map = {
-  status, balance, doctor: () => doctor(rest.includes("--fix")), "enable-here": () => enableHere(rest[0]),
+  status, balance, doctor: () => doctor(rest.includes("--fix")), "enable-here": () => enableHere(rest),
   budget: () => run(S("governor.mjs"), rest.length ? rest : ["status"]),
   gate: () => run(S("governor.mjs"), ["gate"]),
   check: () => run(S("usage-check.mjs"), ["--write-status", path.join(home, ".claude", "usage-max", "status.json"), ...rest]),

@@ -62,4 +62,36 @@ t("hook entry: silent + exit 0 on garbage, silent under Codex, Read hint through
   const o = JSON.parse(r.stdout); assert.equal(o.hookSpecificOutput.hookEventName, "PreToolUse"); assert.ok(!("permissionDecision" in o.hookSpecificOutput), "a hint never decides permissions"); assert.match(o.hookSpecificOutput.additionalContext, /50 KB/);
   r = run(JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Read", session_id: "h2", turn_id: "x", tool_input: { file_path: big } })); assert.equal(r.stdout, "", "Codex payload: do nothing");
 });
+const GV = await import(pathToFileURL(path.join(root, "scripts/governor.mjs")).href);
+const BG = await import(pathToFileURL(path.join(root, "scripts/background.mjs")).href);
+t("lean mode: RED caps compaction and thinking, keeps going back to the user's values in GREEN", () => {
+  const ap = {}; const s = { model: "x" };
+  assert.equal(GV.patchLean(s, "red", ap), true); assert.equal(s.autoCompactWindow, 120000); assert.equal(s.alwaysThinkingEnabled, false);
+  assert.equal(GV.patchLean(s, "amber", ap), true); assert.equal(s.autoCompactWindow, 160000); assert.ok(!("alwaysThinkingEnabled" in s), "amber lifts the thinking cap");
+  assert.equal(GV.patchLean(s, "green", ap), true); assert.ok(!("autoCompactWindow" in s)); assert.equal(s.model, "x");
+  const mine = { autoCompactWindow: 300000 }; GV.patchLean(mine, "green", {}); assert.equal(mine.autoCompactWindow, 300000, "a value you set in GREEN is never touched");
+  const mine2 = { alwaysThinkingEnabled: true }; GV.patchLean(mine2, "red", {}); assert.equal(mine2.alwaysThinkingEnabled, false, "RED may tighten your value");
+  GV.patchLean(mine2, "green", {}); assert.equal(mine2.alwaysThinkingEnabled, false, "...and green does not delete what it did not own");
+});
+t("time to empty only from real data and only when it beats the reset", () => {
+  assert.equal(GV.timeToEmpty({ estPct: 67, ratePerHour: 2, hoursLeft: 36, rateSource: "plan %" }).hours, 16.5);
+  assert.equal(GV.timeToEmpty({ estPct: 67, ratePerHour: 0.5, hoursLeft: 36, rateSource: "plan %" }), null, "lasts to reset");
+  assert.equal(GV.timeToEmpty({ estPct: 67, ratePerHour: 2, hoursLeft: 36, rateSource: "none yet" }), null);
+  assert.equal(GV.timeToEmpty({ estPct: null, ratePerHour: 2, hoursLeft: 36 }), null);
+});
+t("background-burn parsers flag scheduled/headless claude+codex only", () => {
+  assert.equal(BG.parseCron("# c\n0 * * * * claude -p 'x'\n5 * * * * backup.sh\n").length, 1);
+  assert.equal(BG.parseSchtasks('"PC","\\NightlyClaude","N/A"\n"PC","\\Other","x"\n')[0].text, "\\NightlyClaude");
+  const ps = "  10 01:00 claude -p do stuff\n  11 02:00 /usr/bin/claude --resume\n  12 00:30 codex exec fix\n  13 00:10 /bin/sh -c ln -sf /opt/claude-code/bin/claude x\n  99 00:01 node usage-max/scripts/background.mjs claude -p";
+  assert.deepEqual(BG.parsePs(ps, 1).map((x) => x.text.slice(0, 6)), ["pid 10", "pid 12"]);
+});
+t("enable-here --lean keeps only the named plugins on and never overwrites", () => {
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), "umlean-")), proj = path.join(h, "repo"); fs.mkdirSync(path.join(h, ".claude"), { recursive: true }); fs.mkdirSync(proj);
+  fs.writeFileSync(path.join(h, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "a@m": true, "b@m": true, "c@m": true } }));
+  const run = () => spawnSync("node", [path.join(root, "scripts/usage-max.mjs"), "enable-here", proj, "--lean", "a"], { env: { ...process.env, USAGE_MAX_HOME: h }, encoding: "utf8" });
+  assert.equal(run().status, 0); const e = JSON.parse(fs.readFileSync(path.join(proj, ".claude/settings.json"))).enabledPlugins;
+  assert.equal(e["b@m"], false); assert.equal(e["c@m"], false); assert.ok(e["a@m"] !== false); assert.equal(e["usage-max@eric-plugins"], true);
+  e["b@m"] = true; fs.writeFileSync(path.join(proj, ".claude/settings.json"), JSON.stringify({ ...JSON.parse(fs.readFileSync(path.join(proj, ".claude/settings.json"))), enabledPlugins: e })); run();
+  assert.equal(JSON.parse(fs.readFileSync(path.join(proj, ".claude/settings.json"))).enabledPlugins["b@m"], true, "an explicit choice in the repo is kept");
+});
 console.log(`${n} passing`);

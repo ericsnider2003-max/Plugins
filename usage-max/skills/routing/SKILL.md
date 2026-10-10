@@ -13,6 +13,10 @@ Ceiling: Opus 5.5. Never use fable or best.
 - **Sonnet** (`usage-max-worker`): standard edits, tests, refactors, reviews via `usage-max-reviewer`.
 - **Opus 5.5** (the hub itself): planning, architecture decisions, root-cause deadlocks, ambiguous plans, final synthesis. The hub runs on Opus 5.5; it delegates volume work down, it never escalates above Opus 5.5.
 
+## Cheap first pass
+
+Exploration is where usage leaks. When a task needs more than ~3 files or ~300 lines read, send the scout first: it returns file paths with line ranges and a short summary, and the hub reads only those ranges. Below that threshold, read directly (a dispatch costs more than it saves).
+
 ## Micro-task threshold
 
 If the whole job is one small read or one-line answer, do it inline. Never pay a subagent dispatch for less than a subagent's worth of work.

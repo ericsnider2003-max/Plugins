@@ -6,7 +6,7 @@
 //   PreToolUse (Agent)    any mode: downgrade Opus/Fable or inheriting subagents to Sonnet
 //   PreModelSwitch        block switches above Opus 5.5; in red, ask before switching to Opus
 import { loadMeter, saveMeter, sessionFiles, meterFiles } from "../scripts/meter.mjs";
-import { evaluate, loadState, saveState, loadConfig } from "../scripts/governor.mjs";
+import { evaluate, loadState, saveState, loadConfig, timeToEmpty } from "../scripts/governor.mjs";
 import { aboveCeiling } from "../scripts/ceiling.mjs";
 import { underCodex } from "../scripts/host.mjs";
 import { readOther, balanceAdvice } from "../scripts/shared.mjs";
@@ -26,7 +26,7 @@ const INHERITING = new Set(["general-purpose", "Plan", "claude", "fork", ""]);
 
 function directive(state) {
   const l = state.last || {};
-  const head = `usage-max budget ${state.mode.toUpperCase()}: weekly plan ~${pct(l.estPct)} used, ${l.hoursLeft ? Math.round(l.hoursLeft) : "?"}h to reset, burning ${l.ratio ? l.ratio.toFixed(1) : "?"}x the sustainable rate.`;
+  const head = `usage-max budget ${state.mode.toUpperCase()}: weekly plan ~${pct(l.estPct)} used, ${l.hoursLeft ? Math.round(l.hoursLeft) : "?"}h to reset, burning ${l.ratio ? l.ratio.toFixed(1) : "?"}x the sustainable rate.${(() => { const t = timeToEmpty(l); return t ? ` At this pace the plan runs out in ~${Math.round(t.hours)}h, before the reset in ${Math.round(t.resetIn)}h.` : ""; })()}`;
   if (state.mode === "amber") {
     return `${head} Work economically so the week lasts: delegate searches/reads to usage-max-scout and routine edits/tests to usage-max-worker; read only the files you need, once; keep replies short; no speculative exploration or extra verification passes beyond the cheapest check.`;
   }

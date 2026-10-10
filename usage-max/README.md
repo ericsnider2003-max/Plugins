@@ -2,6 +2,13 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.9.0 (Oct 10 2026) — lean mode and burn visibility
+- **Lean RED/AMBER.** Besides model and effort, tightening now caps context growth (`autoCompactWindow` 160k AMBER / 120k RED) and turns off always-on thinking in RED. Back in GREEN your own values are left alone and anything usage-max wrote is removed.
+- **Time to empty.** `/usage-max status` and the budget directive say "at this pace the plan runs out in ~Xh, before the reset in Yh" (only from real plan-% data, only when it beats the reset).
+- **Lean plugin sets.** `usage-max enable-here [dir] --lean a,b` makes one repo load only the plugins you name (everything else you have installed is off for that repo; explicit choices already in the file are kept). Plugins synced from your claude.ai account are turned off in claude.ai instead.
+- **Cheaper first pass.** The routing rules now say: if a task needs more than ~3 files or ~300 lines read, send the Haiku scout first and read only the ranges it returns.
+- **Background-burn check.** `doctor` lists scheduled claude/codex jobs (cron, Task Scheduler) and headless runs (`claude -p`, `codex exec`) that keep spending while you are away. Report only; `rescue halt` lists how to stop them.
+
 ## 0.8.0 (Oct 10 2026) — session guards (Claude Code)
 Claude Code only; they do nothing inside Codex. Every guard is silent unless it has something to say, and fails open.
 - **Stale-cache warning.** If a session sat idle past the cache lifetime and its context is 40k+ tokens, you get a one-line note (shown to you, costs no model tokens): continuing re-bills the whole context at ~10x a warm turn; hand off and start fresh is cheaper.
