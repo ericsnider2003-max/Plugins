@@ -2,6 +2,12 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.6.0 (Oct 10 2026)
+- **One-step install** (`install/install-usage-max.cmd` for Windows, `.sh` for macOS/Linux): adds the marketplace pinned to `main`, installs the plugin, turns off the older uploaded copy. Verified end to end in an isolated Claude config, including re-runs. Auto-update follows `main` regardless of GitHub's default branch.
+- **Codex survives plugin updates.** Codex scripts now install to a stable folder (`~/.usage-max-codex/bin`) and are refreshed automatically whenever the Claude plugin updates, so hook paths (and your `/hooks` trust) never change.
+- `doctor` compares your version with `main` and flags a leftover older uploaded copy (it would run every hook twice); SessionStart warns about it too.
+- Start-up safety: the cache-lifetime replay has a 3 s time budget (700 sessions take under 1 s) and SessionStart's hook timeout is 20 s.
+
 ## 0.5.1 (Oct 10 2026) — from an independent adversarial review
 - **Your settings win.** usage-max records what it wrote (`~/.claude/usage-max/applied.json`) and never reverts a value you changed (cleanupPeriodDays, env vars, cache TTL, status line, model). `doctor`/`rescue apply` list what was kept. Only exception: in AMBER/RED the governor may force a cheaper model/effort for new sessions, and hands back when green returns. Opt out of all of it with `{"manageSettings": false}` or `USAGE_MAX_AUTOAPPLY=off`.
 - Surplus mode needs real, recent plan-% burn data (no data / silent status line = off). A snapshot with no valid timestamp, or a stale 5-hour reading, is never treated as fresh.
@@ -36,13 +42,13 @@ Route every task to the smallest capable model tier and prove the savings from l
 
 ## Install
 
-```
-/plugin marketplace add ericsnider2003-max/Plugins
-/plugin install usage-max@eric-plugins
-```
-The first session configures everything itself (check with `/usage-max doctor`). Future versions arrive automatically (`autoUpdate` is set by the profile). Codex: see `codex/README.md`.
+Run the installer once (needs only the `claude` CLI):
+- Windows: double-click `install/install-usage-max.cmd`
+- macOS/Linux: `sh install/install-usage-max.sh`
 
-Uninstall: restore the settings backup, then `claude plugin uninstall usage-max`.
+Or by hand: `claude plugin marketplace add "ericsnider2003-max/Plugins#main"` then `claude plugin install usage-max@eric-plugins`.
+
+The first new session configures everything itself and the plugin keeps itself updated. Check anytime with `/usage-max doctor`. Codex: see `codex/README.md`.
 
 ## One command
 

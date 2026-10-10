@@ -58,6 +58,6 @@ Next step (fix implementation): **Sonnet** (`usage-max-worker`) for the mechanic
 |---|---|---|---|
 | 2026-10-10 | usage-max full analysis (10 skills run, source review, sandbox repro) | Opus hub + 1 Haiku scout | 20 findings; no code changed |
 
-## State after 0.5.0
-Done and live-verified (`node usage-max/test/live.mjs`, all pass): self-configuring SessionStart, unified `/usage-max`, Opus->Sonnet subagent cap, Stop metering, command rewrite without `allow`. CI runs offline suites on PRs. Codex: source-verified hook contract, auto-calibration from `rate_limits`, `doctor`, surplus + balance.
-Only things that need the user: (1) make `main` the default branch (GitHub Settings > Branches) after merging PR #1; (2) Codex: `node usage-max/codex/scripts/install.mjs`, then in Codex `/hooks` -> trust the hooks, then `usage-max codex doctor`; (3) disable unused synced plugins (`/usage-max diet` prints the commands); (4) copy the zip from the app to the desktop.
+## State after 0.6.0
+PR #1 merged to `main`; installs and auto-updates from `ericsnider2003-max/Plugins#main` (verified in an isolated config). One-step installers in `install/`. Codex installs to `~/.usage-max-codex/bin` and is refreshed by the Claude plugin. Live proof: `node usage-max/test/live.mjs`.
+Only the user can do: (1) run the installer on their machine; (2) Codex: `node ~/.usage-max-codex/...` not needed - run `usage-max/codex/scripts/install.mjs` once, then `/hooks` -> trust the hooks, then `/usage-max codex doctor`; (3) disable unused synced plugins (`/usage-max diet` prints the commands).

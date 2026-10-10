@@ -79,7 +79,7 @@ console.log(`${n} passing (incl. hooks)`);
     const h = fresh(); const d = path.join(h, ".codex/sessions/2026/10/07"); fs.mkdirSync(d, { recursive: true });
     fs.writeFileSync(path.join(d, "rollout-a.jsonl"), [{ type: "turn_context", payload: { model: "gpt-6.1-sol" } }, { type: "turn_context", payload: { model: "gpt-6.1-sol" } }, { type: "turn_context", payload: { model: "gpt-6-luna" } }].map((x) => JSON.stringify(x)).join("\n") + "\n");
     const e2 = { ...env, USAGE_MAX_HOME: h }; const r = spawnSync("node", [path.join(root, "scripts/install.mjs")], { env: e2, encoding: "utf8" }); assert.equal(r.status, 0, r.stderr);
-    const rp = root.replace(/\\/g, "/"); const sk = fs.readFileSync(path.join(h, ".codex/skills/usage-max/SKILL.md"), "utf8"), ag = fs.readFileSync(path.join(h, ".codex/AGENTS.md"), "utf8");
+    const rp = path.join(h, ".usage-max-codex/bin").replace(/\\/g, "/"); const sk = fs.readFileSync(path.join(h, ".codex/skills/usage-max/SKILL.md"), "utf8"), ag = fs.readFileSync(path.join(h, ".codex/AGENTS.md"), "utf8");
     assert.ok(!sk.includes("<usage-max>") && !ag.includes("<usage-max>")); assert.ok(sk.includes(rp + "/scripts/codex-governor.mjs") && ag.includes(rp + "/scripts/codex-governor.mjs"));
     const cj = path.join(h, ".usage-max-codex/config.json"); const c1 = JSON.parse(fs.readFileSync(cj, "utf8")); assert.equal(c1.modes.green.model, "gpt-6.1-sol"); assert.equal(c1.modes.red.model, "gpt-6-luna");
     fs.writeFileSync(cj, '{"modes":{}}'); spawnSync("node", [path.join(root, "scripts/install.mjs")], { env: e2 }); assert.equal(fs.readFileSync(cj, "utf8"), '{"modes":{}}');
@@ -117,7 +117,24 @@ const cgMod = await import(pathToFileURL(path.join(root, "scripts/codex-governor
   spawnSync("node", [path.join(root, "scripts/install.mjs")], { env: e3 });
   t("doctor: installed-but-never-run hooks are called out as needing /hooks trust", () => assert.match(doc(), /NEVER run[\s\S]*\/hooks/));
   spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "SessionStart"], { input: "{}", env: e3 });
+  t("doctor: stable location ok with version", () => assert.match(doc(), /ok\s+scripts run from a stable location[^\n]*installed version/));
+  t("doctor flags hooks.json pointing outside bin", () => { const hf = path.join(h, ".codex/hooks.json"); const s0 = fs.readFileSync(hf, "utf8"); fs.writeFileSync(hf, s0.split(path.join(h, ".usage-max-codex/bin")).join("/cache/old/codex")); assert.match(doc(), /FIX\s+scripts run from a stable location/); fs.writeFileSync(hf, s0); });
   t("doctor: after a hook fires it reports hooks are running", () => assert.match(doc(), /ok\s+hooks are running/));
+}
+{
+  const { syncBin, binDir } = await import(pathToFileURL(path.join(root, "scripts/sync.mjs")).href);
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), "umsy-")); const e4 = { ...process.env, USAGE_MAX_HOME: h }; delete e4.CODEX_HOME; const bin = binDir(h); const rp = bin.replace(/\\/g, "/");
+  t("install copies scripts to stable bin with VERSION", () => { const r = spawnSync("node", [path.join(root, "scripts/install.mjs")], { env: e4, encoding: "utf8" }); assert.equal(r.status, 0, r.stderr); for (const f of ["scripts/codex-hook.mjs", "scripts/notify.mjs", "skills/usage-max/SKILL.md", "AGENTS.usage-max.md", "VERSION"]) assert.ok(fs.existsSync(path.join(bin, f)), f); assert.ok(!fs.existsSync(path.join(bin, "test"))); assert.equal(fs.readFileSync(path.join(bin, "VERSION"), "utf8").trim(), JSON.parse(fs.readFileSync(path.join(root, "../.claude-plugin/plugin.json"), "utf8")).version); });
+  t("hooks, notify, AGENTS point at bin not plugin root", () => { const c = path.join(h, ".codex"); const hj = fs.readFileSync(path.join(c, "hooks.json"), "utf8"); assert.ok(hj.includes(rp + "/scripts/codex-hook.mjs")); assert.ok(fs.readFileSync(path.join(c, "config.toml"), "utf8").includes(rp + "/scripts/notify.mjs")); assert.ok(fs.readFileSync(path.join(c, "AGENTS.md"), "utf8").includes(rp)); const pr = path.resolve(root, "..").replace(/\\/g, "/"); for (const f of ["hooks.json", "config.toml", "AGENTS.md"]) assert.ok(!fs.readFileSync(path.join(c, f), "utf8").includes(pr + "/"), f); });
+  t("re-install converges from old root path (one entry per event)", () => { const hf = path.join(h, ".codex/hooks.json"); fs.writeFileSync(hf, fs.readFileSync(hf, "utf8").split(rp).join("/cache/old/codex")); spawnSync("node", [path.join(root, "scripts/install.mjs")], { env: e4 }); const s = fs.readFileSync(hf, "utf8"); assert.ok(!s.includes("/cache/old")); const j2 = JSON.parse(s); for (const e of ["SessionStart", "UserPromptSubmit", "Stop", "PreToolUse"]) assert.equal(JSON.stringify(j2.hooks[e]).split("codex-hook.mjs").length, 2, e); });
+  t("syncBin no-op when VERSION matches, re-copies on version change", () => {
+    const fr = fs.mkdtempSync(path.join(os.tmpdir(), "umfr-")); const h2 = fs.mkdtempSync(path.join(os.tmpdir(), "umfh-")); fs.mkdirSync(path.join(fr, ".claude-plugin")); fs.mkdirSync(path.join(fr, "codex/scripts"), { recursive: true }); fs.mkdirSync(path.join(fr, "codex/skills/x"), { recursive: true });
+    fs.writeFileSync(path.join(fr, ".claude-plugin/plugin.json"), '{"version":"1.0.0"}'); fs.writeFileSync(path.join(fr, "codex/scripts/a.mjs"), "1"); fs.writeFileSync(path.join(fr, "codex/scripts/b.txt"), "x"); fs.writeFileSync(path.join(fr, "codex/skills/x/S.md"), "s"); fs.writeFileSync(path.join(fr, "codex/AGENTS.usage-max.md"), "ag");
+    const b2 = binDir(h2); assert.deepEqual(syncBin({ root: fr, home: h2 }), { changed: true, version: "1.0.0" }); assert.equal(fs.readFileSync(path.join(b2, "scripts/a.mjs"), "utf8"), "1"); assert.ok(!fs.existsSync(path.join(b2, "scripts/b.txt")));
+    fs.writeFileSync(path.join(fr, "codex/scripts/a.mjs"), "2"); assert.equal(syncBin({ root: fr, home: h2 }).changed, false); assert.equal(fs.readFileSync(path.join(b2, "scripts/a.mjs"), "utf8"), "1");
+    fs.writeFileSync(path.join(fr, ".claude-plugin/plugin.json"), '{"version":"1.1.0"}'); assert.equal(syncBin({ root: fr, home: h2 }).changed, true); assert.equal(fs.readFileSync(path.join(b2, "scripts/a.mjs"), "utf8"), "2"); assert.equal(fs.readFileSync(path.join(b2, "VERSION"), "utf8").trim(), "1.1.0");
+    assert.ok(syncBin({ root: "/nonexistent", home: h2 }).error);
+  });
 }
 console.log(`${n} passing (incl. rollover/throttle/install)`);
 // surplus + shared balance

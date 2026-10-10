@@ -2,7 +2,9 @@
 // Installs usage-max into Codex: skill, AGENTS.md block, notify hook, profiles. Idempotent; backs up config.toml.
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import { codexHome, dataDir, setTopLevel, writeProfiles, loadConfig, applyMode, evaluate, modelsSeen, weightFor, DEFAULT_CONFIG } from "./codex-governor.mjs";
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."); const ch = codexHome(); fs.mkdirSync(ch, { recursive: true });
+import { binDir, syncBin } from "./sync.mjs";
+const plugin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."); const sr = syncBin({ root: plugin, force: true }); if (sr.error) console.error("sync to stable dir failed (using existing copy if any):", sr.error);
+const root = binDir(); const ch = codexHome(); fs.mkdirSync(ch, { recursive: true });
 // 1. skill (user skills dir)
 const sk = path.join(ch, "skills", "usage-max"); fs.mkdirSync(sk, { recursive: true });
 const rp = root.replace(/\\/g, "/"); const sub = (s) => s.split("<usage-max>").join(rp);
@@ -17,7 +19,7 @@ const cf = path.join(ch, "config.toml"); let t = ""; try { t = fs.readFileSync(c
 const notify = path.join(root, "scripts", "notify.mjs").replace(/\\/g, "/"); const m = t.match(/^\s*notify\s*=.*$/m);
 if (!m || m[0].includes("usage-max") || m[0].includes("notify.mjs")) { if (t) { try { fs.writeFileSync(cf + ".usage-max-backup", t, { flag: "wx" }); } catch {} } t = setTopLevel(t, {}); 
   const line = `notify = ["node", ${JSON.stringify(notify)}]`; t = m ? t.replace(/^\s*notify\s*=.*$/m, line) : (() => { const L = t.split("\n"); let i = L.findIndex(l => /^\s*\[/.test(l)); if (i < 0) i = L.length; L.splice(i, 0, line); return L.join("\n"); })(); fs.writeFileSync(cf, t.replace(/\n*$/, "\n")); console.log("notify hook set"); }
-else console.log("existing notify= left untouched; run `node scripts/notify.mjs` from your own notifier to keep metering");
+else console.log(`existing notify= left untouched; run node ${rp}/scripts/notify.mjs from your own notifier to keep metering`);
 // 4. hooks.json (merge, idempotent). Codex asks you to trust non-managed hooks once: run /hooks in Codex.
 {
   const hf = path.join(ch, "hooks.json"); let hj = {}; try { hj = JSON.parse(fs.readFileSync(hf, "utf8")); } catch {}
@@ -45,4 +47,4 @@ else console.log("existing notify= left untouched; run `node scripts/notify.mjs`
 writeProfiles(loadConfig()); const { mode, cfg, st: ist } = evaluate(); applyMode(mode, cfg, Boolean(ist && ist.surplus && mode === "green"));
 console.log(`installed. mode=${mode}.
 REQUIRED once: start Codex and run /hooks, then trust the usage-max hooks. Codex silently skips untrusted hooks, so until you do this usage-max does nothing in Codex.
-Calibration is automatic (read from Codex's own rate_limits) after your first Codex turn. Verify anytime: node scripts/codex-governor.mjs doctor`);
+Calibration is automatic (read from Codex's own rate_limits) after your first Codex turn. Verify anytime: node "${rp}/scripts/codex-governor.mjs" doctor`);
