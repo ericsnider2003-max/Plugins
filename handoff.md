@@ -67,3 +67,6 @@ The user runs the Codex DESKTOP app plus the CLI. The app cannot open `/hooks` (
 
 ## 0.6.2 notes
 Kit lives in `install/kit` + `install/build-kit.py` (builds `usage-max-desktop.zip` and `usage-max-plugin-<ver>.zip`; CI checks both). The user's Claude "desktop app" and the "cloud" sessions load only uploaded plugins (no marketplace, no status line): route them through the plugin zip + `4-CALIBRATE-CLAUDE`. Codex desktop app runs tool commands in a read-only sandbox (EPERM on ~/.usage-max-codex): governors degrade gracefully. Real Codex numbers seen: 77% weekly at ~2.15 of 7 days elapsed (~36%/day vs 4.3%/day sustainable).
+
+## 0.6.3 notes
+Cloud sessions (desktop app, cloud icon, CLAUDE_CODE_REMOTE=true) start from a blank container: no persistent ~/.claude, no status line, plugin list frozen at start. usage-max works there via the repo route (`enable-here` -> committed `.claude/settings.json`, verified headless) or an uploaded zip. Plan tracking (status line / calibrate / profile) belongs on the user's PC. The Plugins repo itself has `.claude/settings.json` committed. Cowork: upload only, untested.

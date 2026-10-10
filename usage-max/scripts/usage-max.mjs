@@ -7,6 +7,7 @@
 //   check|diagnose|audit|diet [...]   reports from local transcripts
 //   rescue [apply [--write]|migrate|halt]
 //   balance         Claude vs Codex headroom
+//   enable-here [dir]  make every session on a repo load usage-max (writes <dir>/.claude/settings.json; commit it)
 //   codex <sub>     doctor|status|install|models|calibrate|mode|diet|gate (the Codex side)
 //   route|handoff   handled by the model (see commands/usage-max.md)
 import { spawnSync } from "node:child_process";
@@ -16,6 +17,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { oldSyncedCopies, DISABLE_OLD } from "./dupes.mjs";
+import { readJson as rj, writeJsonAtomic } from "./meter.mjs";
+import { MARKETPLACE } from "./profile.mjs";
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const home = process.env.USAGE_MAX_HOME || os.homedir();
 const S = (f) => path.join(root, "scripts", f);
@@ -23,6 +26,29 @@ const C = (f) => path.join(root, "codex", "scripts", f);
 const run = (file, args = []) => spawnSync(process.execPath, [file, ...args], { stdio: "inherit" }).status ?? 1;
 const json = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
 const [sub = "status", ...rest] = process.argv.slice(2);
+
+// Make EVERY session on a repo load usage-max with no upload and no per-machine install: the repo's own project settings point at
+// the GitHub marketplace (pinned to main, auto-update). Cloud/desktop sessions, local terminals and teammates all pick it up.
+// Never overwrites: existing keys are kept, an explicit "false" for the plugin is respected, invalid JSON is left alone.
+function enableHere(dirArg) {
+  const dir = path.resolve(dirArg || process.cwd());
+  const f = path.join(dir, ".claude", "settings.json");
+  let s = {};
+  if (fs.existsSync(f)) { s = rj(f, null); if (s === null || typeof s !== "object") { console.log(`${f} is not valid JSON; not touching it`); return 1; } }
+  const changes = [];
+  s.extraKnownMarketplaces = { ...(s.extraKnownMarketplaces || {}) };
+  if (!s.extraKnownMarketplaces[MARKETPLACE.name]) { s.extraKnownMarketplaces[MARKETPLACE.name] = { source: { source: "github", repo: MARKETPLACE.repo, ref: MARKETPLACE.ref }, autoUpdate: true }; changes.push(`marketplace ${MARKETPLACE.name} (GitHub, pinned to ${MARKETPLACE.ref}, auto-update)`); }
+  s.enabledPlugins = { ...(s.enabledPlugins || {}) };
+  if (s.enabledPlugins["usage-max@eric-plugins"] === undefined) { s.enabledPlugins["usage-max@eric-plugins"] = true; changes.push("usage-max@eric-plugins enabled"); }
+  else if (s.enabledPlugins["usage-max@eric-plugins"] === false) console.log("usage-max is explicitly turned OFF in that file; leaving it off.");
+  if (changes.length) { writeJsonAtomic(f, s); console.log(`${f}\n  added: ${changes.join("; ")}\nCommit and push this file: every session on this repo (cloud, desktop app, terminal) then loads usage-max automatically.`); }
+  else console.log(`${f}: already set up.`);
+  return 0;
+}
+
+function cloudNote() {
+  if (process.env.CLAUDE_CODE_REMOTE === "true") console.log("note: this is a CLOUD session. Routing rules and the Sonnet cap on subagents are active. Plan tracking, your settings profile and the status line live on your own computer's Claude Code (cloud sessions start from a blank machine every time). Your weekly % is account-wide, so the reading from your PC covers cloud and chat use too.\n");
+}
 
 function balance() {
   const sh = json(path.join(home, ".usage-max", "shared.json")) || {};
@@ -38,6 +64,7 @@ async function doctor(fix = false) {
   if (fix) { console.log("usage-max doctor --fix: applying the usage profile first (your own settings are never overwritten)"); run(S("profile.mjs"), ["--write"]); console.log(""); }
   const out = []; const ok = (m) => out.push(`  ok   ${m}`); const bad = (m, fix) => out.push(`  FIX  ${m}${fix ? `\n       -> ${fix}` : ""}`);
   const st = json(path.join(home, ".claude", "settings.json")); const gov = json(path.join(home, ".claude", "usage-max", "governor.json")) || {}; const lim = json(path.join(home, ".claude", "usage-max", "limits.json"));
+  cloudNote();
   console.log("usage-max doctor — Claude Code");
   st ? ok("~/.claude/settings.json exists") : bad("no ~/.claude/settings.json", "start a new session (SessionStart configures it) or: usage-max rescue apply --write");
   if (st) {
@@ -73,13 +100,14 @@ function rescue(args) {
 }
 
 function status() {
+  cloudNote();
   const code = run(S("governor.mjs"), ["status"]);
   console.log(""); balance();
   return code;
 }
 
 const map = {
-  status, balance, doctor: () => doctor(rest.includes("--fix")),
+  status, balance, doctor: () => doctor(rest.includes("--fix")), "enable-here": () => enableHere(rest[0]),
   budget: () => run(S("governor.mjs"), rest.length ? rest : ["status"]),
   gate: () => run(S("governor.mjs"), ["gate"]),
   check: () => run(S("usage-check.mjs"), ["--write-status", path.join(home, ".claude", "usage-max", "status.json"), ...rest]),
@@ -91,4 +119,6 @@ const map = {
   route: () => { console.log("route/handoff are model tasks: follow commands/usage-max.md."); return 0; },
   handoff: () => map.route()
 };
-process.exit(await (map[sub] || (async () => { console.log(`unknown subcommand "${sub}". Try: status doctor budget gate check diagnose audit diet rescue balance codex route handoff`); return 2; }))());
+// Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status doctor budget gate check diagnose audit diet rescue balance enable-here codex route handoff)\n`); process.exit(await map.status()); }
+process.exit(await map[sub]());

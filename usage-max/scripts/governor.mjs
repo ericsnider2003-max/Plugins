@@ -267,7 +267,7 @@ async function cli() {
     }
     if (l.hoursLeft != null && l.hoursLeft <= 24 && l.projected != null && l.projected < 95) console.log(`  use it or lose it: ~${fmt(100 - l.projected, 0)}% of the week expires in ${fmt(l.hoursLeft, 0)}h — queue the heavy work now`);
   }
-  console.log(`  new sessions: ${want.model} @ ${want.effort} effort${config.manageSettings ? "" : " (settings management OFF)"}${config.manageSettings && !hasSettings ? " — NOT APPLIED: ~/.claude/settings.json is missing; run profile.mjs --write" : ""}`);
+  console.log(`  new sessions: ${want.model} @ ${want.effort} effort${config.manageSettings ? "" : " (settings management OFF)"}${config.manageSettings && !hasSettings ? (process.env.CLAUDE_CODE_REMOTE === "true" ? " (cloud session: this machine starts blank, so the settings profile does not apply here; it applies on your PC)" : " — NOT APPLIED: ~/.claude/settings.json is missing; run usage-max rescue apply --write") : ""}`);
   console.log(`  calibration: ${s.calib ? `${s.calib.pct}% at ${new Date(s.calib.at).toLocaleString()} (${s.calib.source}), k=${fmt(s.k, 4)} %/$` : "none — run: calibrate <pct> --resets <date>"}`);
   if (cmd === "gate") process.exitCode = { green: 0, amber: 10, red: 20 }[s.mode];
   if ((s.history || []).length) console.log(`  last change: ${s.history[s.history.length - 1].from} → ${s.history[s.history.length - 1].to} at ${s.history[s.history.length - 1].at}`);
