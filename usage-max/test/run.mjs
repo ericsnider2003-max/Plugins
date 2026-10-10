@@ -31,7 +31,8 @@ const summary = await summarizeProjects({ projectsDir: path.join(root, "test", "
 check("fixture files", summary.files, 2);
 check("fixture turns", summary.assistantTurns, 3);
 check("fixture sidechain turns", summary.sidechainTurns, 1);
-check("haiku totals", summary.models["claude-haiku-4-5-20251001"], {
+const noCost = ({ cost, ...rest }) => rest; // cost is asserted in test/new.mjs
+check("haiku totals", noCost(summary.models["claude-haiku-4-5-20251001"]), {
   turns: 1,
   sidechainTurns: 1,
   input: 100,
@@ -43,7 +44,7 @@ check("haiku totals", summary.models["claude-haiku-4-5-20251001"], {
   toolCalls: 1,
   ranges: {}
 });
-check("sonnet totals", summary.models["claude-sonnet-5-5"], {
+check("sonnet totals", noCost(summary.models["claude-sonnet-5-5"]), {
   turns: 1,
   sidechainTurns: 0,
   input: 200,
@@ -55,7 +56,7 @@ check("sonnet totals", summary.models["claude-sonnet-5-5"], {
   toolCalls: 2,
   ranges: {}
 });
-check("opus totals", summary.models["claude-opus-5-5"], {
+check("opus totals", noCost(summary.models["claude-opus-5-5"]), {
   turns: 1,
   sidechainTurns: 0,
   input: 300,

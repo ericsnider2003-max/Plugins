@@ -7,7 +7,8 @@ const TABLE = [
   { match: /opus-4/, input: 5, write1h: 10, write5m: 6.25, read: 0.5, output: 25, approx: true },
   { match: /sonnet-5-5/, input: 2, write1h: 4, write5m: 2.5, read: 0.2, output: 10 },
   { match: /sonnet/, input: 3, write1h: 6, write5m: 3.75, read: 0.3, output: 15, approx: true },
-  { match: /haiku-4-5/, input: 1, write1h: 2, write5m: 1.25, read: 0.1, output: 5 }
+  { match: /haiku-4-5/, input: 1, write1h: 2, write5m: 1.25, read: 0.1, output: 5 },
+  { match: /haiku/, input: 1, write1h: 2, write5m: 1.25, read: 0.1, output: 5, approx: true } // haiku-5-5 etc: Haiku 4.5 rates until confirmed
 ];
 export function priceFor(model) {
   const name = String(model || "").toLowerCase();
@@ -34,4 +35,18 @@ export function replayTtl(turns) {
     prevT = t;
   }
   return { actual, sim5m };
+}
+
+// Cost of one assistant message at list price, honouring the real 5m/1h cache-write split when present.
+export function recordCost(message) {
+  const p = priceFor(message && message.model);
+  const u = (message && message.usage) || {};
+  if (!p || message.model === "<synthetic>") return 0;
+  const cc = u.cache_creation || {};
+  const w5 = Number(cc.ephemeral_5m_input_tokens) || 0;
+  const w1 = Number(cc.ephemeral_1h_input_tokens) || 0;
+  const created = Number(u.cache_creation_input_tokens) || 0;
+  const unsplit = Math.max(created - w5 - w1, 0);
+  return ((Number(u.input_tokens) || 0) * p.input + w5 * p.write5m + (w1 + unsplit) * p.write1h +
+    (Number(u.cache_read_input_tokens) || 0) * p.read + (Number(u.output_tokens) || 0) * p.output) / 1e6;
 }

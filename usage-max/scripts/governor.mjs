@@ -85,6 +85,20 @@ export function absorbSnapshot(state, limits, meterCum) {
   return true;
 }
 
+// The plan window rolls over every 7 days. When the calibrated reset has passed and no fresh status-line
+// snapshot has arrived, start the next window at 0% (spend before the reset no longer counts) instead of
+// carrying last week's percentage. Returns true when it rolled.
+export function rollWindow(state, meter, nowMs = Date.now()) {
+  const c = state.calib;
+  if (!c || !c.resetsAt || c.resetsAt * 1000 > nowMs) return false;
+  const WEEK = 7 * 86400000;
+  const nextReset = c.resetsAt * 1000 + (Math.floor((nowMs - c.resetsAt * 1000) / WEEK) + 1) * WEEK;
+  const windowStart = nextReset - WEEK;
+  const spentSince = spendInLast(meter, Math.max((nowMs - windowStart) / 3600000, 0), nowMs);
+  state.calib = { pct: 0, at: windowStart, cumAt: Math.max(meter.cum - spentSince, 0), resetsAt: Math.floor(nextReset / 1000), source: "rolled" };
+  return true;
+}
+
 export function estimate(state, meter, nowMs = Date.now(), config = DEFAULT_CONFIG) {
   const c = state.calib;
   if (!c || !state.k) return { estPct: null, hoursLeft: null, ratePerHour: null };
@@ -95,20 +109,26 @@ export function estimate(state, meter, nowMs = Date.now(), config = DEFAULT_CONF
   return { estPct, hoursLeft, ratePerHour };
 }
 
-// Write the mode's model/effort into user settings (new sessions only). Owned keys only.
+// Set the mode's model/effort on a settings object (owned keys only). Returns true when something changed.
+export function patchModel(s, want) {
+  const before = JSON.stringify([s.model, s.effortLevel, s.modelSettings]);
+  s.model = want.model;
+  s.effortLevel = want.effort;
+  s.modelSettings = { ...(s.modelSettings || {}) };
+  for (const m of ["claude-opus-5-5", "claude-sonnet-5-5"]) s.modelSettings[m] = { ...(s.modelSettings[m] || {}), effortLevel: want.effort };
+  return JSON.stringify([s.model, s.effortLevel, s.modelSettings]) !== before;
+}
+
+// Write the mode's model/effort into user settings (new sessions only). Returns true (changed), false
+// (already right / management off) or null (no settings.json yet: nothing was applied; profile.mjs creates it).
 export function applySettings(mode, config) {
   if (!config.manageSettings) return false;
   const want = config.modes[mode];
   if (!want) return false;
   const file = files().settings;
   const s = readJson(file, null);
-  if (!s) return false;
-  const before = JSON.stringify([s.model, s.effortLevel, s.modelSettings]);
-  s.model = want.model;
-  s.effortLevel = want.effort;
-  s.modelSettings = { ...(s.modelSettings || {}) };
-  for (const m of ["claude-opus-5-5", "claude-sonnet-5-5"]) s.modelSettings[m] = { ...(s.modelSettings[m] || {}), effortLevel: want.effort };
-  if (JSON.stringify([s.model, s.effortLevel, s.modelSettings]) === before) return false;
+  if (!s) return null;
+  if (!patchModel(s, want)) return false;
   writeJsonAtomic(file, s);
   return true;
 }
@@ -119,6 +139,7 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   const state = loadState();
   meter = meter || loadMeter();
   absorbSnapshot(state, readJson(files().limits, null), meter.cum);
+  if (rollWindow(state, meter, nowMs)) state.mode = "green"; // new week: no hysteresis from last week's mode
   const est = estimate(state, meter, nowMs, config);
   const d = state.override ? { mode: state.override, ratio: null, allowedPerHour: null } : decide({ ...est, prevMode: state.mode, config });
   const changed = d.mode !== state.mode;
@@ -129,7 +150,7 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
     state.changedAt = state.last.at;
   }
   if (changed || state.appliedMode !== state.mode) {
-    try { applySettings(state.mode, config); state.appliedMode = state.mode; } catch {}
+    try { if (applySettings(state.mode, config) !== null) state.appliedMode = state.mode; } catch {}
   }
   saveState(state);
   return state;
@@ -172,7 +193,8 @@ async function cli() {
   console.log(`usage-max budget: ${s.mode.toUpperCase()}${s.override ? " (pinned)" : ""}`);
   console.log(`  week ~${fmt(l.estPct)}% (est.), ${fmt(l.hoursLeft, 0)}h to reset, target ${config.target}%`);
   console.log(`  burn ${fmt(l.ratePerHour, 2)}%/h over last ${config.burnWindowHours}h vs sustainable ${fmt(l.allowedPerHour, 2)}%/h → ${fmt(l.ratio, 2)}× ${l.ratio > 1 ? "(over)" : "(ok)"}`);
-  console.log(`  new sessions: ${want.model} @ ${want.effort} effort${config.manageSettings ? "" : " (settings management OFF)"}`);
+  const hasSettings = fs.existsSync(files().settings);
+  console.log(`  new sessions: ${want.model} @ ${want.effort} effort${config.manageSettings ? "" : " (settings management OFF)"}${config.manageSettings && !hasSettings ? " — NOT APPLIED: ~/.claude/settings.json is missing; run profile.mjs --write" : ""}`);
   console.log(`  calibration: ${s.calib ? `${s.calib.pct}% at ${new Date(s.calib.at).toLocaleString()} (${s.calib.source}), k=${fmt(s.k, 4)} %/$` : "none — run: calibrate <pct> --resets <date>"}`);
   if (cmd === "gate") process.exitCode = { green: 0, amber: 10, red: 20 }[s.mode];
   if ((s.history || []).length) console.log(`  last change: ${s.history[s.history.length - 1].from} → ${s.history[s.history.length - 1].to} at ${s.history[s.history.length - 1].at}`);

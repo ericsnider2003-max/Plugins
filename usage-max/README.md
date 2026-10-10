@@ -2,13 +2,20 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.2.0 (Oct 10 2026)
+- Fixed: usage was counted ~2x (one transcript record per content block repeats the same usage); everything now counts each message once.
+- Fixed: weekly reset no longer leaves the governor stuck in last week's mode (Claude and Codex).
+- New `scripts/profile.mjs`: real `/rescue apply` (creates/merges `~/.claude/settings.json`, status line, marketplace auto-update, backup, idempotent).
+- Diet now sees claude.ai/org-synced plugins and reports the measured session-start context. usage-check is cost-weighted. Haiku 5.5 is priced and is the scout model.
+- Pending (needs hook-file approval): SessionStart auto-apply + routing rules, subagents capped at Sonnet in every mode, trim hook no longer bypasses permission prompts.
+
 ## Install
 
-```sh
-cp ~/.claude/settings.json ~/.claude/settings.json.usage-max-backup
-# merge profiles/settings.enforced.json into ~/.claude/settings.json
-claude plugin validate ./usage-max
 ```
+/plugin marketplace add ericsnider2003-max/Plugins
+/plugin install usage-max@eric-plugins
+```
+Then run `node scripts/profile.mjs --write` once (the SessionStart hook will do this automatically after the pending hook update). Future versions arrive automatically (`autoUpdate` is set by the profile).
 
 Uninstall: restore the settings backup, then `claude plugin uninstall usage-max`.
 

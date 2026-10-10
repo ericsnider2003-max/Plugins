@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { priceFor } from "./pricing.mjs";
+import { recordCost } from "./pricing.mjs";
 import { listJsonlFiles } from "./lib.mjs";
 
 export function dataDir() {
@@ -19,26 +19,14 @@ export function writeJsonAtomic(file, value) {
   fs.renameSync(tmp, file);
 }
 
-// Cost of one assistant record, honouring the real 5m/1h cache-write split when present.
-export function recordCost(message) {
-  const p = priceFor(message && message.model);
-  const u = (message && message.usage) || {};
-  if (!p || message.model === "<synthetic>") return 0;
-  const cc = u.cache_creation || {};
-  const w5 = Number(cc.ephemeral_5m_input_tokens) || 0;
-  const w1 = Number(cc.ephemeral_1h_input_tokens) || 0;
-  const created = Number(u.cache_creation_input_tokens) || 0;
-  const unsplit = Math.max(created - w5 - w1, 0);
-  return ((Number(u.input_tokens) || 0) * p.input + w5 * p.write5m + (w1 + unsplit) * p.write1h +
-    (Number(u.cache_read_input_tokens) || 0) * p.read + (Number(u.output_tokens) || 0) * p.output) / 1e6;
-}
+export { recordCost };
 
 function hourKey(ms) {
   return new Date(Math.floor(ms / 3600000) * 3600000).toISOString();
 }
 
 // Read a transcript from `offset`, return { cost, end, byHour }. Only whole lines are consumed.
-export function scanFrom(file, offset = 0, sinceMs = 0) {
+export function scanFrom(file, offset = 0, sinceMs = 0, seen = new Set()) {
   let fd;
   try { fd = fs.openSync(file, "r"); } catch { return { cost: 0, end: offset, byHour: {} }; }
   try {
@@ -57,6 +45,8 @@ export function scanFrom(file, offset = 0, sinceMs = 0) {
       if (!line.includes('"assistant"')) continue;
       let r; try { r = JSON.parse(line); } catch { continue; }
       if (r.type !== "assistant" || !r.message) continue;
+      const mid = r.message.id; // one record per content block repeats the same usage: count each message once
+      if (mid) { if (seen.has(mid)) continue; seen.add(mid); }
       const t = Date.parse(r.timestamp) || Date.now();
       if (t < sinceMs) continue;
       const c = recordCost(r.message);
@@ -91,13 +81,15 @@ export function sessionFiles(transcriptPath) {
 
 export function meterFiles(m, files) {
   let added = 0;
+  const seen = new Set(m.recentIds || []);
   for (const f of files) {
-    const r = scanFrom(f, m.offsets[f] || 0);
+    const r = scanFrom(f, m.offsets[f] || 0, 0, seen);
     m.offsets[f] = r.end;
     m.cum += r.cost;
     added += r.cost;
     for (const [h, c] of Object.entries(r.byHour)) m.buckets[h] = (m.buckets[h] || 0) + c;
   }
+  m.recentIds = [...seen].slice(-3000);
   return added;
 }
 
@@ -113,7 +105,7 @@ export async function bootstrap(projectsDir, sinceMs) {
   const m = { cum: 0, offsets: {}, buckets: {}, startedAt: new Date().toISOString() };
   let windowSpend = 0;
   for (const f of await listJsonlFiles(projectsDir)) {
-    const r = scanFrom(f, 0, Math.min(sinceMs, Date.now() - 7 * 86400000));
+    const r = scanFrom(f, 0, Math.min(sinceMs, Date.now() - 7 * 86400000), new Set());
     m.offsets[f] = r.end;
     for (const [h, c] of Object.entries(r.byHour)) {
       m.buckets[h] = (m.buckets[h] || 0) + c;

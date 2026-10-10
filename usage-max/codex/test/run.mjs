@@ -10,6 +10,8 @@ L.push({ timestamp: new Date(now - 36e5).toISOString(), type: "turn_context", pa
 for (let i = 0; i < 4; i++) L.push({ timestamp: new Date(now - 36e5 + i * 6e4).toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 100000, cached_input_tokens: 80000, output_tokens: 4000 } } } });
 fs.writeFileSync(path.join(day, "rollout-2026-10-07T00-00-00-abc.jsonl"), L.map(x => JSON.stringify(x)).join("\n") + "\n{partial");
 fs.writeFileSync(path.join(ch, "config.toml"), 'approval_policy = "on-request"\nmodel = "old"\n\n[mcp_servers.x]\ncommand = "x"\n');
+fs.mkdirSync(path.join(home, ".usage-max-codex"), { recursive: true });
+fs.writeFileSync(path.join(home, ".usage-max-codex/config.json"), JSON.stringify({ modes: { green: { model: "gpt-6.1-sol", effort: "medium" }, amber: { model: "gpt-6.1-sol", effort: "low" }, red: { model: "gpt-6-luna", effort: "low" } } }));
 t("uncalibrated status works", () => { const r = g("status"); assert.equal(r.status, 0); assert.match(r.stdout, /not calibrated/); });
 t("calibrate computes k and estimate", () => { const r = g("calibrate", "60", "--resets", new Date(now + 97 * 36e5).toISOString()); assert.match(r.stdout, /est plan 60/); });
 t("meter counts spend with model weight", () => { const m = JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/meter.json"))); const tot = Object.values(m.hours).reduce((a, b) => a + b, 0); assert.ok(Math.abs(tot - 20 * 4 * (20000 + 8000 + 20000) / 1e6) < 1e-9, String(tot)); });
@@ -41,7 +43,7 @@ console.log(`${n} passing (incl. diet)`);
   t("hook SessionStart injects RED directive once", () => { const a = hook("SessionStart", { session_id: "s1" }); assert.match(a.stdout, /usage-max RED/); assert.equal(hook("UserPromptSubmit", { session_id: "s1" }).stdout, ""); assert.match(hook("UserPromptSubmit", { session_id: "s2" }).stdout, /RED/); });
   g("mode", "green");
   t("hook Stop reports mode change; green silent start", () => { assert.equal(hook("SessionStart", { session_id: "s9" }).stdout, ""); });
-  t("hook PreToolUse trims noisy bash (posix) / skips win32", () => { const o = JSON.parse(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "pytest" } }, { USAGE_MAX_TRIM: "force" }).stdout); assert.match(o.hookSpecificOutput.updatedInput.command, /pipefail; pytest 2>&1 \| node ".*trim.mjs"/); assert.equal(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "ls" } }, { USAGE_MAX_TRIM: "force" }).stdout, ""); assert.equal(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "pytest" } }, { USAGE_MAX_TRIM: "off" }).stdout, ""); });
+  t("hook PreToolUse trims noisy bash (posix) / skips win32", () => { const o = JSON.parse(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "pytest" } }, { USAGE_MAX_TRIM: "force" }).stdout); assert.equal(o.hookSpecificOutput.permissionDecision, undefined); assert.match(o.hookSpecificOutput.updatedInput.command, /pipefail; pytest 2>&1 \| node ".*trim.mjs"/); assert.equal(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "ls" } }, { USAGE_MAX_TRIM: "force" }).stdout, ""); assert.equal(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "pytest" } }, { USAGE_MAX_TRIM: "off" }).stdout, ""); });
   t("hook fail-open on garbage", () => { const r = spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "Stop"], { input: "{{", encoding: "utf8", env }); assert.equal(r.status, 0); });
   t("installer merges hooks.json preserving others", () => { fs.writeFileSync(path.join(ch, "hooks.json"), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "echo mine" }] }] } })); for (let i = 0; i < 2; i++) spawnSync("node", [path.join(root, "scripts/install.mjs")], { env }); const h = JSON.parse(fs.readFileSync(path.join(ch, "hooks.json"), "utf8")); assert.equal(h.hooks.Stop.length, 2); assert.ok(JSON.stringify(h).includes("echo mine")); for (const e of ["SessionStart", "UserPromptSubmit", "Stop", "PreToolUse"]) assert.equal(JSON.stringify(h.hooks[e]).split("codex-hook.mjs").length, 2, e); });
   t("models command lists seen models", () => { const r = g("models"); assert.match(r.stdout, /gpt-6\.1-sol/); });
@@ -49,3 +51,45 @@ console.log(`${n} passing (incl. diet)`);
   t("codex-lean passes mode -c overrides, defers in RED", () => { const bin = path.join(home, "bin"); fs.mkdirSync(bin, { recursive: true }); const fake = path.join(bin, process.platform === "win32" ? "codex.cmd" : "codex"); fs.writeFileSync(fake, process.platform === "win32" ? "@echo ARGS:%*\r\n" : "#!/bin/sh\necho ARGS:$@\n", { mode: 0o755 }); const e2 = { ...env, PATH: bin + path.delimiter + process.env.PATH }; const lean = (...a) => spawnSync("node", [path.join(root, "scripts/codex-lean.mjs"), ...a], { env: e2, encoding: "utf8" }); g("mode", "green"); const o = lean("--bare", "exec", "do it").stdout; assert.match(o, /exec/); assert.match(o, /model_reasoning_effort=medium/); assert.match(o, /--ignore-user-config --ignore-rules/); g("mode", "red"); assert.equal(lean("--hold-red", "exec", "x").status, 75); g("mode", "auto"); });
 }
 console.log(`${n} passing (incl. hooks)`);
+// reset rollover, null models, placeholders, throttle
+{
+  const gov = await import(pathToFileURL(path.join(root, "scripts/codex-governor.mjs")).href);
+  const fresh = () => { const h = fs.mkdtempSync(path.join(os.tmpdir(), "umx-")); process.env.USAGE_MAX_HOME = h; delete process.env.CODEX_HOME; return h; };
+  const cfg = gov.DEFAULT_CONFIG;
+  t("decide: redAtPercent needs hoursLeft > 6; remaining <= 0 is red", () => { assert.equal(gov.decide({ estPct: 95, hoursLeft: 3, ratePerHour: 0, cfg }), "green"); assert.equal(gov.decide({ estPct: 95, hoursLeft: 50, ratePerHour: 0, cfg }), "red"); assert.equal(gov.decide({ estPct: 99, hoursLeft: 3, ratePerHour: 0, cfg }), "red"); });
+  t("weekly reset passed: stale 95% calibration rolls to GREEN, ~167h left", () => {
+    const h = fresh(); const t0 = Date.now(); fs.mkdirSync(path.join(h, ".usage-max-codex"), { recursive: true });
+    fs.writeFileSync(path.join(h, ".usage-max-codex/governor.json"), JSON.stringify({ mode: "red", override: null, k: 1, calib: { pct: 95, at: t0 - 100 * 36e5, resets: new Date(t0 - 36e5).toISOString() } }));
+    const r = gov.evaluate(t0, true); assert.equal(r.mode, "green"); assert.ok(Math.abs(r.e.hoursLeft - 167) < 0.01, String(r.e.hoursLeft)); assert.equal(r.e.est, 0);
+  });
+  t("weekly reset passed: spend after reset counts", () => {
+    const h = fresh(); const t0 = Date.now(); const d = path.join(h, ".codex/sessions/2026/10/07"); fs.mkdirSync(d, { recursive: true });
+    const L = [{ timestamp: new Date(t0 - 36e5 / 2).toISOString(), type: "turn_context", payload: { model: "gpt-6.1-sol" } }, { timestamp: new Date(t0 - 36e5 / 4).toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 100000, output_tokens: 0 } } } }];
+    fs.writeFileSync(path.join(d, "rollout-x.jsonl"), L.map((x) => JSON.stringify(x)).join("\n") + "\n");
+    fs.mkdirSync(path.join(h, ".usage-max-codex"), { recursive: true });
+    fs.writeFileSync(path.join(h, ".usage-max-codex/governor.json"), JSON.stringify({ mode: "red", override: null, k: 2, calib: { pct: 95, at: t0 - 100 * 36e5, resets: new Date(t0 - 36e5).toISOString() } }));
+    const r = gov.evaluate(t0, true); assert.ok(Math.abs(r.e.est - 2 * 20 * 0.1) < 1e-6, String(r.e.est));
+  });
+  t("null models: applyMode leaves model untouched, still sets effort", () => {
+    const h = fresh(); const c = path.join(h, ".codex"); fs.mkdirSync(c, { recursive: true }); fs.writeFileSync(path.join(c, "config.toml"), 'model = "mine"\n');
+    gov.applyMode("red", gov.loadConfig()); const x = fs.readFileSync(path.join(c, "config.toml"), "utf8"); assert.match(x, /^model = "mine"/m); assert.match(x, /model_reasoning_effort = "low"/);
+    assert.doesNotMatch(fs.readFileSync(path.join(c, "usage-max-red.config.toml"), "utf8"), /^model =/m);
+  });
+  t("installer substitutes <usage-max> and seeds config.json once from seen models", () => {
+    const h = fresh(); const d = path.join(h, ".codex/sessions/2026/10/07"); fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, "rollout-a.jsonl"), [{ type: "turn_context", payload: { model: "gpt-6.1-sol" } }, { type: "turn_context", payload: { model: "gpt-6.1-sol" } }, { type: "turn_context", payload: { model: "gpt-6-luna" } }].map((x) => JSON.stringify(x)).join("\n") + "\n");
+    const e2 = { ...env, USAGE_MAX_HOME: h }; const r = spawnSync("node", [path.join(root, "scripts/install.mjs")], { env: e2, encoding: "utf8" }); assert.equal(r.status, 0, r.stderr);
+    const rp = root.replace(/\\/g, "/"); const sk = fs.readFileSync(path.join(h, ".codex/skills/usage-max/SKILL.md"), "utf8"), ag = fs.readFileSync(path.join(h, ".codex/AGENTS.md"), "utf8");
+    assert.ok(!sk.includes("<usage-max>") && !ag.includes("<usage-max>")); assert.ok(sk.includes(rp + "/scripts/codex-governor.mjs") && ag.includes(rp + "/scripts/codex-governor.mjs"));
+    const cj = path.join(h, ".usage-max-codex/config.json"); const c1 = JSON.parse(fs.readFileSync(cj, "utf8")); assert.equal(c1.modes.green.model, "gpt-6.1-sol"); assert.equal(c1.modes.red.model, "gpt-6-luna");
+    fs.writeFileSync(cj, '{"modes":{}}'); spawnSync("node", [path.join(root, "scripts/install.mjs")], { env: e2 }); assert.equal(fs.readFileSync(cj, "utf8"), '{"modes":{}}');
+  });
+  t("meterAll throttle: two quick evaluate() calls scan once; force rescans", () => {
+    const h = fresh(); const d = path.join(h, ".codex/sessions/2026/10/07"); fs.mkdirSync(d, { recursive: true }); const f = path.join(d, "rollout-t.jsonl");
+    const tok = (ts) => JSON.stringify({ timestamp: new Date(ts).toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 1000, output_tokens: 0 } } } }) + "\n";
+    const t0 = Date.now(); fs.writeFileSync(f, tok(t0 - 1000)); gov.evaluate(t0); const a = Object.values(gov.loadMeter().hours).reduce((x, y) => x + y, 0);
+    fs.appendFileSync(f, tok(t0 - 500)); gov.evaluate(t0 + 1000); const b = Object.values(gov.loadMeter().hours).reduce((x, y) => x + y, 0); assert.equal(b, a);
+    gov.evaluate(t0 + 2000, true); const c = Object.values(gov.loadMeter().hours).reduce((x, y) => x + y, 0); assert.ok(c > a);
+  });
+}
+console.log(`${n} passing (incl. rollover/throttle/install)`);

@@ -31,10 +31,12 @@ let baselineTokens = [], mainTurns = 0;
 
 for (const file of await listJsonlFiles(dir)) {
   const recs = [];
+  const seenIds = new Set(); // one transcript record per content block repeats the same usage
   for (const line of fs.readFileSync(file, "utf8").split("\n")) {
     if (!line.includes('"assistant"')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
     if (r.type !== "assistant" || !r.message || !r.message.model || r.message.model === "<synthetic>") continue;
+    if (r.message.id) { if (seenIds.has(r.message.id)) continue; seenIds.add(r.message.id); }
     const t = parseTimestamp(r.timestamp);
     if (t && t < since) continue;
     recs.push({ t, model: r.message.model, u: normalizeUsage(r.message.usage), side: r.isSidechain === true || file.includes(`${path.sep}subagents${path.sep}`) || file.includes("/subagents/") });

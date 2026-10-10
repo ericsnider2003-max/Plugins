@@ -75,6 +75,31 @@ const usesFor = (name, counts) => {
   return n;
 };
 
+// Plugins synced from claude.ai / an org live under plugins/synced/<org>_<acct>/<plugin>, not in installed_plugins.json.
+export function syncedPlugins(claudeDir) {
+  const out = [];
+  const base = path.join(claudeDir, "plugins", "synced");
+  for (const org of ls(base)) {
+    if (!org.isDirectory()) continue;
+    for (const p of ls(path.join(base, org.name))) {
+      if (!p.isDirectory()) continue;
+      const dir = path.join(base, org.name, p.name);
+      const name = jread(path.join(dir, ".claude-plugin", "plugin.json"), {}).name || p.name;
+      if (fs.existsSync(path.join(dir, "skills")) || fs.existsSync(path.join(dir, "commands")) || fs.existsSync(path.join(dir, "agents")) || fs.existsSync(path.join(dir, ".mcp.json"))) out.push({ name, dir });
+    }
+  }
+  return out;
+}
+
+// Ground truth: median first-turn context of recent sessions (system prompt + tools + plugins + CLAUDE.md).
+export function measuredStartup(claudeDir, days, nowMs = Date.now()) {
+  const cut = nowMs - days * 864e5, vals = [];
+  const walk = (d) => { for (const e of ls(d)) { const p = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== "subagents") walk(p); } else if (e.name.endsWith(".jsonl")) { let st; try { st = fs.statSync(p); } catch { continue; } if (st.mtimeMs < cut) continue; for (const line of read(p).split("\n")) { if (!line.includes('"assistant"')) continue; let o; try { o = JSON.parse(line); } catch { continue; } const u = o.type === "assistant" && o.message && o.message.usage; if (u && !o.isSidechain) { vals.push((u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0)); break; } } } } };
+  walk(path.join(claudeDir, "projects"));
+  vals.sort((a, b) => a - b);
+  return vals.length ? vals[Math.floor(vals.length / 2)] : null;
+}
+
 export function diet({ home = os.homedir(), cwd = process.cwd(), days = 30, nowMs = Date.now() } = {}) {
   const claudeDir = path.join(home, ".claude");
   const settings = jread(path.join(claudeDir, "settings.json"), {});
@@ -85,10 +110,16 @@ export function diet({ home = os.homedir(), cwd = process.cwd(), days = 30, nowM
     const s = dir ? scanDir(dir) : { tokens: 0, skills: 0, commands: 0, agents: 0, mcp: 0, hooks: 0, missing: true };
     rows.push({ kind: "plugin", id, ...s, uses: usesFor(id, counts) });
   }
+  const have = new Set(rows.map((r) => r.id.split("@")[0]));
+  for (const sp of syncedPlugins(claudeDir)) {
+    if (have.has(sp.name)) continue;
+    const s2 = scanDir(sp.dir);
+    rows.push({ kind: "plugin(synced)", id: sp.name, ...s2, uses: usesFor(sp.name, counts) });
+  }
   for (const [kind, dir] of [["user-skills", path.join(claudeDir)], ["project-skills", path.join(cwd, ".claude")]]) {
     const s = scanDir(dir); if (s.skills || s.commands || s.agents) rows.push({ kind, id: kind, ...s, uses: Object.entries(counts.skill).filter(([k]) => !k.includes(":")).reduce((a, [, v]) => a + v, 0) });
   }
-  for (const f of [path.join(claudeDir, "CLAUDE.md"), path.join(cwd, "CLAUDE.md"), path.join(cwd, ".claude", "CLAUDE.md")]) {
+  for (const f of [...new Set([path.join(claudeDir, "CLAUDE.md"), path.join(cwd, "CLAUDE.md"), path.join(cwd, ".claude", "CLAUDE.md")])]) {
     const t = read(f); if (t) rows.push({ kind: "CLAUDE.md", id: f, tokens: TOK(t.length), lines: t.split("\n").length, uses: null });
   }
   const mcpUser = Object.keys(jread(path.join(home, ".claude.json"), {}).mcpServers || {});
@@ -97,11 +128,12 @@ export function diet({ home = os.homedir(), cwd = process.cwd(), days = 30, nowM
   const advice = [];
   for (const r of rows) {
     if (r.kind === "plugin" && r.uses === 0 && r.tokens >= 300) advice.push({ id: r.id, action: "disable", saves: r.tokens, why: `0 uses in ${days}d, ~${r.tokens} tokens in every session` });
+    if (r.kind === "plugin(synced)" && r.uses === 0 && (r.tokens >= 300 || r.mcp >= 3)) advice.push({ id: r.id, action: "disable in claude.ai > Settings > Plugins", saves: r.tokens, why: `0 uses in ${days}d, ~${r.tokens} tokens of descriptions${r.mcp ? ` + ${r.mcp} MCP server(s) whose tool definitions also load` : ""} in every session` });
     if (r.kind === "CLAUDE.md" && r.tokens > 700) advice.push({ id: r.id, action: "trim", saves: r.tokens - 500, why: `${r.tokens} tokens (${r.lines} lines); keep <500, move workflows to skills / path-scoped rules` });
     if (r.kind === "mcp" && r.uses === 0) advice.push({ id: r.id, action: "disable via /mcp", saves: null, why: `0 calls in ${days}d (tool names still enter context)` });
   }
   const total = rows.reduce((a, r) => a + (r.tokens || 0), 0);
-  return { days, sessionsScanned: counts.sessions, alwaysLoadedTokens: total, rows, advice, savings: advice.reduce((a, x) => a + (x.saves || 0), 0) };
+  return { days, sessionsScanned: counts.sessions, measuredStartupTokens: measuredStartup(claudeDir, days, nowMs), alwaysLoadedTokens: total, rows, advice, savings: advice.reduce((a, x) => a + (x.saves || 0), 0) };
 }
 
 export function disablePlugins(home, ids) {
@@ -120,7 +152,7 @@ if (isMain) {
   const dis = flag("disable", null);
   if (dis) { const done = disablePlugins(home, dis.split(",").map((s) => s.trim()).filter(Boolean)); console.log(done.length ? `disabled: ${done.join(", ")} (backup: settings.json.usage-max-diet-backup). Takes effect in NEW sessions.` : "nothing disabled (ids not enabled)"); process.exit(0); }
   if (a.includes("--json")) { console.log(JSON.stringify(r, null, 2)); process.exit(0); }
-  console.log(`usage-max plugin-diet — always-loaded context ≈ ${r.alwaysLoadedTokens} tokens (${r.sessionsScanned} sessions scanned, ${r.days}d)`);
+  console.log(`usage-max plugin-diet — always-loaded context (descriptions + CLAUDE.md) ≈ ${r.alwaysLoadedTokens} tokens (${r.sessionsScanned} sessions scanned, ${r.days}d); measured session start (median first turn, includes system prompt + tool definitions): ${r.measuredStartupTokens === null ? "n/a" : r.measuredStartupTokens + " tokens"}`);
   for (const x of r.rows.sort((p, q) => (q.tokens || 0) - (p.tokens || 0))) console.log(`  ${String(x.tokens ?? "?").padStart(6)} tok  ${x.kind.padEnd(14)} ${x.id}${x.uses !== null && x.uses !== undefined ? `  (uses ${x.uses})` : ""}`);
   console.log(r.advice.length ? "\nAdvice:" : "\nNothing obviously removable.");
   for (const x of r.advice) console.log(`  ${x.action.toUpperCase()} ${x.id}: ${x.why}`);

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { recordCost } from "./pricing.mjs";
 
 export function asNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -140,9 +141,14 @@ export async function listJsonlFiles(root) {
   return found.sort();
 }
 
-export async function scanAssistantRecords(file, onRecord) {
+// Claude Code writes one transcript record per content block (thinking / text / tool_use) and every one
+// repeats the same message.usage, so summing records double-counts. Count each message.id once.
+// Pass { includeDuplicates: true } to also receive the repeat records (flagged duplicate=true) so callers can
+// still read their content blocks (tool_use) without double-counting usage.
+export async function scanAssistantRecords(file, onRecord, { includeDuplicates = false } = {}) {
   const stream = fs.createReadStream(file, { encoding: "utf8" });
   const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  const seen = new Set();
   for await (const line of lines) {
     if (!line) continue;
     let record;
@@ -152,7 +158,14 @@ export async function scanAssistantRecords(file, onRecord) {
       continue;
     }
     if (record && record.type === "assistant" && record.message && record.message.model) {
-      onRecord(record, file);
+      const id = record.message.id;
+      let duplicate = false;
+      if (id) {
+        duplicate = seen.has(id);
+        seen.add(id);
+      }
+      if (duplicate && !includeDuplicates) continue;
+      onRecord(record, file, duplicate);
     }
   }
 }
@@ -168,11 +181,13 @@ function emptyModelBucket() {
     context: 0,
     thinking: 0,
     toolCalls: 0,
+    cost: 0,
     ranges: {}
   };
 }
 
-function addUsage(bucket, usage, toolCalls) {
+function addUsage(bucket, usage, toolCalls, cost = 0) {
+  bucket.cost += cost;
   bucket.turns += 1;
   bucket.input += usage.input;
   bucket.output += usage.output;
@@ -207,9 +222,19 @@ export async function summarizeProjects({
 
   for (const file of files) {
     let fileBucket = null;
-    await scanAssistantRecords(file, (record) => {
+    await scanAssistantRecords(file, (record, _file, duplicate) => {
       const timestamp = parseTimestamp(record.timestamp);
       if (timestamp && timestamp < since) return;
+      if (duplicate) { // same API response as an earlier record: its tokens are already counted, but not its tool calls
+        const extra = toolCallNames(record.message);
+        if (extra.length) {
+          summary.models[record.message.model].toolCalls += extra.length;
+          summary.ranges.all.toolCalls += extra.length;
+          if (summary.sessions[file]) summary.sessions[file].toolCalls += extra.length;
+          trackRework(summary.rework, record.message);
+        }
+        return;
+      }
       const model = record.message.model;
       const usage = normalizeUsage(record.message.usage);
       const tools = toolCallNames(record.message);
@@ -217,26 +242,27 @@ export async function summarizeProjects({
       const project = path.basename(path.dirname(file));
       const session = path.basename(file, ".jsonl");
 
+      const cost = recordCost(record.message);
       summary.assistantTurns += 1;
       if (sidechain) summary.sidechainTurns += 1;
       summary.models[model] = summary.models[model] || emptyModelBucket();
-      addUsage(summary.models[model], usage, tools.length);
+      addUsage(summary.models[model], usage, tools.length, cost);
       if (sidechain) summary.models[model].sidechainTurns += 1;
       for (const [name, start] of Object.entries(windows)) {
         if (timestamp >= start) {
           summary.models[model].ranges[name] = summary.models[model].ranges[name] || emptyModelBucket();
-          addUsage(summary.models[model].ranges[name], usage, tools.length);
+          addUsage(summary.models[model].ranges[name], usage, tools.length, cost);
         }
       }
-      addUsage(summary.ranges.all, usage, tools.length);
+      addUsage(summary.ranges.all, usage, tools.length, cost);
       for (const [name, start] of Object.entries(windows)) {
-        if (timestamp >= start) addUsage(summary.ranges[name], usage, tools.length);
+        if (timestamp >= start) addUsage(summary.ranges[name], usage, tools.length, cost);
       }
 
       summary.projects[project] = summary.projects[project] || emptyModelBucket();
-      addUsage(summary.projects[project], usage, tools.length);
+      addUsage(summary.projects[project], usage, tools.length, cost);
       summary.sessions[file] = summary.sessions[file] || { project, session, ...emptyModelBucket() };
-      addUsage(summary.sessions[file], usage, tools.length);
+      addUsage(summary.sessions[file], usage, tools.length, cost);
       fileBucket = summary.sessions[file];
 
       const context = contextTokens(usage);
@@ -244,7 +270,7 @@ export async function summarizeProjects({
         summary.spikes.push({ file, session, project, timestamp, model, sidechain, toolCalls: tools.length, context });
       }
       trackRework(summary.rework, record.message);
-    });
+    }, { includeDuplicates: true });
     if (fileBucket) {
       summary.files += 1;
       if (typeof onFile === "function") onFile(file, fileBucket);

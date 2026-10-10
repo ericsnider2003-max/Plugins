@@ -17,10 +17,10 @@ const wj = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); const
 export const DEFAULT_CONFIG = {
   target: 98, burnWindowHours: 12, amberRatio: 1.0, redRatio: 1.5, redAtPercent: 92,
   weights: [["luna", 1], ["sol", 20], ["astra", 65], ["mini", 1], ["codex", 10], ["", 10]],
-  modes: { // set to models YOUR account has (run `codex` -> /model). Defaults are examples.
-    green: { model: "gpt-6.1-sol", effort: "medium", service_tier: null },
-    amber: { model: "gpt-6.1-sol", effort: "low", service_tier: null },
-    red: { model: "gpt-6-luna", effort: "low", service_tier: null }
+  modes: { // model null = leave your model untouched; the installer seeds config.json from models seen in sessions.
+    green: { model: null, effort: "medium", service_tier: null },
+    amber: { model: null, effort: "low", service_tier: null },
+    red: { model: null, effort: "low", service_tier: null }
   },
   tuning: { tool_output_token_limit: 8000, model_auto_compact_token_limit: 64000, project_doc_max_bytes: 16384 }
 };
@@ -49,8 +49,9 @@ export function scanFile(file, offset, cfg) {
   return { items, offset: offset + Buffer.byteLength(text.slice(0, end + 1)) };
 }
 export function loadMeter() { return j(path.join(dataDir(), "meter.json"), { files: {}, hours: {} }); }
-export function meterAll(cfg = loadConfig(), nowMs = Date.now()) {
-  const m = loadMeter(); const cut = nowMs - 8 * 864e5;
+export const METER_TTL_MS = 20e3;
+export function meterAll(cfg = loadConfig(), nowMs = Date.now(), force = false) {
+  const m = loadMeter(); if (!force && m.lastRun && nowMs - m.lastRun >= 0 && nowMs - m.lastRun < METER_TTL_MS) return m; const cut = nowMs - 8 * 864e5;
   for (const f of walk(path.join(codexHome(), "sessions"))) {
     let st; try { st = fs.statSync(f); } catch { continue; } if (st.mtimeMs < cut) continue;
     const prev = m.files[f] || { offset: 0, size: 0 }; if (st.size === prev.size) continue;
@@ -58,13 +59,14 @@ export function meterAll(cfg = loadConfig(), nowMs = Date.now()) {
     for (const it of r.items) { const h = Math.floor(it.ts / 36e5); m.hours[h] = (m.hours[h] || 0) + it.cost; }
   }
   for (const h of Object.keys(m.hours)) if (h < (nowMs - 8 * 864e5) / 36e5) delete m.hours[h];
-  wj(path.join(dataDir(), "meter.json"), m); return m;
+  m.lastRun = nowMs; wj(path.join(dataDir(), "meter.json"), m); return m;
 }
 export const spendSince = (m, ms) => Object.entries(m.hours).reduce((a, [h, c]) => a + (h * 36e5 + 36e5 > ms ? c : 0), 0);
 export const spendLast = (m, hrs, now = Date.now()) => spendSince(m, now - hrs * 36e5);
 
 export function decide({ estPct, hoursLeft, ratePerHour, prevMode = "green", cfg }) {
-  if (estPct >= cfg.redAtPercent) return "red";
+  if (estPct >= cfg.redAtPercent && hoursLeft > 6) return "red";
+  if (cfg.target - estPct <= 0) return "red";
   const sustain = Math.max(0, cfg.target - estPct) / Math.max(hoursLeft, 0.5);
   const ratio = sustain > 0 ? ratePerHour / sustain : Infinity;
   const up = prevMode === "green" ? 1 : 0.9; // hysteresis
@@ -74,20 +76,22 @@ export function decide({ estPct, hoursLeft, ratePerHour, prevMode = "green", cfg
 }
 export function estimate(state, m, now, cfg) {
   const c = state.calib; if (!c) return null;
-  const est = Math.min(100, c.pct + (state.k || 0) * spendSince(m, c.at));
-  const hoursLeft = (Date.parse(c.resets) - now) / 36e5;
+  const P = 7 * 864e5; let rs = Date.parse(c.resets), at = c.at, pct = c.pct;
+  if (rs <= now) { rs += (Math.floor((now - rs) / P) + 1) * P; at = rs - P; pct = 0; } // weekly reset passed: new window from prev reset, 0%
+  const est = Math.min(100, pct + (state.k || 0) * spendSince(m, at));
+  const hoursLeft = (rs - now) / 36e5;
   const rate = (state.k || 0) * spendLast(m, cfg.burnWindowHours, now) / cfg.burnWindowHours;
   return { est, hoursLeft, rate };
 }
-export function evaluate(now = Date.now()) {
+export function evaluate(now = Date.now(), force = false) {
   const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json");
-  const st = j(sf, { mode: "green", override: null, calib: null, k: null }); const m = meterAll(cfg, now);
+  const st = j(sf, { mode: "green", override: null, calib: null, k: null }); const m = meterAll(cfg, now, force);
   let mode = st.mode, e = estimate(st, m, now, cfg);
   if (st.override) mode = st.override; else if (e) mode = decide({ estPct: e.est, hoursLeft: e.hoursLeft, ratePerHour: e.rate, prevMode: st.mode, cfg });
   st.mode = mode; wj(sf, st); return { mode, e, st, cfg };
 }
 export function calibrate(pct, resets, now = Date.now()) {
-  const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); const m = meterAll(cfg, now);
+  const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); const m = meterAll(cfg, now, true);
   const start = st.calib ? st.calib.at : now - 7 * 864e5; const spend = spendSince(m, start);
   const newK = st.calib && spend > 0 ? Math.max(0, (pct - st.calib.pct) / spend) : (spendSince(m, Date.parse(resets) - 7 * 864e5) > 0 ? pct / spendSince(m, Date.parse(resets) - 7 * 864e5) : 0);
   st.k = st.k && newK ? 0.7 * newK + 0.3 * st.k : newK || st.k; st.calib = { pct, at: now, resets }; wj(sf, st); return st;
@@ -104,7 +108,7 @@ export function setTopLevel(toml, kv) {
   }
   return lines.join("\n");
 }
-const modeKV = (mc, cfg) => ({ model: mc.model, model_reasoning_effort: mc.effort, service_tier: mc.service_tier || null, tool_output_token_limit: cfg.tuning.tool_output_token_limit, model_auto_compact_token_limit: cfg.tuning.model_auto_compact_token_limit, plan_mode_reasoning_effort: mc.effort === "low" ? "medium" : mc.effort, project_doc_max_bytes: cfg.tuning.project_doc_max_bytes });
+const modeKV = (mc, cfg) => ({ ...(mc.model ? { model: mc.model } : {}), model_reasoning_effort: mc.effort, service_tier: mc.service_tier || null, tool_output_token_limit: cfg.tuning.tool_output_token_limit, model_auto_compact_token_limit: cfg.tuning.model_auto_compact_token_limit, plan_mode_reasoning_effort: mc.effort === "low" ? "medium" : mc.effort, project_doc_max_bytes: cfg.tuning.project_doc_max_bytes });
 export function writeProfiles(cfg = loadConfig()) {
   for (const mode of ["green", "amber", "red"]) {
     const f = path.join(codexHome(), `usage-max-${mode}.config.toml`);
@@ -127,11 +131,11 @@ if (isMain) {
   if (cmd === "models") { const m = modelsSeen(); console.log(Object.keys(m).length ? "models seen in your Codex sessions (set config.json modes to ones your plan has):\n" + Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `  ${k}  (${v})`).join("\n") : "no sessions found under " + codexHome()); process.exit(0); }
   if (cmd === "calibrate") { const pct = Number(a[0]); const r = flag("--resets"); if (!(pct >= 0) || !r) { console.error("usage: calibrate <pct from /status or chatgpt.com/codex/settings/usage> --resets <ISO>"); process.exit(2); } calibrate(pct, r); }
   if (cmd === "mode") { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.override = a[0] === "auto" ? null : a[0]; wj(sf, st); }
-  const { mode, e, st, cfg } = evaluate();
+  const { mode, e, st, cfg } = evaluate(Date.now(), true);
   if (cmd === "apply" || cmd === "mode" || cmd === "calibrate") { try { applyMode(mode, cfg); } catch (x) { console.error("apply failed:", x.message); } }
   if (cmd === "profiles") writeProfiles(cfg);
   const mc = cfg.modes[mode];
-  console.log(`mode=${mode.toUpperCase()}${st.override ? " (manual)" : ""}  new sessions: ${mc.model} @ ${mc.effort}`);
+  console.log(`mode=${mode.toUpperCase()}${st.override ? " (manual)" : ""}  new sessions: ${mc.model || "(your model)"} @ ${mc.effort}`);
   console.log(e ? `est plan ${e.est.toFixed(1)}%  hours to reset ${e.hoursLeft.toFixed(1)}  burn ${e.rate.toFixed(2)}%/h  sustainable ${(Math.max(0, cfg.target - e.est) / Math.max(e.hoursLeft, .5)).toFixed(2)}%/h` : "not calibrated: run `calibrate <pct> --resets <ISO>` using the % shown by /status");
   if (cmd === "gate") process.exit({ green: 0, amber: 10, red: 20 }[mode]);
 }

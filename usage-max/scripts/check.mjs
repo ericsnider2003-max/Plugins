@@ -62,7 +62,7 @@ if (manifest) {
 
 // 2. Agent frontmatter: name, description, tools, full model ID, no Agent tool.
 const expectedModels = {
-  "scout.md": "claude-haiku-4-5-20251001",
+  "scout.md": "claude-haiku-5-5",
   "worker.md": "claude-sonnet-5-5",
   "reviewer.md": "claude-sonnet-5-5"
 };
@@ -104,7 +104,7 @@ for (const cmd of ["route.md", "handoff.md", "usage-check.md", "audit.md", "resc
 const hooks = readJson(path.join(root, "hooks", "hooks.json"));
 if (hooks && hooks.hooks && hooks.hooks.SessionStart && hooks.hooks.PostToolUse) pass("hooks structure");
 else fail("hooks structure");
-for (const script of ["hooks/session-start.mjs", "hooks/ledger.mjs"]) {
+for (const script of ["hooks/session-start.mjs", "hooks/ledger.mjs", "hooks/budget.mjs", "hooks/bash-trim.mjs", "scripts/profile.mjs"]) {
   if (fs.existsSync(path.join(root, script))) pass(`hook script ${script}`);
   else fail(`hook script ${script}`);
 }

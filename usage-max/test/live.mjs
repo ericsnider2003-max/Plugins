@@ -49,7 +49,7 @@ check("SessionStart marker: profile enforced", Boolean(ss && /profile=enforced/.
 const b = run("Use the usage-max:usage-max-scout subagent to read sample.txt and report its contents. Then use the usage-max:usage-max-worker subagent to run the shell command `node -e \"console.log(1+1)\"` and report the output. Do not do either task yourself.",
   ["--allowedTools", "Bash(node:*)"]);
 const usage = (b.result && b.result.modelUsage) || {};
-check("scout ran on Haiku", Boolean(usage["claude-haiku-4-5-20251001"]), Object.keys(usage).join(","));
+check("scout ran on Haiku", Boolean(usage["claude-haiku-5-5"]), Object.keys(usage).join(","));
 check("worker ran on Sonnet 5.5", Boolean(usage["claude-sonnet-5-5"]), Object.keys(usage).join(","));
 check("nothing above Opus 5.5", !Object.keys(usage).some((m) => /fable|opus-(?:[6-9]|5-[6-9])/.test(m)), Object.keys(usage).join(","));
 const subTools = b.events.filter((e) => e.type === "assistant" && e.parent_tool_use_id).map((e) => e.message.model);

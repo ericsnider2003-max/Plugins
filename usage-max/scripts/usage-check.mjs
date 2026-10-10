@@ -55,6 +55,7 @@ async function main() {
       turns: bucket.turns,
       sidechainTurns: bucket.sidechainTurns,
       context: bucket.context,
+      cost: bucket.cost,
       last5hContext: bucket.ranges.last5h ? bucket.ranges.last5h.context : 0,
       last5hTurns: bucket.ranges.last5h ? bucket.ranges.last5h.turns : 0
     }));
@@ -105,6 +106,9 @@ async function main() {
       assistantTurns: weekly.assistantTurns,
       sidechainTurns: weekly.sidechainTurns,
       context: weekly.ranges.all.context,
+      cost: weekly.ranges.all.cost,
+      costPerDay: weekly.ranges.all.cost / days,
+      last5hCost: weekly.ranges.last5h.cost,
       cacheShare: Number(cacheShare.toFixed(4)),
       last5hContext: weekly.ranges.last5h.context,
       burnContextPerDay: Math.round(burnPerDay)
@@ -115,6 +119,12 @@ async function main() {
     spikes: weekly.spikes.slice(0, 10),
     note: "Local transcripts cannot report subscription-limit percentages. Pass --weekly-used-percent from Settings > Usage for cap-day projection."
   };
+  // Cost-weighted burn: cache reads are ~1/10th the price of writes, so raw token counts mislead.
+  // %/day uses the governor's calibration (plan % per list-price dollar) when it has one.
+  let govK = null;
+  try { govK = JSON.parse(fs.readFileSync(path.join(homeDir(), ".claude", "usage-max", "governor.json"), "utf8")).k || null; } catch {}
+  result.weekly.pctPerDay = govK ? Number((govK * result.weekly.costPerDay).toFixed(2)) : null;
+  result.weekly.checkpoint = result.weekly.pctPerDay === null ? null : result.weekly.pctPerDay <= 14 ? "ok (<=14%/day)" : "OVER 14%/day";
   const statusFile = arg("write-status", null);
   if (statusFile) {
     writeStatus(statusFile, {
@@ -135,9 +145,10 @@ async function main() {
   console.log(`usage-max usage-check: ${result.generatedAt}`);
   console.log(`reset: ${result.weeklyResetLocal} (${result.daysSinceReset}d ago, source=${result.weeklyResetSource}; set with --reset "sun 07:00", USAGE_MAX_RESET, or ~/.claude/usage-max/config.json)`);
   console.log(`weekly tokens: context=${formatNumber(result.weekly.context)} cacheShare=${(result.weekly.cacheShare * 100).toFixed(1)}% burn/day=${formatNumber(result.weekly.burnContextPerDay)} last5h=${formatNumber(result.weekly.last5hContext)}`);
+  console.log(`weekly spend (list price, deduped): $${result.weekly.cost.toFixed(2)} = $${result.weekly.costPerDay.toFixed(2)}/day, last 5h $${result.weekly.last5hCost.toFixed(2)}${result.weekly.pctPerDay === null ? "; %/day unknown until the budget is calibrated" : `; ~${result.weekly.pctPerDay}%/day -> ${result.weekly.checkpoint}`}`);
   console.log("models this week:");
   for (const row of result.models) {
-    console.log(`  ${row.model}: turns=${row.turns} sidechain=${row.sidechainTurns} context=${formatNumber(row.context)} last5h=${formatNumber(row.last5hContext)}`);
+    console.log(`  ${row.model}: turns=${row.turns} sidechain=${row.sidechainTurns} context=${formatNumber(row.context)} cost=$${row.cost.toFixed(2)} last5h=${formatNumber(row.last5hContext)}`);
   }
   const c = result.compliance;
   console.log(`compliance: status=${c.status} ceiling=opus-5.5 above=${c.aboveCeiling.length ? c.aboveCeiling.map((r) => `${r.model}(${r.turns})`).join(",") : "none"} sidechainOpus=${c.sidechainOpusTurns} unknown=${c.unknownModels.length ? c.unknownModels.map((r) => r.model).join(",") : "none"} hubOpusTurns=${c.actualOpusTurns}${c.declaredOpusTurns === null ? "" : ` declared=${c.declaredOpusTurns}`}`);

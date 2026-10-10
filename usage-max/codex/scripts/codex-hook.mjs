@@ -19,7 +19,7 @@ function main() {
   if (ev === "PreToolUse") {
     if (input.tool_name !== "Bash" || !input.tool_input) return;
     const nc = rewrite(input.tool_input.command, path.join(path.dirname(fileURLToPath(import.meta.url)), "trim.mjs"));
-    if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", updatedInput: { ...input.tool_input, command: nc } } }));
+    if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { ...input.tool_input, command: nc } } }));
     return;
   }
   const sf = path.join(dataDir(), "hook-state.json"); let st = {}; try { st = JSON.parse(fs.readFileSync(sf, "utf8")); } catch {}
@@ -32,7 +32,7 @@ function main() {
     const keys = Object.keys(st.sent); if (keys.length > 200) for (const x of keys.slice(0, keys.length - 100)) delete st.sent[x];
     try { fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(sf, JSON.stringify(st)); } catch {}
   } else if (ev === "Stop" && mode !== before) {
-    process.stdout.write(JSON.stringify({ systemMessage: `usage-max: budget mode ${before.toUpperCase()} -> ${mode.toUpperCase()}. New sessions use ${cfg.modes[mode].model} @ ${cfg.modes[mode].effort}; use /model to change this one.` }));
+    process.stdout.write(JSON.stringify({ systemMessage: `usage-max: budget mode ${before.toUpperCase()} -> ${mode.toUpperCase()}. New sessions use ${cfg.modes[mode].model || "your model"} @ ${cfg.modes[mode].effort}; use /model to change this one.` }));
   }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) { try { main(); } catch {} process.exit(0); }
