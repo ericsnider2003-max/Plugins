@@ -13,11 +13,12 @@
 //   crosscheck <ccusage.json>  compare our Claude total with a ccusage daily JSON export you made yourself (offline; we never run it)
 //   trim [on|off]   measured result of the Claude shell-output trim (bytes removed, re-run rate); switches itself off if it causes re-runs
 //   budgets [on|off]  opt-in: smaller skill-list and MCP description budgets (cuts first-turn context; rarely used skills may trigger less)
+//   cap <usd|off>   optional per-session spend cap (list-price dollars): warns at 80% and 100%, so one runaway session cannot eat the week
 //   digest          what the guards did (counts) + Codex measured savings
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
 //   chat-prefs      paste-once text for Claude.ai / Cowork / ChatGPT (chats have no hooks)
 //   enable-here [dir] [--lean a,b]  (--lean: turn every other installed plugin off for that repo) make every session on a repo load usage-max (writes <dir>/.claude/settings.json; commit it)
-//   codex <sub>     doctor|status|install|models|calibrate|mode|diet|gate (the Codex side)
+//   codex <sub>     doctor|status|install|models|calibrate|mode|diet|diagnose|gate (the Codex side)
 //   route|handoff   handled by the model (see commands/usage-max.md)
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -111,7 +112,7 @@ async function doctor(fix = false) {
   latest === null ? ok(`version ${mine} (could not reach GitHub to compare)`) : latest === mine ? ok(`version ${mine} is the latest on main`) : bad(`version ${mine}, latest on main is ${latest}`, "it updates itself at the next Claude Code start (auto-update); or: claude plugin marketplace update eric-plugins");
   const old = oldSyncedCopies(home, root);
   old.length ? bad(`older uploaded copy usage-max ${old[0].version} is enabled next to this one (every hook runs twice)`, DISABLE_OLD) : ok("no duplicate uploaded copy");
-  for (const h of ["session-start", "budget", "bash-trim", "ledger", "guard"]) fs.existsSync(path.join(root, "hooks", `${h}.mjs`)) ? 0 : bad(`hook ${h}.mjs missing`);
+  for (const h of ["session-start", "budget", "bash-trim", "ledger", "guard", "cross-gate"]) fs.existsSync(path.join(root, "hooks", `${h}.mjs`)) ? 0 : bad(`hook ${h}.mjs missing`);
   const bg = findBackground();
   bg.length ? bad(`${bg.length} job(s) can keep spending your plan while you are away: ${bg.slice(0, 3).map((b) => b.text).join(" | ")}`, "usage-max rescue halt   (lists how to stop each kind; nothing is stopped for you)") : ok("no scheduled claude/codex jobs or headless runs found");
   console.log(out.join("\n"));
@@ -146,7 +147,7 @@ const map = {
   audit: () => { const a = run(S("audit.mjs"), rest); return a || run(S("inventory.mjs"), rest); },
   diet: () => run(S("plugin-diet.mjs"), rest),
   rescue: () => rescue(rest),
-  codex: () => { const s = rest[0] || "status"; const f = { diet: "codex-diet.mjs", install: "install.mjs", lean: "codex-lean.mjs" }[s]; return f ? run(C(f), rest.slice(1)) : run(C("codex-governor.mjs"), rest.length ? rest : ["status"]); },
+  codex: () => { const s = rest[0] || "status"; const f = { diet: "codex-diet.mjs", install: "install.mjs", lean: "codex-lean.mjs", diagnose: "codex-diagnose.mjs" }[s]; return f ? run(C(f), rest.slice(1)) : run(C("codex-governor.mjs"), rest.length ? rest : ["status"]); },
   context: () => run(S("ctxfiles.mjs"), rest),
   digest: () => { const d = digestOf(); console.log(d.lines.length ? `usage-max actions since ${String(d.since).slice(0, 10)} (counts only; what each saved depends on your work):\n${d.lines.join("\n")}` : "usage-max: nothing recorded yet (the guards count what they do as you work)."); console.log(""); return run(C("codex-governor.mjs"), ["savings"]); },
   savings: async () => {
@@ -155,6 +156,7 @@ const map = {
     try { const { report } = await import("./anomaly.mjs"); console.log("\nBURN RATE\n" + (await report(home)).text + "\n"); } catch {}
     try { console.log("TRIM (Claude)\n" + (await import("./trimtest.mjs")).report(dataDir()) + "\n"); } catch {}
     console.log("CODEX"); const c = run(C("codex-governor.mjs"), ["savings", "--days", String(days)]);
+    try { const { diagnose } = await import("../codex/scripts/codex-diagnose.mjs"); const d = diagnose({ days }); if (d.R.events) console.log("\nCODEX where it went (details: usage-max codex diagnose)\n" + d.findings.map((f) => "  - " + f).join("\n")); } catch {}
     console.log("\nSame yardstick on both: measured = read from your logs; estimate = a stated counterfactual; what-if = a lever, not a saving. Neither side is favoured; spend moves to whichever plan has headroom (`usage-max balance`).");
     return c;
   },
@@ -167,11 +169,12 @@ const map = {
   },
   trim: async () => { const T = await import("./trimtest.mjs"); const d = dataDir(); if (rest[0] === "on" || rest[0] === "off") { T.setEnabled(d, rest[0] === "on"); console.log(`trim is now ${rest[0].toUpperCase()}`); return 0; } console.log(T.report(d)); return 0; },
   budgets: async () => (await import("./budgets.mjs")).run(rest, home),
+  cap: () => { const f = G.capFile(dataDir()); if (!rest[0]) { const c = G.loadCap(dataDir()); console.log(c ? `session cap: $${c} (list price). Change: usage-max cap <usd> | off` : "session cap: off. Set one: usage-max cap 5"); return 0; } if (rest[0] === "off") { try { fs.rmSync(f); } catch {} console.log("session cap off"); return 0; } const v = Number(rest[0]); if (!(v > 0)) { console.log("usage: usage-max cap <dollars>|off"); return 1; } writeJsonAtomic(f, { usd: v }); console.log(`session cap $${v}: you will be warned at 80% and 100% in each session (new prompts only; nothing is blocked)`); return 0; },
   queue: () => queue(rest),
   "chat-prefs": () => { console.log(fs.readFileSync(path.join(root, "chat-preferences.md"), "utf8")); return 0; },
   route: () => { console.log("route/handoff are model tasks: follow commands/usage-max.md."); return 0; },
   handoff: () => map.route()
 };
 // Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
-if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status savings anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status savings cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
 process.exit(await map[sub]());

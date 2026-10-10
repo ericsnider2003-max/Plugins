@@ -1,6 +1,6 @@
 {
   "name": "usage-max",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Keep your Codex plan lasting to reset: real plan %, budget modes, 5-hour guard. (Codex-specific hooks; the Claude hooks live in hooks/.)",
   "hooks": "./codex/hooks.json"
 }

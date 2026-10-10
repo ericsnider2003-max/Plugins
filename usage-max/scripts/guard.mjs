@@ -4,6 +4,8 @@
 // everything else only adds a message (to you via systemMessage = free, to Claude via additionalContext = a few tokens).
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
+import { recordCost } from "./pricing.mjs";
 import { readJson, writeJsonAtomic } from "./meter.mjs";
 
 const gdir = (dir) => path.join(dir, "guard");
@@ -133,6 +135,11 @@ export function digest(dir) {
   row("coldWarnings", "stale-cache resumes flagged (you chose handoff or carried on)");
   row("compactNudges", "big-context /compact reminders");
   row("rereadHints", "re-reads of an unchanged file flagged");
+  row("codexCalls", "Claude->Codex calls seen (they spend the Codex plan)");
+  row("codexCallsAsked", "of those, times you were asked first (Codex RED or 3rd+ round)");
+  row("scriptFirstHints", "same-edit-in-many-files flagged (script it instead)");
+  row("capNear", "session cap 80% warnings");
+  row("capReached", "session cap reached warnings");
   row("largeReadHints", "whole-file reads of big files flagged");
   return { since: e.since, lines: L };
 }
@@ -146,4 +153,40 @@ export function queueOp(dir, op, text) {
   if (op === "next") { const t = q.shift(); writeJsonAtomic(qfile(dir), q); return { q, taken: t || null }; }
   if (op === "clear") { writeJsonAtomic(qfile(dir), []); return { q: [] }; }
   return { q };
+}
+
+// ---- cross-agent gate: Claude calling Codex (codex exec / codex review, e.g. from the codex-review and codex-dispatch plugins) spends the CODEX plan.
+// Never auto-approves: it only adds a permission question ("ask") when Codex is RED, or when this session is already on its 3rd+ Codex call within an hour
+// (each round of a back-and-forth re-sends the plan/diff). Everything is counted for the digest.
+export const CODEX_CALL = /(^|[;&|(]\s*)((\w+=\S*\s+)*)(npx\s+(-y\s+)?)?(\S*[\\/])?codex(\.exe|\.cmd)?\s+(exec|review|e)\b/;
+export function crossCheck(dir, sid, cmd, codexMode, { now = Date.now(), maxPerHour = 2 } = {}) {
+  if (typeof cmd !== "string" || !CODEX_CALL.test(cmd)) return null;
+  const s = loadSession(dir, sid); s.codexCalls = (s.codexCalls || []).filter((t) => now - t < 3600e3); s.codexCalls.push(now); saveSession(dir, sid, s); bump(dir, "codexCalls");
+  const n = s.codexCalls.length;
+  if (codexMode === "red") { bump(dir, "codexCallsAsked"); return `usage-max: your Codex plan is RED (nearly spent for this week). This call spends it further. Allow only if it is worth it; otherwise do the work here, or wait for the reset.`; }
+  if (n > maxPerHour) { bump(dir, "codexCallsAsked"); return `usage-max: this is Codex call #${n} from this session in the last hour. Each round of a Claude<->Codex review re-sends the plan/diff to Codex. Two rounds usually catch most problems: stop here unless the last round found something serious.`; }
+  return null;
+}
+
+// ---- script-first: the same edit made in 4+ different files is one codemod/sed, not four model turns.
+export function editPattern(dir, sid, tool, input, { files = 4 } = {}) {
+  if (tool !== "Edit" || !input || typeof input.old_string !== "string" || input.old_string.length < 3 || !input.file_path) return null;
+  const s = loadSession(dir, sid); s.edits = s.edits || {}; const k = crypto.createHash("sha1").update(input.old_string + "\u0000" + String(input.new_string)).digest("hex").slice(0, 10);
+  const set = new Set(s.edits[k] || []); set.add(input.file_path); s.edits[k] = [...set].slice(0, 20); if (Object.keys(s.edits).length > 40) s.edits = { [k]: s.edits[k] };
+  let msg = null; if (set.size >= files && !(s.warned || {})["edit" + k]) { s.warned = { ...(s.warned || {}), ["edit" + k]: 1 }; msg = `usage-max: you have made the same edit in ${set.size} files. For the rest, write ONE small script (sed / codemod / node) that applies it to every file and run it, instead of one model turn per file; then review with git diff.`; bump(dir, "scriptFirstHints"); }
+  saveSession(dir, sid, s); return msg;
+}
+
+// ---- optional per-session spend cap (list-price dollars, from the transcript). Off unless set: `usage-max cap <usd>`.
+export function sessionCost(transcript) {
+  let t; try { t = fs.readFileSync(transcript, "utf8"); } catch { return 0; } const seen = new Set(); let c = 0;
+  for (const line of t.split("\n")) { if (!line.includes('"assistant"')) continue; let r; try { r = JSON.parse(line); } catch { continue; } const m = r && r.message; if (r.type !== "assistant" || !m) continue; if (m.id) { if (seen.has(m.id)) continue; seen.add(m.id); } c += recordCost(m); }
+  return c;
+}
+export const capFile = (dir) => path.join(dir, "cap.json");
+export const loadCap = (dir) => { const c = readJson(capFile(dir), null); return c && Number(c.usd) > 0 ? Number(c.usd) : null; };
+export function capCheck(dir, sid, cost, cap) {
+  if (!cap || !(cost > 0)) return null; const s = loadSession(dir, sid), lvl = cost >= cap ? 2 : cost >= cap * 0.8 ? 1 : 0; if (lvl <= (s.capLevel || 0)) return null;
+  s.capLevel = lvl; saveSession(dir, sid, s); bump(dir, lvl === 2 ? "capReached" : "capNear");
+  return lvl === 2 ? `usage-max: this session has used about $${cost.toFixed(2)} at list price, over your $${cap} session cap. Finish or hand off (/usage-max handoff), then start fresh; or raise it: usage-max cap <usd>.` : `usage-max: this session is at about $${cost.toFixed(2)} of your $${cap} cap (80%).`;
 }

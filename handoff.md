@@ -85,3 +85,6 @@ Built from docs/RESEARCH-usage-reduction.md items 1,3,5,6,8,9,10 (anomaly alarm,
 
 ## 0.11.0 notes
 Built the open research items: scripts/trimtest.mjs (+hook/trim wiring, `usage-max trim`), scripts/budgets.mjs (`usage-max budgets`), cascade text in skills/routing/SKILL.md and codex/AGENTS.usage-max.md. Remaining ideas: Codex-side loop/Read guards; auto-handoff at cold cache; Codex trim self-test equivalent (Codex already has trim-stats.json but no retry measure).
+
+## 0.12.0 notes
+codex-diagnose.mjs (real rate-limit % attribution), hooks/cross-gate.mjs (PreToolUse Bash, asks only), guard.mjs editPattern/capCheck/crossCheck. Ideas left: local-model offload (Ollama) for bulk jobs (needs the user's PC), Codex rate-card routing (needs the rate card), Codex-side loop/Read guards, auto-handoff at cold cache.

@@ -2,6 +2,13 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.12.0 (Oct 10 2026) — where Codex usage really goes, and four new brakes
+- **`/usage-max codex diagnose`** (also summarised in `savings`): Codex logs the plan's real rate-limit percentages on every call, so the weekly % that moved between two calls is attributed to the session, model/effort, folder, day and start type (interactive vs `codex exec`/automation) that made it. Measured, not estimated; resets are ignored. Plus token mix (fresh vs cached input, output, reasoning), context size per call, and plain "what stands out" findings.
+- **Cross-agent gate.** Claude calling Codex (`codex exec` / `codex review`, which is what the codex-review and codex-dispatch plugins run) spends your Codex plan. A new Claude hook counts those calls and ASKS first (never auto-approves) when Codex is RED or when a session is on its 3rd+ Codex call in an hour (each review round re-sends the plan/diff).
+- **Script-first hint.** The same edit made in 4 different files triggers one nudge: write one script/codemod for the rest instead of one model turn per file.
+- **Session cap (`/usage-max cap <usd>|off`).** Optional per-session spend cap at list price; warns at 80% and 100% so one runaway session cannot eat the week. Off by default; nothing is blocked.
+- Digest counts for all of these.
+
 ## 0.11.0 (Oct 10 2026) — the open research items
 - **Trim self-test (`/usage-max trim`).** The Claude shell-output trim now measures itself: bytes removed, and how often the same command was re-run within 3 minutes of a trim (a re-run means the model needed what was cut). Above 30% re-runs, after 10 samples, trim switches itself off; `usage-max trim on` re-enables. Shown in `savings`. Independent tests of output trimming disagree with vendor claims, so this decides on your own data.
 - **Description budgets, opt-in (`/usage-max budgets on|off`).** Smaller skill-list and MCP description budgets (`SLASH_COMMAND_TOOL_CHAR_BUDGET` 4000, `CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH` 1000) to shrink the first turn. Off by default because rarely used skills may trigger less; only keys it wrote are ever removed.

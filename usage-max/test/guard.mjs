@@ -143,4 +143,32 @@ await t("budgets: opt-in writes only its own keys, never overrides yours, off re
 await t("cascade guidance is in the routing skill and the Codex block stays small", () => {
   assert.match(fs.readFileSync(path.join(root, "skills/routing/SKILL.md"), "utf8"), /Cheap first, verify, then escalate/); assert.ok(fs.statSync(path.join(root, "codex/AGENTS.usage-max.md")).size < 1536);
 });
+await t("cross-agent gate: counts Codex calls, asks when Codex is RED or on the 3rd call in an hour, ignores everything else", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "cg-")); const c = "codex exec --json -o out.md \"review\"";
+  assert.equal(G.crossCheck(d, "s", "ls -la", "red"), null); for (const x of ["echo codex exec", "grep -r \"codex exec\" docs", "cat codex-notes.md"]) assert.equal(G.crossCheck(d, "q", x, "red"), null, x); for (const x of ["cd x && codex exec -m y", "FOO=1 codex review", "npx -y codex exec", "/usr/bin/codex exec"]) assert.ok(G.CODEX_CALL.test(x), x);
+  assert.match(G.crossCheck(d, "r", c, "red"), /RED/); assert.equal(G.crossCheck(d, "s", c, "green", { now: 1e9 }), null); assert.equal(G.crossCheck(d, "s", "codex exec resume abc", "green", { now: 1e9 + 1 }), null);
+  assert.match(G.crossCheck(d, "s", "codex exec resume abc", "green", { now: 1e9 + 2 }), /call #3/); assert.equal(G.crossCheck(d, "s", c, "green", { now: 1e9 + 4e6 }), null, "an hour later the count restarts");
+  assert.ok(G.loadEvents(d).counts.codexCalls >= 4);
+});
+await t("script-first: the same edit in 4 files is flagged once; different edits are not", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "sf-")); const e = (f, o = "foo()", n = "bar()") => G.editPattern(d, "s", "Edit", { file_path: f, old_string: o, new_string: n });
+  assert.equal(e("a"), null); assert.equal(e("b"), null); assert.equal(e("c"), null); assert.match(e("d"), /ONE small script/); assert.equal(e("e"), null, "only once");
+  assert.equal(e("a", "x1", "y1"), null); assert.equal(e("b", "x2", "y2"), null); assert.equal(G.editPattern(d, "s", "Read", {}), null);
+});
+await t("session cap: off by default, warns at 80% and 100% once each, sums the transcript without double counting", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "cap-")); assert.equal(G.loadCap(d), null); assert.equal(G.capCheck(d, "s", 5, null), null);
+  const tf = path.join(d, "t.jsonl"); const rec = JSON.stringify({ type: "assistant", message: { id: "m1", model: "claude-opus-5-5", usage: { input_tokens: 0, output_tokens: 100000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } }) + "\n"; fs.writeFileSync(tf, rec + rec);
+  const cost = G.sessionCost(tf); assert.ok(cost > 1.9 && cost < 2.1, "100k output on Opus 5.5 = $2, counted once: " + cost);
+  assert.equal(G.capCheck(d, "s", 1, 5), null); assert.match(G.capCheck(d, "s", 4.2, 5), /80%/); assert.equal(G.capCheck(d, "s", 4.4, 5), null); assert.match(G.capCheck(d, "s", 5.5, 5), /over your \$5 session cap/); assert.equal(G.capCheck(d, "s", 9, 5), null);
+});
+await t("codex diagnose: attributes the weekly % that moved to the session that moved it, ignores resets, flags the big one", async () => {
+  const D = await import(pathToFileURL(path.join(root, "codex/scripts/codex-diagnose.mjs")).href); const ch = fs.mkdtempSync(path.join(os.tmpdir(), "cx-")); const sd = path.join(ch, "sessions", "2026", "10", "10"); fs.mkdirSync(sd, { recursive: true });
+  const now = Date.now(); const ev = (i, wk, inp, out) => JSON.stringify({ timestamp: new Date(now - 6e5 + i * 1000).toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: inp, cached_input_tokens: inp - 1000, output_tokens: out, reasoning_output_tokens: 0 } }, rate_limits: { primary: { used_percent: wk }, secondary: { used_percent: wk } } } });
+  const meta = (eff) => JSON.stringify({ timestamp: new Date(now - 7e5).toISOString(), type: "session_meta", payload: { cwd: "/p/big", source: "exec", model: "gpt-x" } }) + "\n" + JSON.stringify({ type: "turn_context", payload: { model: "gpt-x", effort: eff } }) + "\n";
+  fs.writeFileSync(path.join(sd, "rollout-a.jsonl"), meta("xhigh") + [ev(0, 50, 90000, 500), ev(2, 60, 90000, 500), ev(4, 70, 90000, 500)].join("\n") + "\n");
+  fs.writeFileSync(path.join(sd, "rollout-b.jsonl"), meta("low") + [ev(1, 51, 5000, 100), ev(3, 61, 5000, 100), ev(5, 10, 5000, 100)].join("\n") + "\n");
+  const r = D.diagnose({ days: 1, home: ch, now: now + 1e6 }); assert.equal(r.R.events, 6); assert.ok(r.R.wkTotal > 19.9 && r.R.wkTotal < 20.1, "reset (70 -> 10) is not counted as usage: " + r.R.wkTotal);
+  assert.match(r.text, /by session/); assert.ok(r.findings.some((f) => /xhigh|high\/xhigh/.test(f)) || r.findings.some((f) => /context per call/.test(f)), r.findings.join("|")); assert.ok(r.findings.some((f) => /non-interactive/.test(f)));
+  assert.match(D.diagnose({ days: 1, home: path.join(ch, "nope") }).text, /no Codex token events/);
+});
 console.log(`${n} passing`);
