@@ -79,3 +79,6 @@ Guards in usage-max/scripts/guard.mjs + hooks/guard.mjs (cold cache, compact nud
 
 ## NEXT: see docs/PLAN-0.9.0.md
 Open plan for 0.9.0 (lean RED mode, time-to-empty, lean plugin sets, cheaper first pass, background-burn check). A new session should start there.
+
+## 0.10.0 notes
+Built from docs/RESEARCH-usage-reduction.md items 1,3,5,6,8,9,10 (anomaly alarm, lean env switches, subagent cache TTL, 200-line lint, resume advice, memory note, crosscheck). Not built: #2 trim A/B self-test, #4 skill/MCP description budgets (opt-in only, can reduce skill triggering), #7 cheap-first cascade. User: Claude runs out first; Codex drains faster per hour but has under a week of history, so run `/usage-max anomaly` after a day of use.

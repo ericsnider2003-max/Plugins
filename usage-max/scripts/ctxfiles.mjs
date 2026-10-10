@@ -45,7 +45,7 @@ function main() {
   for (const x of r.rows.sort((p, q) => q.tokens - p.tokens)) console.log(`  ${String(x.tokens).padStart(6)} tok  ${x.ageDays}d old  ${x.file}${x.via ? "  (imported by " + path.basename(x.via) + ")" : ""}`);
   if (r.advice.length) { console.log("\nsuggestions (nothing is changed automatically):"); for (const x of r.advice) console.log(`  - ${x.file}\n    ${x.why}`); }
   else console.log("\nnothing oversized or stale.");
-  console.log(r.memory.length ? `\nmemory plugins installed: ${r.memory.join(", ")} (check what they add per session with: /usage-max diet)` : "");
+  console.log(r.memory.length ? `\nmemory plugins installed: ${r.memory.join(", ")} (they can spend tokens in the background to summarise your work, and they inject context at session start: check with /usage-max diet and /usage; turn one off if you do not use its recall)` : "");
   console.log("\narchive one (reversible): usage-max context --archive <file>");
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

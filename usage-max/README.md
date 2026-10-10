@@ -7,6 +7,7 @@ Route every task to the smallest capable model tier and prove the savings from l
 - **Lean mode now also switches off background spend while tightening:** auto memory in AMBER and RED, scheduled tasks in RED (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_CRON`). GREEN removes them again, and a value you set yourself is never touched.
 - **`context`** also flags instruction files over about 200 lines (Anthropic's guidance) and warns against unpruned `/init` output.
 - **`/usage-max crosscheck <ccusage.json>`**: optional, offline comparison with a ccusage export you made yourself. usage-max never runs ccusage.
+- **Subagent cache lifetime** set to 5m in both profiles (`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`), the cold-cache warning now says resuming a big old session is the costliest move, and `context` explains that memory plugins can spend tokens in the background.
 - Research and build plan: `docs/RESEARCH-usage-reduction.md`.
 
 ## 0.9.1 (Oct 10 2026) — one savings report for both plans

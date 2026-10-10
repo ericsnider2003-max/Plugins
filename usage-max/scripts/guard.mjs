@@ -53,7 +53,7 @@ const k = (n) => `${Math.round(n / 1000)}k`;
 export function promptCheck(dir, sid, { now = Date.now(), ctx = null, ttlMs = 300e3, compactAt = 150000 } = {}) {
   const s = loadSession(dir, sid); const gap = s.last ? now - s.last : 0; let msg = null;
   if (s.last && gap > ttlMs && ctx !== null && ctx >= 40000) {
-    msg = `usage-max: this session sat idle ${Math.round(gap / 60000)} min, so its cache expired. Continuing re-bills the whole ${k(ctx)}-token context at about 10x a warm turn. Cheapest for a big context: ask me to /usage-max handoff, then /clear and continue from handoff.md. For a quick follow-up, just carry on.`;
+    msg = `usage-max: this session sat idle ${Math.round(gap / 60000)} min, so its cache expired. Continuing re-bills the whole ${k(ctx)}-token context at about 10x a warm turn. Resuming an old big session is the costliest move (--resume/--continue re-reads it cold). Cheapest for a big context: ask me to /usage-max handoff, then /clear and continue from handoff.md. For a quick follow-up, just carry on.`;
     bump(dir, "coldWarnings");
   } else if (ctx !== null && ctx >= compactAt && ctx >= (s.ctxNudge || 0) + 40000) {
     msg = `usage-max: context is ${k(ctx)} tokens and is re-read every turn. At a natural break run /compact (or hand off and /clear) to cut the cost of every following turn.`;
