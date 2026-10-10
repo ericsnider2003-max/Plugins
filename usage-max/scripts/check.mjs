@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Static acceptance checks: plugin manifest, frontmatter, profiles, hooks, scheduled flags.
 // Calls `claude plugin validate` (local, no model usage). Exit nonzero on any failure.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -134,7 +134,10 @@ for (const file of ["profiles/settings.enforced.json", "profiles/settings.strict
 if (fableViolations === 0) pass("no fable references");
 
 // 7. Official validator (local, no model usage).
-try {
+const haveClaude = spawnSync(process.platform === "win32" ? "claude.cmd" : "claude", ["--version"], { stdio: "ignore", shell: process.platform === "win32" }).status === 0;
+if (!haveClaude && !process.argv.includes("--require-claude")) {
+  console.log("skip claude plugin validate (claude CLI not installed here; CI runs the offline checks, validate runs locally)");
+} else try {
   const claudeBin = process.platform === "win32" ? "claude.cmd" : "claude";
   execFileSync(claudeBin, ["plugin", "validate", root], { encoding: "utf8", stdio: "pipe", shell: process.platform === "win32" }); // .cmd requires a shell on Windows; args are fixed literals
   pass("claude plugin validate");

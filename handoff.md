@@ -58,6 +58,6 @@ Next step (fix implementation): **Sonnet** (`usage-max-worker`) for the mechanic
 |---|---|---|---|
 | 2026-10-10 | usage-max full analysis (10 skills run, source review, sandbox repro) | Opus hub + 1 Haiku scout | 20 findings; no code changed |
 
-## State after 0.4.0
-Done: everything in the findings list, one `/usage-max` command, cross-plan balance, surplus mode, official prices, data-driven context cap, live-verified trim-hook behaviour (Claude honours a rewrite without `allow`; Codex source requires `allow`).
-Still needs a real machine (cannot be done from a cloud container): (1) Codex: run `node codex/scripts/install.mjs`, start Codex, `/hooks` -> trust the usage-max hooks, then `usage-max codex doctor`; set modes after `usage-max codex models`. (2) Run `/usage-max doctor` in a local Claude Code session and confirm the status line shows `wk NN%`. (3) `node test/live.mjs` against the installed plugin.
+## State after 0.5.0
+Done and live-verified (`node usage-max/test/live.mjs`, all pass): self-configuring SessionStart, unified `/usage-max`, Opus->Sonnet subagent cap, Stop metering, command rewrite without `allow`. CI runs offline suites on PRs. Codex: source-verified hook contract, auto-calibration from `rate_limits`, `doctor`, surplus + balance.
+Only things that need the user: (1) make `main` the default branch (GitHub Settings > Branches) after merging PR #1; (2) Codex: `node usage-max/codex/scripts/install.mjs`, then in Codex `/hooks` -> trust the hooks, then `usage-max codex doctor`; (3) disable unused synced plugins (`/usage-max diet` prints the commands); (4) copy the zip from the app to the desktop.

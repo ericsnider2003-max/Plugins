@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, loadState, patchModel } from "./governor.mjs";
 import { readJson, writeJsonAtomic } from "./meter.mjs";
+import { ttlAdvice } from "./ttl.mjs";
 
 export const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const MARKETPLACE = { name: "eric-plugins", repo: "ericsnider2003-max/Plugins" };
@@ -69,12 +70,16 @@ export function computeProfile(settings, { profile, launcher, modelWant = null, 
   return { next, changes };
 }
 
-export function apply({ write = false, home = homeDir(), root = pluginRoot } = {}) {
+export async function apply({ write = false, home = homeDir(), root = pluginRoot } = {}) {
   const file = path.join(home, ".claude", "settings.json");
   const existed = fs.existsSync(file);
   const settings = existed ? readJson(file, null) : {};
   if (settings === null) return { error: `${file} is not valid JSON; not touching it`, changes: [], wrote: false };
   const profile = readJson(path.join(root, "profiles", "settings.enforced.json"), {});
+  // Cache lifetime follows the user's own sessions (5m vs 1h replay), not a hardcoded guess; keeps the profile default until there is enough data.
+  let ttl = null;
+  try { ttl = await ttlAdvice(path.join(home, ".claude", "projects")); } catch {}
+  if (ttl && ttl.recommend) profile.promptCacheTtl = ttl.recommend;
   const launcher = path.join(dataDir(home), "statusline.mjs");
   const config = loadConfig();
   const modelWant = config.manageSettings ? config.modes[loadState().mode] || null : null;
@@ -96,7 +101,7 @@ export function apply({ write = false, home = homeDir(), root = pluginRoot } = {
       wrote = true;
     }
   }
-  return { file, existed, changes, wrote, backup };
+  return { file, existed, changes, wrote, backup, ttl };
 }
 
 export function autoApplyEnabled(home = homeDir()) {
@@ -105,9 +110,10 @@ export function autoApplyEnabled(home = homeDir()) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const r = apply({ write: process.argv.includes("--write") });
+  const r = await apply({ write: process.argv.includes("--write") });
   if (r.error) { console.log(r.error); process.exit(1); }
   console.log(`${r.file}${r.existed ? "" : " (does not exist yet; will be created)"}`);
+  if (r.ttl) console.log(r.ttl.recommend ? `  cache lifetime: ${r.ttl.recommend} (replayed ${r.ttl.sessions} of your sessions: 5m would change cost by ${r.ttl.savedByFiveMin >= 0 ? "-" : "+"}$${Math.abs(r.ttl.savedByFiveMin).toFixed(2)})` : `  cache lifetime: keeping the default until there are 5+ sessions to learn from (${r.ttl.sessions} so far)`);
   console.log(r.changes.length ? r.changes.map((c) => `  ${c}`).join("\n") : "  already up to date");
   console.log(r.wrote ? `applied${r.backup ? ` (backup: ${r.backup})` : ""}. Takes effect in NEW sessions.` : process.argv.includes("--write") ? "nothing to write." : "dry run. Re-run with --write to apply.");
 }

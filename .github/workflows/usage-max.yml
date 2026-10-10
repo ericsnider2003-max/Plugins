@@ -1,0 +1,21 @@
+name: usage-max tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Static checks
+        run: node usage-max/scripts/check.mjs
+      - name: Claude plugin tests
+        run: |
+          node usage-max/test/run.mjs
+          node usage-max/test/new.mjs
+      - name: Codex tests
+        run: node usage-max/codex/test/run.mjs

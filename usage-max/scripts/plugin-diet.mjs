@@ -3,6 +3,7 @@
 // MCP servers) and how often each source was actually used in the last N days. Proposes cuts; --disable applies plugin cuts.
 // Usage: node plugin-diet.mjs [--days 30] [--cwd <dir>] [--json] [--disable plugin@market,...]
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,6 +76,16 @@ const usesFor = (name, counts) => {
   return n;
 };
 
+// Claude Code's own projected cost for a plugin (`claude plugin details <name>`); null when unavailable.
+export function officialCost(name, run = (n) => spawnSync("claude", ["plugin", "details", n], { encoding: "utf8", timeout: 20000, stdio: ["ignore", "pipe", "ignore"] })) {
+  try {
+    const r = run(name); const out = (r && r.stdout) || "";
+    const m = out.match(/Always-on:\s*~?([\d,.]+)\s*(k)?\s*tok/i); if (!m) return null;
+    const mcp = out.match(/MCP servers \((\d+)\)/);
+    return { tokens: Math.round(Number(m[1].replace(/,/g, "")) * (m[2] ? 1000 : 1)), mcp: mcp ? Number(mcp[1]) : null };
+  } catch { return null; }
+}
+
 // Plugins synced from claude.ai / an org live under plugins/synced/<org>_<acct>/<plugin>, not in installed_plugins.json.
 export function syncedPlugins(claudeDir) {
   const out = [];
@@ -100,7 +111,7 @@ export function measuredStartup(claudeDir, days, nowMs = Date.now()) {
   return vals.length ? vals[Math.floor(vals.length / 2)] : null;
 }
 
-export function diet({ home = os.homedir(), cwd = process.cwd(), days = 30, nowMs = Date.now() } = {}) {
+export function diet({ home = os.homedir(), cwd = process.cwd(), days = 30, nowMs = Date.now(), official = false } = {}) {
   const claudeDir = path.join(home, ".claude");
   const settings = jread(path.join(claudeDir, "settings.json"), {});
   const counts = usageCounts(claudeDir, days, nowMs);
@@ -114,7 +125,8 @@ export function diet({ home = os.homedir(), cwd = process.cwd(), days = 30, nowM
   for (const sp of syncedPlugins(claudeDir)) {
     if (have.has(sp.name)) continue;
     const s2 = scanDir(sp.dir);
-    rows.push({ kind: "plugin(synced)", id: sp.name, ...s2, uses: usesFor(sp.name, counts) });
+    const oc = official ? officialCost(sp.name) : null; // Claude Code's own number beats my description-length estimate
+    rows.push({ kind: "plugin(synced)", id: sp.name, ...s2, ...(oc ? { tokens: oc.tokens, mcp: oc.mcp ?? s2.mcp, official: true } : {}), uses: usesFor(sp.name, counts) });
   }
   for (const [kind, dir] of [["user-skills", path.join(claudeDir)], ["project-skills", path.join(cwd, ".claude")]]) {
     const s = scanDir(dir); if (s.skills || s.commands || s.agents) rows.push({ kind, id: kind, ...s, uses: Object.entries(counts.skill).filter(([k]) => !k.includes(":")).reduce((a, [, v]) => a + v, 0) });
@@ -128,7 +140,7 @@ export function diet({ home = os.homedir(), cwd = process.cwd(), days = 30, nowM
   const advice = [];
   for (const r of rows) {
     if (r.kind === "plugin" && r.uses === 0 && r.tokens >= 300) advice.push({ id: r.id, action: "disable", saves: r.tokens, why: `0 uses in ${days}d, ~${r.tokens} tokens in every session` });
-    if (r.kind === "plugin(synced)" && r.uses === 0 && (r.tokens >= 300 || r.mcp >= 3)) advice.push({ id: r.id, action: "disable in claude.ai > Settings > Plugins", saves: r.tokens, why: `0 uses in ${days}d, ~${r.tokens} tokens of descriptions${r.mcp ? ` + ${r.mcp} MCP server(s) whose tool definitions also load` : ""} in every session` });
+    if (r.kind === "plugin(synced)" && r.uses === 0 && (r.tokens >= 300 || r.mcp >= 3)) advice.push({ id: r.id, action: `disable (claude plugin disable ${r.id}@synced --scope user; or in claude.ai > Settings > Plugins)`, saves: r.tokens, why: `0 uses in ${days}d, ~${r.tokens} tokens of descriptions${r.mcp ? ` + ${r.mcp} MCP server(s) whose tool definitions also load` : ""} in every session` });
     if (r.kind === "CLAUDE.md" && r.tokens > 700) advice.push({ id: r.id, action: "trim", saves: r.tokens - 500, why: `${r.tokens} tokens (${r.lines} lines); keep <500, move workflows to skills / path-scoped rules` });
     if (r.kind === "mcp" && r.uses === 0) advice.push({ id: r.id, action: "disable via /mcp", saves: null, why: `0 calls in ${days}d (tool names still enter context)` });
   }
@@ -148,12 +160,12 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   const a = process.argv.slice(2); const flag = (n, d) => { const i = a.indexOf("--" + n); return i >= 0 ? a[i + 1] : d; };
   const home = process.env.USAGE_MAX_HOME || os.homedir();
-  const r = diet({ home, cwd: flag("cwd", process.cwd()), days: Number(flag("days", 30)) });
+  const r = diet({ home, cwd: flag("cwd", process.cwd()), days: Number(flag("days", 30)), official: !a.includes("--no-official") });
   const dis = flag("disable", null);
   if (dis) { const done = disablePlugins(home, dis.split(",").map((s) => s.trim()).filter(Boolean)); console.log(done.length ? `disabled: ${done.join(", ")} (backup: settings.json.usage-max-diet-backup). Takes effect in NEW sessions.` : "nothing disabled (ids not enabled)"); process.exit(0); }
   if (a.includes("--json")) { console.log(JSON.stringify(r, null, 2)); process.exit(0); }
   console.log(`usage-max plugin-diet — always-loaded context (descriptions + CLAUDE.md) ≈ ${r.alwaysLoadedTokens} tokens (${r.sessionsScanned} sessions scanned, ${r.days}d); measured session start (median first turn, includes system prompt + tool definitions): ${r.measuredStartupTokens === null ? "n/a" : r.measuredStartupTokens + " tokens"}`);
-  for (const x of r.rows.sort((p, q) => (q.tokens || 0) - (p.tokens || 0))) console.log(`  ${String(x.tokens ?? "?").padStart(6)} tok  ${x.kind.padEnd(14)} ${x.id}${x.uses !== null && x.uses !== undefined ? `  (uses ${x.uses})` : ""}`);
+  for (const x of r.rows.sort((p, q) => (q.tokens || 0) - (p.tokens || 0))) console.log(`  ${String(x.tokens ?? "?").padStart(6)} tok  ${x.kind.padEnd(14)} ${x.id}${x.official ? " (official)" : ""}${x.uses !== null && x.uses !== undefined ? `  (uses ${x.uses})` : ""}`);
   console.log(r.advice.length ? "\nAdvice:" : "\nNothing obviously removable.");
   for (const x of r.advice) console.log(`  ${x.action.toUpperCase()} ${x.id}: ${x.why}`);
   if (r.savings) console.log(`\nPotential saving ≈ ${r.savings} tokens per session. Apply plugin cuts: --disable id1,id2`);

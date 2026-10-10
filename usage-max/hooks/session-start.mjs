@@ -51,7 +51,7 @@ try {
   let applied = null;
   try {
     const { apply, autoApplyEnabled } = await import("../scripts/profile.mjs");
-    if (autoApplyEnabled(home)) applied = apply({ write: true, home, root: pluginRoot });
+    if (autoApplyEnabled(home)) applied = await apply({ write: true, home, root: pluginRoot });
   } catch {}
   if (applied && applied.wrote) notes.push(`auto-applied the usage profile (${applied.changes.filter((c) => !c.startsWith("statusLine: left")).length} settings${applied.backup ? `; backup ${applied.backup}` : ""}) — takes effect in NEW sessions`);
 

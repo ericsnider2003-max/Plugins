@@ -233,6 +233,15 @@ async function cli() {
   console.log(`  week ~${fmt(l.estPct)}% (est.), ${fmt(l.hoursLeft, 0)}h to reset, target ${config.target}%`);
   console.log(`  burn ${fmt(l.ratePerHour, 2)}%/h over last ${config.burnWindowHours}h${l.rateSource ? ` (from ${l.rateSource})` : ""} vs sustainable ${fmt(l.allowedPerHour, 2)}%/h → ${fmt(l.ratio, 2)}× ${l.ratio > 1 ? "(over)" : "(ok)"}`);
   const hasSettings = fs.existsSync(files().settings);
+  { // pace planner: what the plan can sustain per day, what you actually used lately, and allowance about to expire
+    const sn = (s.snaps || []).filter((x) => x.resetsAt === (s.calib && s.calib.resetsAt));
+    const dayAgo = Date.now() - 24 * 3600e3, base = sn.find((x) => x.at >= dayAgo) || sn[0], lastSn = sn[sn.length - 1];
+    if (l.allowedPerHour != null && Number.isFinite(l.allowedPerHour)) {
+      const used = base && lastSn && lastSn.at - base.at >= 3600e3 ? `${fmt(((lastSn.pct - base.pct) * 24 * 3600e3) / (lastSn.at - base.at), 1)}%/day recently` : "not enough history yet";
+      console.log(`  pace: ${fmt(l.allowedPerHour * 24, 1)}%/day keeps you at ${config.target}% by reset; you are at ${used}`);
+    }
+    if (l.hoursLeft != null && l.hoursLeft <= 24 && l.projected != null && l.projected < 95) console.log(`  use it or lose it: ~${fmt(100 - l.projected, 0)}% of the week expires in ${fmt(l.hoursLeft, 0)}h — queue the heavy work now`);
+  }
   console.log(`  new sessions: ${want.model} @ ${want.effort} effort${config.manageSettings ? "" : " (settings management OFF)"}${config.manageSettings && !hasSettings ? " — NOT APPLIED: ~/.claude/settings.json is missing; run profile.mjs --write" : ""}`);
   console.log(`  calibration: ${s.calib ? `${s.calib.pct}% at ${new Date(s.calib.at).toLocaleString()} (${s.calib.source}), k=${fmt(s.k, 4)} %/$` : "none — run: calibrate <pct> --resets <date>"}`);
   if (cmd === "gate") process.exitCode = { green: 0, amber: 10, red: 20 }[s.mode];
