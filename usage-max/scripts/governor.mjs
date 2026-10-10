@@ -146,6 +146,25 @@ export function patchModel(s, want, applied = {}, force = false) {
   return changed;
 }
 
+// Lean mode: while tightening (AMBER/RED) also cap context growth and drop always-on thinking; GREEN hands the user's own values back.
+export const LEAN = { amber: { autoCompactWindow: 160000 }, red: { autoCompactWindow: 120000, alwaysThinkingEnabled: false } };
+const LEAN_KEYS = ["autoCompactWindow", "alwaysThinkingEnabled"];
+export function patchLean(s, mode, applied = {}) {
+  let changed = false; const want = LEAN[mode] || {};
+  for (const k of LEAN_KEYS) {
+    if (k in want) { if (ownedSet(s, k, want[k], applied, true) === "set") changed = true; }
+    else if (k in applied && JSON.stringify(s[k]) === JSON.stringify(applied[k])) { delete s[k]; delete applied[k]; changed = true; } // still ours: remove it
+    else delete applied[k];
+  }
+  return changed;
+}
+// Hours until the plan hits 100% at the current burn, only from real data and only when that happens before the reset.
+export function timeToEmpty(l) {
+  if (!l || l.estPct == null || !(l.ratePerHour > 0) || l.hoursLeft == null || l.rateSource === "none yet") return null;
+  const h = (100 - l.estPct) / l.ratePerHour;
+  return h < l.hoursLeft ? { hours: Math.max(h, 0), resetIn: l.hoursLeft } : null;
+}
+
 // Write the mode's model/effort into user settings (new sessions only). Returns true (changed), false
 // (already right / management off) or null (no settings.json yet: nothing was applied; profile.mjs creates it).
 export function applySettings(mode, config) {
@@ -156,7 +175,8 @@ export function applySettings(mode, config) {
   const s = readJson(file, null);
   if (!s) return null;
   const af = path.join(dataDir(), "applied.json"), applied = loadApplied(af);
-  const changed = patchModel(s, want, applied, mode === "amber" || mode === "red"); // tightening may override your values; green hands back to them
+  const c1 = patchModel(s, want, applied, mode === "amber" || mode === "red"); // tightening may override your values; green hands back to them
+  const changed = patchLean(s, mode, applied) || c1;
   saveApplied(af, applied);
   if (!changed) return false;
   writeJsonAtomic(file, s);
@@ -255,6 +275,8 @@ async function cli() {
   const want = config.modes[s.mode === "green" && s.surplus ? "surplus" : s.mode];
   console.log(`usage-max budget: ${s.mode.toUpperCase()}${s.surplus ? "+SURPLUS" : ""}${s.override ? " (pinned)" : ""}`);
   if (s.surplus) console.log(`  surplus: projected ~${fmt(l.projected, 0)}% at reset — ~${fmt(100 - l.projected, 0)}% of the week would go unused, so higher effort is allowed on hard problems`);
+  const tte = timeToEmpty(l);
+  if (tte) console.log(`  WARNING: at this pace the plan runs out in ~${fmt(tte.hours, 0)}h, but it resets in ${fmt(tte.resetIn, 0)}h`);
   console.log(`  week ~${fmt(l.estPct)}% (est.), ${fmt(l.hoursLeft, 0)}h to reset, target ${config.target}%`);
   console.log(`  burn ${fmt(l.ratePerHour, 2)}%/h over last ${config.burnWindowHours}h${l.rateSource ? ` (from ${l.rateSource})` : ""} vs sustainable ${fmt(l.allowedPerHour, 2)}%/h → ${fmt(l.ratio, 2)}× ${l.ratio > 1 ? "(over)" : "(ok)"}`);
   const hasSettings = fs.existsSync(files().settings);

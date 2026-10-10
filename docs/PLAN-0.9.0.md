@@ -14,4 +14,4 @@ User facts: Claude plan ~67% weekly at 36h to reset (budget RED, burn 6.5x susta
 All suites green (node usage-max/scripts/check.mjs, usage-max/test/run.mjs, new.mjs, guard.mjs, usage-max/codex/test/run.mjs), live.mjs green, version 0.9.0 in the three manifests (.claude-plugin/marketplace.json, usage-max/.claude-plugin/plugin.json, usage-max/.codex-plugin/plugin.json), README changelog entry, handoff.md note, PR -> CI green on current head -> merge with expectedHeadSha -> rebuild kit from a clean worktree of origin/main (`python3 install/build-kit.py --out <dir>`) and SendUserFile usage-max-desktop.zip + usage-max-plugin-0.9.0.zip.
 
 ## Status
-- [ ] 4  - [ ] 5  - [ ] 6  - [ ] 7  - [ ] 8
+- [x] 4  - [x] 5  - [x] 6  - [x] 7  - [x] 8   (implemented in 0.9.0; tests in usage-max/test/guard.mjs). Open ideas not built: Codex-side loop/Read guards; auto-handoff at cold cache.
