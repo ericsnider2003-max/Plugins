@@ -1,6 +1,6 @@
 {
   "name": "usage-max",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Route every task to the smallest capable model tier and verify the savings from local transcripts.",
   "author": {
     "name": "usage-max"
@@ -15,15 +15,7 @@
     "./skills/routing"
   ],
   "commands": [
-    "./commands/route.md",
-    "./commands/handoff.md",
-    "./commands/usage-check.md",
-    "./commands/audit.md",
-    "./commands/rescue.md",
-    "./commands/diagnose.md",
-    "./commands/budget.md",
-    "./commands/gate.md",
-    "./commands/diet.md"
+    "./commands/usage-max.md"
   ],
   "hooks": "./hooks/hooks.json"
 }

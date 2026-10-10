@@ -9,6 +9,9 @@ import { summarizeProjects, ceilingStatus, parseResetSpec, weeklyStart, pace } f
 import { replayTtl, priceFor } from "../scripts/pricing.mjs";
 import { decide, absorbSnapshot, estimate, DEFAULT_CONFIG } from "../scripts/governor.mjs";
 import { recordCost, scanFrom, spendInLast } from "../scripts/meter.mjs";
+// Never let a test touch the real ~/.claude (the SessionStart hook configures itself): everything runs in a sandbox home.
+const SANDBOX_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-sandbox-"));
+process.env.USAGE_MAX_HOME = SANDBOX_HOME;
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let failures = 0;

@@ -120,3 +120,22 @@ const cgMod = await import(pathToFileURL(path.join(root, "scripts/codex-governor
   t("doctor: after a hook fires it reports hooks are running", () => assert.match(doc(), /ok\s+hooks are running/));
 }
 console.log(`${n} passing (incl. rollover/throttle/install)`);
+// surplus + shared balance
+{
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), "umsp-")); const e4 = { ...process.env, USAGE_MAX_HOME: h }; delete e4.CODEX_HOME;
+  const sd = path.join(h, ".usage-max-codex"), gj = path.join(sd, "governor.json"), shf = path.join(h, ".usage-max/shared.json"), ch4 = path.join(h, ".codex");
+  const run = (s, ...a) => spawnSync("node", [path.join(root, `scripts/${s}.mjs`), ...a], { env: e4, encoding: "utf8" });
+  const setPct = (pct, hrs = 100, extra = {}) => { fs.mkdirSync(sd, { recursive: true }); const o = (() => { try { return JSON.parse(fs.readFileSync(gj, "utf8")); } catch { return {}; } })(); fs.writeFileSync(gj, JSON.stringify({ ...o, calib: { pct, at: Date.now(), resets: new Date(Date.now() + hrs * 36e5).toISOString() }, k: 1, ...extra })); };
+  fs.mkdirSync(path.dirname(shf), { recursive: true }); fs.writeFileSync(shf, JSON.stringify({ claude: { mode: "green", surplus: false, estPct: 30, hoursLeft: 50, fivePct: 5, updatedAt: new Date().toISOString() } }));
+  setPct(10); const r1 = run("codex-governor", "gate");
+  t("surplus on at projected<80% with >12h left; gate stays 0", () => { assert.equal(r1.status, 0); assert.match(r1.stdout, /mode=GREEN\+SURPLUS/); assert.match(r1.stdout, /surplus: projected ~10% at reset, ~90%/); assert.equal(JSON.parse(fs.readFileSync(gj)).surplus, true); });
+  t("surplus hysteresis: stays in 80-90 band, off >90", () => { setPct(85); assert.match(run("codex-governor", "status").stdout, /GREEN\+SURPLUS/); setPct(91); assert.doesNotMatch(run("codex-governor", "status").stdout, /SURPLUS/); setPct(85); assert.doesNotMatch(run("codex-governor", "status").stdout, /SURPLUS/); });
+  t("surplus off with <=12h left", () => { setPct(10, 10, { surplus: false }); assert.doesNotMatch(run("codex-governor", "status").stdout, /SURPLUS/); });
+  t("surplus profile written; apply writes effort high", () => { setPct(10); run("codex-governor", "apply"); assert.ok(fs.existsSync(path.join(ch4, "usage-max-surplus.config.toml"))); assert.match(fs.readFileSync(path.join(ch4, "config.toml"), "utf8"), /model_reasoning_effort = "high"/); });
+  t("shared.json: codex key written, claude key preserved", () => { const o = JSON.parse(fs.readFileSync(shf)); assert.equal(o.claude.estPct, 30); assert.equal(o.codex.mode, "green"); assert.equal(o.codex.surplus, true); assert.ok(o.codex.updatedAt); assert.match(run("codex-governor", "status").stdout, /claude plan: green/); assert.match(run("codex-governor", "doctor").stdout, /shared status with Claude: fresh/); });
+  const { balanceAdvice } = await import(pathToFileURL(path.join(root, "scripts/shared.mjs")).href);
+  const nw = Date.now(), fr = (mode) => ({ mode, estPct: 40.4, updatedAt: new Date(nw).toISOString() });
+  t("balanceAdvice cases", () => { assert.match(balanceAdvice({ mode: "red" }, fr("green"), nw), /Claude has headroom \(week ~40% used, GREEN\).*RED\)/); assert.equal(balanceAdvice({ mode: "green" }, fr("red"), nw), null); assert.equal(balanceAdvice({ mode: "red" }, { ...fr("green"), updatedAt: new Date(nw - 7 * 36e5).toISOString() }, nw), null); assert.equal(balanceAdvice({ mode: "red" }, null, nw), null); });
+  t("SessionStart prints balance advice once", () => { setPct(96, 100, { surplus: false }); const hk = () => run("codex-hook", "SessionStart").stdout; const go = spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "SessionStart"], { input: JSON.stringify({ session_id: "bal" }), env: e4, encoding: "utf8" }); assert.match(go.stdout, /usage-max balance: Claude has headroom/); const again = spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "UserPromptSubmit"], { input: JSON.stringify({ session_id: "bal" }), env: e4, encoding: "utf8" }); assert.doesNotMatch(again.stdout, /balance/); });
+}
+console.log(`${n} passing (incl. surplus/balance)`);

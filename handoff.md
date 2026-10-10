@@ -58,9 +58,6 @@ Next step (fix implementation): **Sonnet** (`usage-max-worker`) for the mechanic
 |---|---|---|---|
 | 2026-10-10 | usage-max full analysis (10 skills run, source review, sandbox repro) | Opus hub + 1 Haiku scout | 20 findings; no code changed |
 
-## Open items after 0.3.0
-- Merge `claude/usage-routing-analysis-oqqqjr` into the default branch (marketplace auto-update only follows the default branch).
-- Live checks on a real machine: `node test/live.mjs`; whether the Claude trim hook still rewrites without `permissionDecision:"allow"` (the Codex hook MUST keep `allow`: its source rejects `updatedInput` without it).
-- Haiku 5.5 official prices (currently Haiku 4.5 rates).
-- Codex: trust the hooks via `/hooks`; set explicit modes after `codex-governor.mjs models`.
-- Ideas: cross-plan balancing (Claude RED -> hand work to Codex via the codex-dispatch plugin, and back), surplus mode (raise effort when the pace says allowance would go unused), `autoCompactWindow` cap if `diagnose` shows contexts above ~150k.
+## State after 0.4.0
+Done: everything in the findings list, one `/usage-max` command, cross-plan balance, surplus mode, official prices, data-driven context cap, live-verified trim-hook behaviour (Claude honours a rewrite without `allow`; Codex source requires `allow`).
+Still needs a real machine (cannot be done from a cloud container): (1) Codex: run `node codex/scripts/install.mjs`, start Codex, `/hooks` -> trust the usage-max hooks, then `usage-max codex doctor`; set modes after `usage-max codex models`. (2) Run `/usage-max doctor` in a local Claude Code session and confirm the status line shows `wk NN%`. (3) `node test/live.mjs` against the installed plugin.

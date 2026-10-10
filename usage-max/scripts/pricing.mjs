@@ -1,18 +1,23 @@
-// List prices per million tokens (platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-07).
-// Claude Code writes 1-hour cache entries on subscriptions, so writes are priced at the 1h rate.
+// List prices per million tokens (platform.claude.com/docs/en/about-claude/pricing, verified 2026-10-10).
+// Claude Code writes 1-hour cache entries on subscriptions, so writes default to the 1h rate.
+// `long` = prices that apply once the prompt exceeds `longAbove` tokens (Haiku 5.5 is tiered by prompt size).
 const TABLE = [
   { match: /fable/, input: 10, write1h: 20, write5m: 12.5, read: 0.25, output: 50 },
   { match: /opus-5-5/, input: 4, write1h: 8, write5m: 5, read: 0.2, output: 20 },
-  { match: /opus-5(?!-)/, input: 4, write1h: 8, write5m: 5, read: 0.4, output: 20, approx: true },
+  { match: /opus-5(?!-)/, input: 5, write1h: 10, write5m: 6.25, read: 0.5, output: 25 },
   { match: /opus-4/, input: 5, write1h: 10, write5m: 6.25, read: 0.5, output: 25, approx: true },
-  { match: /sonnet-5-5/, input: 2, write1h: 4, write5m: 2.5, read: 0.2, output: 10 },
+  { match: /sonnet-5-5/, input: 2, write1h: 4, write5m: 2.5, read: 0.1, output: 10 },
+  { match: /sonnet-5(?!-)/, input: 2, write1h: 4, write5m: 2.5, read: 0.2, output: 10 },
   { match: /sonnet/, input: 3, write1h: 6, write5m: 3.75, read: 0.3, output: 15, approx: true },
+  { match: /haiku-5/, input: 0.1, write1h: 0.2, write5m: 0.125, read: 0.01, output: 0.5, longAbove: 100000, long: { input: 0.5, write1h: 1, write5m: 0.625, read: 0.05, output: 2.5 } },
   { match: /haiku-4-5/, input: 1, write1h: 2, write5m: 1.25, read: 0.1, output: 5 },
-  { match: /haiku/, input: 1, write1h: 2, write5m: 1.25, read: 0.1, output: 5, approx: true } // haiku-5-5 etc: Haiku 4.5 rates until confirmed
+  { match: /haiku/, input: 1, write1h: 2, write5m: 1.25, read: 0.1, output: 5, approx: true }
 ];
-export function priceFor(model) {
+// ctx = prompt size in tokens (input + cache writes + cache reads); only matters for tiered models.
+export function priceFor(model, ctx = 0) {
   const name = String(model || "").toLowerCase();
-  return TABLE.find((p) => p.match.test(name)) || null;
+  const p = TABLE.find((x) => x.match.test(name)) || null;
+  return p && p.long && ctx > p.longAbove ? { ...p, ...p.long } : p;
 }
 // Cache-write cost honouring the real 5m/1h split when the transcript carries it (else everything at the 1h rate).
 export const writeCost = (u, p) => (u.created5m || u.created1h ? u.created5m * p.write5m + (u.created - u.created5m) * p.write1h : u.created * p.write1h);
@@ -41,8 +46,9 @@ export function replayTtl(turns) {
 
 // Cost of one assistant message at list price, honouring the real 5m/1h cache-write split when present.
 export function recordCost(message) {
-  const p = priceFor(message && message.model);
   const u = (message && message.usage) || {};
+  const ctx = (Number(u.input_tokens) || 0) + (Number(u.cache_creation_input_tokens) || 0) + (Number(u.cache_read_input_tokens) || 0);
+  const p = priceFor(message && message.model, ctx);
   if (!p || message.model === "<synthetic>") return 0;
   const cc = u.cache_creation || {};
   const w5 = Number(cc.ephemeral_5m_input_tokens) || 0;

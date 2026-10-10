@@ -8,6 +8,8 @@
 import { loadMeter, saveMeter, sessionFiles, meterFiles } from "../scripts/meter.mjs";
 import { evaluate, loadState, saveState, loadConfig } from "../scripts/governor.mjs";
 import { aboveCeiling } from "../scripts/ceiling.mjs";
+import { readOther, balanceAdvice } from "../scripts/shared.mjs";
+import { readJson } from "../scripts/meter.mjs";
 
 async function readStdin() {
   if (process.stdin.isTTY) return "";
@@ -46,12 +48,19 @@ try {
     }
   } else if (event === "UserPromptSubmit") {
     const state = loadState();
-    if (state.mode !== "green") {
+    const advice = balanceAdvice({ mode: state.mode }, readOther("codex"), Date.now(), { selfName: "Claude", otherName: "Codex", dispatch: " (use the codex-dispatch skill if installed, otherwise tell the user)" });
+    const surplus = state.mode === "green" && state.surplus;
+    const key = `${state.mode}|${surplus ? "s" : ""}|${advice ? "b" : ""}`;
+    if (key !== "green||") {
       const sid = input.session_id || "unknown";
-      if (state.sessionsNotified[sid] !== state.mode) {
-        state.sessionsNotified[sid] = state.mode;
+      if (state.sessionsNotified[sid] !== key) {
+        state.sessionsNotified[sid] = key;
         saveState(state);
-        out({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: directive(state) }, systemMessage: `usage-max: budget ${state.mode.toUpperCase()} — week ~${pct(state.last && state.last.estPct)}; Claude has been told to work economically. /usage-max:budget for details.` });
+        const parts = [];
+        if (state.mode !== "green") parts.push(directive(state));
+        if (surplus) parts.push(`usage-max surplus: this week is on course to leave ~${Math.round(100 - ((state.last && state.last.projected) || 0))}% of the plan unused. You may use more thorough reasoning and verification on hard problems; still delegate volume work to scouts/workers.`);
+        if (advice) parts.push(advice);
+        out({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: parts.join(" ") }, systemMessage: `usage-max: ${state.mode === "green" ? (surplus ? "SURPLUS — spare allowance, higher effort allowed" : "GREEN") : `budget ${state.mode.toUpperCase()}`}${advice ? "; Codex has headroom" : ""}. /usage-max for details.` });
       }
     }
   } else if (event === "PreToolUse" && (input.tool_name === "Agent" || input.tool_name === "Task")) {

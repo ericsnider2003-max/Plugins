@@ -6,6 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeSelf, readOther, isFresh } from "./shared.mjs";
 
 export const HOME = () => process.env.USAGE_MAX_HOME || os.homedir();
 export const codexHome = () => process.env.CODEX_HOME || path.join(HOME(), ".codex");
@@ -20,7 +21,8 @@ export const DEFAULT_CONFIG = {
   modes: { // model null = leave your model untouched; the installer seeds config.json from models seen in sessions.
     green: { model: null, effort: "medium", service_tier: null },
     amber: { model: null, effort: "low", service_tier: null },
-    red: { model: null, effort: "low", service_tier: null }
+    red: { model: null, effort: "low", service_tier: null },
+    surplus: { model: null, effort: "high", service_tier: null } // green + unused allowance
   },
   tuning: { tool_output_token_limit: 8000, model_auto_compact_token_limit: 64000, project_doc_max_bytes: 16384 }
 };
@@ -120,7 +122,11 @@ export function evaluate(now = Date.now(), force = false) {
     if (e) mode = decide({ estPct: e.est, hoursLeft: e.hoursLeft, ratePerHour: e.rate, prevMode: st.mode, cfg });
     const floor = fiveFloor(st.five, now); const rank = { green: 0, amber: 1, red: 2 }; if (rank[floor] > rank[mode]) mode = floor;
   }
-  st.mode = mode; wj(sf, st); return { mode, e, st, cfg };
+  const fl = fiveFloor(st.five, now); let surplus = false;
+  if (mode === "green" && e && fl === "green") { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12) : proj < 80 && e.hoursLeft > 12; e.projected = proj; }
+  st.mode = mode; st.surplus = surplus; st.appliedKey = st.appliedKey || null; wj(sf, st);
+  try { writeSelf({ mode, surplus, estPct: e?.est ?? null, hoursLeft: e?.hoursLeft ?? null, fivePct: st.five?.pct ?? null, updatedAt: new Date(now).toISOString() }); } catch {}
+  return { mode, surplus, e, st, cfg };
 }
 export function calibrate(pct, resets, now = Date.now()) {
   const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); const m = meterAll(cfg, now, true);
@@ -142,16 +148,18 @@ export function setTopLevel(toml, kv) {
 }
 const modeKV = (mc, cfg) => ({ ...(mc.model ? { model: mc.model } : {}), model_reasoning_effort: mc.effort, service_tier: mc.service_tier || null, tool_output_token_limit: cfg.tuning.tool_output_token_limit, model_auto_compact_token_limit: cfg.tuning.model_auto_compact_token_limit, plan_mode_reasoning_effort: mc.effort === "low" ? "medium" : mc.effort, project_doc_max_bytes: cfg.tuning.project_doc_max_bytes });
 export function writeProfiles(cfg = loadConfig()) {
-  for (const mode of ["green", "amber", "red"]) {
+  for (const mode of ["green", "amber", "red", "surplus"]) {
     const f = path.join(codexHome(), `usage-max-${mode}.config.toml`);
     let t = ""; for (const [k, v] of Object.entries(modeKV(cfg.modes[mode], cfg))) if (v !== null) t += `${k} = ${typeof v === "number" ? v : JSON.stringify(v)}\n`;
     fs.mkdirSync(codexHome(), { recursive: true }); fs.writeFileSync(f, `# managed by usage-max (mode ${mode})\n` + t);
   }
 }
-export function applyMode(mode, cfg = loadConfig()) {
+export const modeKey = (mode, surplus) => mode + (surplus ? "+s" : "");
+export function markApplied(key) { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.appliedKey = key; wj(sf, st); }
+export function applyMode(mode, cfg = loadConfig(), surplus = false) {
   const f = path.join(codexHome(), "config.toml"); let t = ""; try { t = fs.readFileSync(f, "utf8"); } catch {}
   fs.mkdirSync(codexHome(), { recursive: true }); if (t) { try { fs.writeFileSync(f + ".usage-max-backup", t, { flag: "wx" }); } catch {} }
-  fs.writeFileSync(f, setTopLevel(t, modeKV(cfg.modes[mode], cfg)).replace(/\n*$/, "\n")); writeProfiles(cfg);
+  fs.writeFileSync(f, setTopLevel(t, modeKV(cfg.modes[mode === "green" && surplus ? "surplus" : mode], cfg)).replace(/\n*$/, "\n")); writeProfiles(cfg); markApplied(modeKey(mode, surplus));
 }
 export function modelsSeen() {
   const out = {}; for (const f of walk(path.join(codexHome(), "sessions"))) { let t; try { t = fs.readFileSync(f, "utf8"); } catch { continue; } for (const m of t.matchAll(/"model"\s*:\s*"([^"]+)"/g)) out[m[1]] = (out[m[1]] || 0) + 1; }
@@ -171,6 +179,7 @@ export function doctor(home = codexHome()) {
   placeholder ? bad("a mode uses a model name your sessions never used (placeholder?)", "node scripts/codex-governor.mjs models, then edit ~/.usage-max-codex/config.json modes") : ok("mode models are unset (your own model is kept) or match models you have used");
   gs.calib ? ok(`calibrated (${gs.calib.source === "plan" ? "automatically from Codex rate_limits" : "manually"}): ${gs.calib.pct}%`) : bad("not calibrated yet", "use Codex once (the plan % is read from its own logs) or: calibrate <pct from /status> --resets <ISO>");
   /usage-max:start/.test(rd(path.join(home, "AGENTS.md"))) ? ok("AGENTS.md block present") : bad("AGENTS.md block missing", "node scripts/install.mjs");
+  { const o = readOther(); o ? (isFresh(o) ? ok("shared status with Claude: fresh") : ok("shared status with Claude: stale")) : ok("shared status with Claude: none"); }
   const walkCount = [...walk(path.join(home, "sessions"))].length; walkCount ? ok(`${walkCount} Codex session logs found`) : bad("no Codex session logs under " + path.join(home, "sessions"), "run Codex once; check CODEX_HOME");
   return out.join("\n");
 }
@@ -181,12 +190,14 @@ if (isMain) {
   if (cmd === "models") { const m = modelsSeen(); console.log(Object.keys(m).length ? "models seen in your Codex sessions (set config.json modes to ones your plan has):\n" + Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `  ${k}  (${v})`).join("\n") : "no sessions found under " + codexHome()); process.exit(0); }
   if (cmd === "calibrate") { const pct = Number(a[0]); const r = flag("--resets"); if (!(pct >= 0) || !r) { console.error("usage: calibrate <pct from /status or chatgpt.com/codex/settings/usage> --resets <ISO>"); process.exit(2); } calibrate(pct, r); }
   if (cmd === "mode") { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.override = a[0] === "auto" ? null : a[0]; wj(sf, st); }
-  const { mode, e, st, cfg } = evaluate(Date.now(), true);
-  if (cmd === "apply" || cmd === "mode" || cmd === "calibrate") { try { applyMode(mode, cfg); } catch (x) { console.error("apply failed:", x.message); } }
+  const { mode, surplus, e, st, cfg } = evaluate(Date.now(), true);
+  if (cmd === "apply" || cmd === "mode" || cmd === "calibrate") { try { applyMode(mode, cfg, surplus); } catch (x) { console.error("apply failed:", x.message); } }
   if (cmd === "profiles") writeProfiles(cfg);
-  const mc = cfg.modes[mode];
-  console.log(`mode=${mode.toUpperCase()}${st.override ? " (manual)" : ""}  new sessions: ${mc.model || "(your model)"} @ ${mc.effort}`);
+  const mc = cfg.modes[mode === "green" && surplus ? "surplus" : mode];
+  console.log(`mode=${mode.toUpperCase()}${surplus ? "+SURPLUS" : ""}${st.override ? " (manual)" : ""}  new sessions: ${mc.model || "(your model)"} @ ${mc.effort}`);
   if (st.calib && st.calib.source === "plan") console.log(`plan (from Codex rate_limits): weekly ${st.calib.pct}% as of ${new Date(st.calib.at).toLocaleString()}${st.five ? `, 5h window ${st.five.pct}%` : ""}`);
   console.log(e ? `est plan ${e.est.toFixed(1)}%  hours to reset ${e.hoursLeft.toFixed(1)}  burn ${e.rate.toFixed(2)}%/h  sustainable ${(Math.max(0, cfg.target - e.est) / Math.max(e.hoursLeft, .5)).toFixed(2)}%/h` : "not calibrated: run `calibrate <pct> --resets <ISO>` using the % shown by /status");
+  if (surplus && e) { const p = e.projected; console.log(`surplus: projected ~${Math.round(p)}% at reset, ~${Math.round(100 - p)}% of the week would go unused — higher effort allowed on hard problems`); }
+  { const o = readOther(); if (o && isFresh(o)) console.log(`claude plan: ${o.mode}${o.surplus ? "+surplus" : ""}${typeof o.estPct === "number" ? `, week ~${Math.round(o.estPct)}% used` : ""}${typeof o.hoursLeft === "number" ? `, ${Math.round(o.hoursLeft)}h to reset` : ""}`); }
   if (cmd === "gate") process.exit({ green: 0, amber: 10, red: 20 }[mode]);
 }

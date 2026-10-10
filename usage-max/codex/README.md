@@ -17,3 +17,9 @@ Weights are relative (luna 1, sol 20, astra 65) per code; calibration absorbs th
 1. `node scripts/install.mjs`
 2. Start Codex, run `/hooks`, and **trust the usage-max hooks**. Codex silently skips untrusted hooks. Re-trust after moving or reinstalling the plugin (the path is part of the hook identity).
 3. `node scripts/codex-governor.mjs doctor` tells you exactly what is missing. Calibration is automatic after your first Codex turn (the plan % is read from Codex's own `rate_limits`).
+
+## Surplus mode
+When the mode is GREEN, the 5h guard is green, and the week is projected to end under 80% used with more than 12h left, `status` shows `GREEN+SURPLUS` and new sessions use the `surplus` mode's effort (default `high`; edit `modes.surplus` in `~/.usage-max-codex/config.json`). It stays on until the projection passes 90%, the mode leaves green, or 12h or less remain. `gate` still exits 0.
+
+## Balancing with Claude
+Each side writes its own entry (`codex`/`claude`) in `~/.usage-max/shared.json`. When your Codex plan is AMBER/RED and Claude's fresh (under 6h old) status is GREEN, the SessionStart/UserPromptSubmit hook tells the model to suggest moving big work to Claude. `status` shows a `claude plan:` line and `doctor` reports whether the shared status is fresh, stale or missing.

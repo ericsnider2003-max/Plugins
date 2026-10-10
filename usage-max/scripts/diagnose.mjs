@@ -42,7 +42,8 @@ for (const file of await listJsonlFiles(dir)) {
     recs.push({ t, model: r.message.model, u: normalizeUsage(r.message.usage), side: r.isSidechain === true || file.includes(`${path.sep}subagents${path.sep}`) || file.includes("/subagents/") });
   }
   recs.sort((a, b) => a.t - b.t);
-  const mainRecs = recs.filter((r) => !r.side).map((r) => ({ t: r.t, u: r.u, p: priceFor(r.model) }));
+  const ctxOf = (u) => u.input + u.created + u.read;
+  const mainRecs = recs.filter((r) => !r.side).map((r) => ({ t: r.t, u: r.u, p: priceFor(r.model, ctxOf(r.u)) }));
   if (mainRecs.length) {
     const rep = replayTtl(mainRecs);
     const proj = path.basename(path.dirname(file));
@@ -53,7 +54,7 @@ for (const file of await listJsonlFiles(dir)) {
   }
   let prevT = 0, first = true;
   for (const r of recs) {
-    const p = priceFor(r.model);
+    const p = priceFor(r.model, r.u.input + r.u.created + r.u.read);
     if (!p) unknownModels.add(r.model);
     const c = turnCost(r.u, p);
     const ctx = r.u.input + r.u.created + r.u.read;
@@ -122,5 +123,10 @@ for (const l of levers) console.log(`  ${usd(l.save).padStart(8)} ${pct(l.save).
 if (projWins.length) {
   console.log(`  projects where a 5m TTL is cheaper:`);
   for (const x of projWins.slice(0, 8)) console.log(`    ${usd(x.save).padStart(8)}  ${x.sessions} sessions  ${x.p}`);
+}
+{ // Data-driven context cap: recommend autoCompactWindow only when this machine's own sessions would save materially.
+  const best = windows.filter((w) => w <= Math.max(report.hubContext.p90, 100000)).map((w) => ({ w, save: capSavings[w] })).sort((a, b) => b.save - a.save)[0];
+  if (best && totals.cost && best.save / totals.cost >= 0.05 && report.hubContext.p90 > 120000) console.log(`context cap: set "autoCompactWindow": ${best.w} (or /autocompact) — saves up to ${usd(best.save)} ${pct(best.save)} here (p90 context ${k(report.hubContext.p90)}); costs one compaction per ${k(best.w)} of growth. Opt in: add {"autoCompactWindow": ${best.w}} to ~/.claude/usage-max/config.json and run /usage-max rescue apply --write`);
+  else console.log(`context cap: not needed (p90 context ${k(report.hubContext.p90)}; a cap would save under 5%)`);
 }
 if (unknownModels.size) console.log(`unpriced models (excluded from cost): ${[...unknownModels].join(", ")}`);

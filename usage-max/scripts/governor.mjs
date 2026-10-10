@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pace } from "./lib.mjs";
+import { writeSelf } from "./shared.mjs";
 import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap } from "./meter.mjs";
 
 export const DEFAULT_CONFIG = {
@@ -23,7 +24,8 @@ export const DEFAULT_CONFIG = {
   modes: {
     green: { model: "claude-opus-5-5", effort: "medium" },
     amber: { model: "claude-opus-5-5", effort: "low" },
-    red: { model: "claude-sonnet-5-5", effort: "low" }
+    red: { model: "claude-sonnet-5-5", effort: "low" },
+    surplus: { model: "claude-opus-5-5", effort: "high", otherEffort: "medium" } // green + allowance going unused: room for harder thinking
   }
 };
 const files = () => ({
@@ -131,7 +133,8 @@ export function patchModel(s, want) {
   s.model = want.model;
   s.effortLevel = want.effort;
   s.modelSettings = { ...(s.modelSettings || {}) };
-  for (const m of ["claude-opus-5-5", "claude-sonnet-5-5"]) s.modelSettings[m] = { ...(s.modelSettings[m] || {}), effortLevel: want.effort };
+  // `otherEffort` lets surplus raise only the hub model while subagent models stay economical.
+  for (const m of ["claude-opus-5-5", "claude-sonnet-5-5"]) s.modelSettings[m] = { ...(s.modelSettings[m] || {}), effortLevel: m === want.model || !want.otherEffort ? want.effort : want.otherEffort };
   return JSON.stringify([s.model, s.effortLevel, s.modelSettings]) !== before;
 }
 
@@ -175,9 +178,18 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
     state.mode = d.mode;
     state.changedAt = state.last.at;
   }
-  if (changed || state.appliedMode !== state.mode) {
-    try { if (applySettings(state.mode, config) !== null) state.appliedMode = state.mode; } catch {}
+  // Surplus: the week is on course to leave >20% unused, so allow higher effort. Hysteresis 80/90, never in amber/red.
+  const projected = est.estPct === null ? null : est.estPct + (est.ratePerHour || 0) * (est.hoursLeft || 0);
+  if (state.mode !== "green" || projected === null || est.hoursLeft <= 12) state.surplus = false;
+  else if (!state.surplus && projected < 80) state.surplus = true;
+  else if (state.surplus && projected > 90) state.surplus = false;
+  state.last.projected = projected;
+  const key = state.mode === "green" && state.surplus ? "surplus" : state.mode;
+  if (changed || state.appliedKey !== key) {
+    try { if (applySettings(key, config) !== null) { state.appliedKey = key; state.appliedMode = state.mode; } } catch {}
   }
+  const fp5 = (readJson(files().limits, null) || {}).five_hour;
+  writeSelf("claude", { mode: state.mode, surplus: Boolean(state.surplus), estPct: est.estPct, hoursLeft: est.hoursLeft, fivePct: fp5 && typeof fp5.used_percentage === "number" ? fp5.used_percentage : null });
   saveState(state);
   return state;
 }
@@ -215,8 +227,9 @@ async function cli() {
   }
   const s = evaluate();
   const l = s.last || {};
-  const want = config.modes[s.mode];
-  console.log(`usage-max budget: ${s.mode.toUpperCase()}${s.override ? " (pinned)" : ""}`);
+  const want = config.modes[s.mode === "green" && s.surplus ? "surplus" : s.mode];
+  console.log(`usage-max budget: ${s.mode.toUpperCase()}${s.surplus ? "+SURPLUS" : ""}${s.override ? " (pinned)" : ""}`);
+  if (s.surplus) console.log(`  surplus: projected ~${fmt(l.projected, 0)}% at reset — ~${fmt(100 - l.projected, 0)}% of the week would go unused, so higher effort is allowed on hard problems`);
   console.log(`  week ~${fmt(l.estPct)}% (est.), ${fmt(l.hoursLeft, 0)}h to reset, target ${config.target}%`);
   console.log(`  burn ${fmt(l.ratePerHour, 2)}%/h over last ${config.burnWindowHours}h${l.rateSource ? ` (from ${l.rateSource})` : ""} vs sustainable ${fmt(l.allowedPerHour, 2)}%/h → ${fmt(l.ratio, 2)}× ${l.ratio > 1 ? "(over)" : "(ok)"}`);
   const hasSettings = fs.existsSync(files().settings);

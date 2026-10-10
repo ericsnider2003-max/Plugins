@@ -2,6 +2,15 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.4.0 (Oct 10 2026)
+- **One command.** Nine slash commands collapsed into `/usage-max <sub>` (status, doctor, budget, gate, check, diagnose, audit, diet, rescue, balance, route, handoff, codex): one thing to remember, less startup context. `doctor` checks Claude and Codex together.
+- **Cross-plan balancing.** Both governors publish their state to `~/.usage-max/shared.json`; when one plan is AMBER/RED and the other is GREEN, Claude (and Codex) are told to shift large work to the plan with headroom (via the codex-dispatch skill when installed).
+- **Surplus mode.** If the week is on course to leave >20% unused (and >12h remain), the hub gets higher effort for hard problems (Opus `high`, subagents stay `medium`); hysteresis 80/90; never in AMBER/RED. Same on Codex.
+- Official prices verified: Sonnet 5.5 cache reads are $0.10; Haiku 5.5 ($0.10 in / $0.50 out up to 100k prompt, $0.50 / $2.50 above) is priced by prompt size.
+- Data-driven context cap: `diagnose` recommends `autoCompactWindow` only when your own sessions would save >=5%; applied only if you opt in.
+- Live-verified in Claude Code: a PreToolUse command rewrite is honoured *without* `permissionDecision: "allow"`, so the trim hook never bypasses your permission prompts.
+- Tests can no longer touch the real `~/.claude` (everything runs in a sandbox home).
+
 ## 0.3.0 (Oct 10 2026)
 - **Self-configuring.** SessionStart now merges the usage profile (settings, status line, marketplace auto-update) with a backup, and tells Claude the routing rules. Opt out: `USAGE_MAX_AUTOAPPLY=off`.
 - **Governor learns from real plan %.** The burn rate now comes from the plan's own percentages (so Cowork/chat usage counts) with no manual calibrate; a pace-aware 5-hour-cap guard tightens only if you would hit the cap before it resets.
@@ -12,7 +21,7 @@ Route every task to the smallest capable model tier and prove the savings from l
 ## 0.2.0 (Oct 10 2026)
 - Usage was counted ~2x (one transcript record per content block repeats the same usage); everything now counts each message once.
 - Weekly reset no longer leaves the governor stuck in last week's mode (Claude and Codex).
-- `scripts/profile.mjs` is the real `/rescue apply`. Diet sees claude.ai/org-synced plugins and reports the measured session-start context. usage-check is cost-weighted. Haiku 5.5 is priced and is the scout model.
+- `scripts/profile.mjs` is the real `/usage-max rescue apply`. Diet sees claude.ai/org-synced plugins and reports the measured session-start context. usage-check is cost-weighted. Haiku 5.5 is priced and is the scout model.
 
 ## Install
 
@@ -20,24 +29,36 @@ Route every task to the smallest capable model tier and prove the savings from l
 /plugin marketplace add ericsnider2003-max/Plugins
 /plugin install usage-max@eric-plugins
 ```
-The first session configures everything itself (check with `/usage-max:budget`). Future versions arrive automatically (`autoUpdate` is set by the profile). Codex: see `codex/README.md`.
+The first session configures everything itself (check with `/usage-max doctor`). Future versions arrive automatically (`autoUpdate` is set by the profile). Codex: see `codex/README.md`.
 
 Uninstall: restore the settings backup, then `claude plugin uninstall usage-max`.
 
+## One command
+
+Everything is `/usage-max <sub>` (no argument = `status`). The same entry works from a terminal: `node scripts/usage-max.mjs <sub>`.
+
+| sub | what it does |
+|---|---|
+| `status` | plan %, mode (GREEN / AMBER / RED, `+SURPLUS`), burn vs sustainable, and the other plan's headroom |
+| `doctor` | is everything active — Claude *and* Codex — and exactly what to fix |
+| `budget [calibrate <pct> --resets <date> \| mode <auto\|green\|amber\|red>]` | the governor |
+| `gate` | exit 0/10/20 for scripts (wrap batch runs with `scripts/claude-lean.mjs --hold-red`) |
+| `check` · `diagnose` · `audit` · `diet` | local-transcript reports: burn by model, ranked savings, leaks, startup context per plugin |
+| `rescue [apply [--write] \| migrate \| halt]` | apply the profile, move background work to bounded one-shots, emergency stop |
+| `balance` | Claude vs Codex headroom |
+| `codex <doctor\|status\|install\|models\|calibrate\|mode\|diet>` | the Codex side |
+| `route <task>` · `handoff` | model-driven: tier a task / write `handoff.md` |
+
+Under it: three subagents (`usage-max-scout` Haiku 5.5, `-worker` Sonnet 5.5, `-reviewer` Sonnet 5.5), the `usage-max-routing` skill, and hooks that configure themselves, track the budget, cap subagents at Sonnet, and tell Claude when to work economically, when allowance is going unused (surplus) and when Codex has headroom.
+
 ## Components
 
-- [plugin.json](.claude-plugin/plugin.json) — manifest (validates clean, incl. `--strict`)
-- [agents/](agents/) — `usage-max-scout` (haiku, read-only+web), `usage-max-worker` (sonnet, verify-by-running), `usage-max-reviewer` (sonnet gate)
-- [routing skill](skills/routing/SKILL.md) — triage rubric, hub discipline, handoff boundaries, escalation (1 retry/tier, 2-failure stop, ≤2 parallel)
-- [commands/](commands/) — `/route`, `/handoff`, `/usage-check`, `/audit`, `/rescue`, `/diagnose`
-- [hooks/](hooks/) — fail-open SessionStart marker + PostToolUse ledger (rotated, 5 files max)
-- [scripts/](scripts/) — `audit.mjs`, `usage-check.mjs` (with `--write-status` for the statusline), `inventory.mjs`, `statusline.mjs`, `check.mjs`, shared `lib.mjs`
-- [profiles/](profiles/) — `settings.enforced.json` (Stage B), `settings.strict.json` (Stage C kill-switch), `background-job.md` (headless one-shot + Task Scheduler fallback)
-- [tests](test/run.mjs) — offline fixtures + hook/statusline verification (`node test/run.mjs`)
+- [scripts/usage-max.mjs](scripts/usage-max.mjs) — the dispatcher; [commands/usage-max.md](commands/usage-max.md) — the one slash command
+- [agents/](agents/), [skills/routing](skills/routing/SKILL.md), [hooks/](hooks/) (fail-open), [scripts/](scripts/), [profiles/](profiles/), [codex/](codex/), [test/](test/)
 
 ## Maximize the plan (measured, Oct 7 2026)
 
-`/usage-max:diagnose` prices every local turn at list price and ranks the levers. On this machine (7 days, 4,004 turns, 642 sessions, ~600 of them automated `claude -p` runs):
+`/usage-max diagnose` prices every local turn at list price and ranks the levers. On this machine (7 days, 4,004 turns, 642 sessions, ~600 of them automated `claude -p` runs):
 
 - Cache writes 43%, output 42%, cache reads 15%. Long context is not the problem (p99 136k, no turn over 151k).
 - 5-minute cache TTL: replaying every session with its real gaps saves ~16%; the 1-hour TTL never paid for its 2× write rate here → `promptCacheTtl: "5m"`.
@@ -66,7 +87,7 @@ One hub session per project on Opus 5.5 (`claude-opus-5-5`, pinned — the `opus
 Codex/ChatGPT port lives in `codex/` (see codex/README.md).
 
 ## Context & cost tools
-- `/usage-max:diet` (`scripts/plugin-diet.mjs`): always-loaded context per plugin/CLAUDE.md/MCP vs real 30-day use from transcripts; `--disable` turns plugins off (new sessions).
+- `/usage-max diet` (`scripts/plugin-diet.mjs`): always-loaded context per plugin/CLAUDE.md/MCP vs real 30-day use from transcripts; `--disable` turns plugins off (new sessions).
 - `scripts/eval-cache.mjs`: content-hash cache for eval/batch commands (stdout + artifacts replay, failures never cached, `status`/`clear`, `USAGE_MAX_EVAL_CACHE=off`).
 - `hooks/bash-trim.mjs`: PreToolUse rewrite of noisy simple commands (npm/pip install/test, pytest, go/cargo test, docker build, make…) through `scripts/trim.mjs` (head/tail/errors; exit status preserved with pipefail). `USAGE_MAX_TRIM=off` disables; commands with pipes/redirects are never touched.
 - Profile adds idle-waste settings: `CLAUDE_CODE_GOAL_CHECKIN_MINUTES=0`, `crossSessionInbound: hold`, `autoContinueAtUsageLimit: true`.

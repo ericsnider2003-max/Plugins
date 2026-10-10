@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Status line: live model + ceiling flag, real plan usage with pacing, context and cache state.
 // Claude Code passes JSON on stdin (model, rate_limits, context_window, prompt_cache). Local only.
-// Side effect: snapshots rate_limits to ~/.claude/usage-max/limits.json so /usage-check can use real numbers.
+// Side effect: snapshots rate_limits to ~/.claude/usage-max/limits.json so /usage-max check can use real numbers.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

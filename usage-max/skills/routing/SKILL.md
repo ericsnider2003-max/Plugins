@@ -43,6 +43,6 @@ The goal is the most finished work per week: no waste, and no unused allowance a
 - Don't toggle MCP servers or deny whole tools mid-session when tool search is off: it invalidates the cache. Plugin skills/commands/agents/hooks are cache-safe.
 - Edits to CLAUDE.md don't apply (or cost anything) until `/clear`, `/compact` or restart. After a long break, accept "resume from summary".
 - Be terse: no restating the question, no narration of obvious steps, no summaries of diffs the user can see. Output is ~40% of spend; short answers are the cheapest lever you control.
-- Run `/usage-max:diet` when startup context looks heavy; unused plugins, long CLAUDE.md and idle MCP servers are paid on every turn.
+- Run `/usage-max diet` when startup context looks heavy; unused plugins, long CLAUDE.md and idle MCP servers are paid on every turn.
 - Batch/eval runs: wrap in `scripts/eval-cache.mjs` (skips unchanged work) and `scripts/claude-lean.mjs --hold-red`.
-- `/usage-max:diagnose` ranks the measured levers on this machine. Act on the top ones, not on generic advice.
+- `/usage-max diagnose` ranks the measured levers on this machine. Act on the top ones, not on generic advice.

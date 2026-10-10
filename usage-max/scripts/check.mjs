@@ -94,7 +94,7 @@ if (skill && skill.name === "usage-max-routing" && skill.description) pass("rout
 else fail("routing skill");
 
 // 4. Commands exist with descriptions.
-for (const cmd of ["route.md", "handoff.md", "usage-check.md", "audit.md", "rescue.md", "diagnose.md", "budget.md", "gate.md", "diet.md"]) {
+for (const cmd of ["usage-max.md"]) {
   const fm = frontmatter(path.join(root, "commands", cmd));
   if (fm && fm.description) pass(`command ${cmd}`);
   else fail(`command ${cmd}`);
@@ -104,7 +104,7 @@ for (const cmd of ["route.md", "handoff.md", "usage-check.md", "audit.md", "resc
 const hooks = readJson(path.join(root, "hooks", "hooks.json"));
 if (hooks && hooks.hooks && hooks.hooks.SessionStart && hooks.hooks.PostToolUse) pass("hooks structure");
 else fail("hooks structure");
-for (const script of ["hooks/session-start.mjs", "hooks/ledger.mjs", "hooks/budget.mjs", "hooks/bash-trim.mjs", "scripts/profile.mjs"]) {
+for (const script of ["hooks/session-start.mjs", "hooks/ledger.mjs", "hooks/budget.mjs", "hooks/bash-trim.mjs", "scripts/profile.mjs", "scripts/usage-max.mjs", "scripts/shared.mjs"]) {
   if (fs.existsSync(path.join(root, script))) pass(`hook script ${script}`);
   else fail(`hook script ${script}`);
 }

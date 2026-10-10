@@ -5,7 +5,8 @@
 //  Stop             -> re-evaluate; on mode change apply profile + systemMessage
 //  PreToolUse Bash  -> trim noisy simple commands via updatedInput (POSIX shells only; USAGE_MAX_TRIM=off disables)
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
-import { evaluate, applyMode, dataDir } from "./codex-governor.mjs";
+import { evaluate, applyMode, dataDir, modeKey } from "./codex-governor.mjs";
+import { readOther, balanceAdvice } from "./shared.mjs";
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
 export function rewrite(cmd, trimPath, platform = process.platform) {
   if (typeof cmd !== "string" || process.env.USAGE_MAX_TRIM === "off") return null;
@@ -25,19 +26,21 @@ function main() {
     return;
   }
   const sf = path.join(dataDir(), "hook-state.json"); let st = {}; try { st = JSON.parse(fs.readFileSync(sf, "utf8")); } catch {}
-  const before = (() => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), "governor.json"), "utf8")).mode; } catch { return "green"; } })();
-  const { mode, cfg, st: gs, e: ge } = evaluate(); if (mode !== before) { try { applyMode(mode, cfg); } catch {} }
+  const prev = (() => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), "governor.json"), "utf8")); } catch { return {}; } })();
+  const before = prev.mode || "green", beforeKey = prev.appliedKey || modeKey(before, prev.surplus);
+  const { mode, surplus, cfg, st: gs, e: ge } = evaluate(); const key = modeKey(mode, surplus); if (key !== beforeKey) { try { applyMode(mode, cfg, surplus); } catch {} }
   const sid = input.session_id || "?"; st.sent = st.sent || {};
   if (ev === "SessionStart" || ev === "UserPromptSubmit") {
-    const k = `${sid}:${mode}`;
+    const k = `${sid}:${key}`;
     if (!st.sent[k]) {
       const plan = ev === "SessionStart" && gs.calib && gs.calib.source === "plan" && ge ? `usage-max plan: weekly ${Math.round(ge.est)}% used, ${Math.round(ge.hoursLeft)}h to reset${gs.five ? `, 5h window ${Math.round(gs.five.pct)}%` : ""}, mode ${mode.toUpperCase()}. ` : "";
-      const text = plan + (DIRECTIVE[mode] || ""); if (text) { st.sent[k] = Date.now(); process.stdout.write(text); } else st.sent[k] = Date.now();
+      const text = plan + (DIRECTIVE[mode] || "") + (surplus && ev === "SessionStart" ? "usage-max: allowance is going unused this week — you may use higher reasoning effort for hard problems." : ""); if (text) { st.sent[k] = Date.now(); process.stdout.write(text); } else st.sent[k] = Date.now();
     }
+    try { const adv = balanceAdvice({ mode }, readOther()); const ak = `${sid}:adv:${adv}`; if (adv && !st.sent[ak]) { st.sent[ak] = Date.now(); process.stdout.write((st.sent[k] ? "\n" : "") + adv); } } catch {}
     const keys = Object.keys(st.sent); if (keys.length > 200) for (const x of keys.slice(0, keys.length - 100)) delete st.sent[x];
     try { fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(sf, JSON.stringify(st)); } catch {}
-  } else if (ev === "Stop" && mode !== before) {
-    process.stdout.write(JSON.stringify({ systemMessage: `usage-max: budget mode ${before.toUpperCase()} -> ${mode.toUpperCase()}. New sessions use ${cfg.modes[mode].model || "your model"} @ ${cfg.modes[mode].effort}; use /model to change this one.` }));
+  } else if (ev === "Stop" && key !== beforeKey) {
+    process.stdout.write(JSON.stringify({ systemMessage: `usage-max: budget mode ${beforeKey.toUpperCase()} -> ${key.toUpperCase()}. New sessions use ${cfg.modes[surplus ? "surplus" : mode].model || "your model"} @ ${cfg.modes[surplus ? "surplus" : mode].effort}; use /model to change this one.` }));
   }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) { try { main(); } catch {} process.exit(0); }

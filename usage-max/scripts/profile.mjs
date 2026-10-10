@@ -34,7 +34,7 @@ try {
 `;
 
 // Pure: returns the merged settings and a human-readable change list.
-export function computeProfile(settings, { profile, launcher, modelWant = null }) {
+export function computeProfile(settings, { profile, launcher, modelWant = null, autoCompactWindow = null }) {
   const next = JSON.parse(JSON.stringify(settings || {}));
   const changes = [];
   const set = (key, value) => {
@@ -57,6 +57,7 @@ export function computeProfile(settings, { profile, launcher, modelWant = null }
     const before = JSON.stringify([next.model, next.effortLevel, next.modelSettings]);
     if (patchModel(next, modelWant)) changes.push(`model/effort: ${before} -> ${JSON.stringify([next.model, next.effortLevel, next.modelSettings])}`);
   }
+  if (Number.isFinite(autoCompactWindow) && autoCompactWindow >= 100000 && autoCompactWindow <= 1000000) set("autoCompactWindow", autoCompactWindow);
   const sl = next.statusLine;
   if (!sl || (sl.command && sl.command.includes("usage-max"))) set("statusLine", { type: "command", command: `node "${fwd(launcher)}"` });
   else changes.push("statusLine: left alone (you already have one)");
@@ -77,7 +78,8 @@ export function apply({ write = false, home = homeDir(), root = pluginRoot } = {
   const launcher = path.join(dataDir(home), "statusline.mjs");
   const config = loadConfig();
   const modelWant = config.manageSettings ? config.modes[loadState().mode] || null : null;
-  const { next, changes } = computeProfile(settings, { profile, launcher, modelWant });
+  const acw = Number(readJson(path.join(dataDir(home), "config.json"), {}).autoCompactWindow);
+  const { next, changes } = computeProfile(settings, { profile, launcher, modelWant, autoCompactWindow: Number.isFinite(acw) && acw > 0 ? acw : null });
   const real = changes.filter((c) => !c.startsWith("statusLine: left alone"));
   let wrote = false;
   let backup = null;

@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { aboveCeiling } from "../scripts/ceiling.mjs";
+import { readOther, balanceAdvice } from "../scripts/shared.mjs";
 
 // Resolve from this file, not CLAUDE_PLUGIN_ROOT: that env var can be inherited from another plugin's process.
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -70,11 +71,12 @@ try {
   const opusAlias = (settings.env && settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL) || process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || null;
   // The governor deliberately moves the model in amber/red, so only GREEN requires the exact profile model.
   const enforced = budgetMode !== "green" ? Boolean(settings.model) : settings.model === expected && opusAlias === expectedOpusAlias;
-  if (!enforced && !(applied && applied.wrote)) notes.push("profile not applied; run /usage-max:rescue apply");
+  if (!enforced && !(applied && applied.wrote)) notes.push("profile not applied; run /usage-max rescue apply --write");
   if (aboveCeiling(model)) notes.push(`model ${model} is ABOVE the Opus 5.5 ceiling — switch with /model ${expected}`);
-  if (!calibrated && !live) notes.push("budget is still learning: real plan % appears once the status line has rendered a reply (or /usage-max:budget calibrate <pct> --resets <date>)");
+  if (!calibrated && !live) notes.push("budget is still learning: real plan % appears once the status line has rendered a reply (or /usage-max budget calibrate <pct> --resets <date>)");
 
-  const rules = "usage-max rules: delegate search/read/web/format to usage-max-scout (Haiku) and edits/tests/refactors to usage-max-worker (Sonnet); gate big changes with usage-max-reviewer; subagents never above Sonnet; do micro-tasks inline; keep one model per session; be terse. " + (budgetMode === "green" ? "" : `Budget is ${budgetMode.toUpperCase()}: work economically.`);
+  const advice = balanceAdvice({ mode: budgetMode }, readOther("codex"), Date.now(), { selfName: "Claude", otherName: "Codex", dispatch: " (codex-dispatch skill if installed)" });
+  const rules = (advice ? advice + "\n" : "") + (gov && gov.surplus && budgetMode === "green" ? "usage-max surplus: allowance is going unused this week, higher effort is fine on hard problems.\n" : "") + "usage-max rules: delegate search/read/web/format to usage-max-scout (Haiku) and edits/tests/refactors to usage-max-worker (Sonnet); gate big changes with usage-max-reviewer; subagents never above Sonnet; do micro-tasks inline; keep one model per session; be terse. " + (budgetMode === "green" ? "" : `Budget is ${budgetMode.toUpperCase()}: work economically.`);
   console.log(`usage-max routing-active model=${model} (${source}) profile=${enforced || (applied && applied.wrote) ? "enforced" : "not-applied"} budget=${budgetMode} ceiling=opus-5.5${notes.length ? ` — ${notes.join("; ")}` : ""}\n${rules}`);
   process.exitCode = 0;
 } catch {
