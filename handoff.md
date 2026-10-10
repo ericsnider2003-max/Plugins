@@ -73,3 +73,6 @@ Cloud sessions (desktop app, cloud icon, CLAUDE_CODE_REMOTE=true) start from a b
 
 ## 0.7.0 notes
 Codex handoff P1-P4 shipped: Windows-safe trim wrapper (plain words only, off on Windows until `selftest-trim` passes), `savings`, `backup`/`restore`. PowerShell/cmd are unverified in the cloud; the user must run `selftest-trim` once.
+
+## 0.8.0 notes
+Guards in usage-max/scripts/guard.mjs + hooks/guard.mjs (cold cache, compact nudge, loop, Read hints, subagent cap), ctxfiles.mjs (`context`), digest, queue, chat-prefs. Tests: usage-max/test/guard.mjs (in CI) and live.mjs check 6. Not built: Codex-side equivalents of loop/Read guards.

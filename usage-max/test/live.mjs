@@ -64,6 +64,12 @@ fs.writeFileSync(path.join(proj, ".claude", "settings.json"), JSON.stringify({ h
 const c = run("Run exactly this bash command and reply with its output only: echo ORIGINAL", { cwd: proj, extra: ["--allowedTools", "Bash"] });
 check("command rewrite works without permissionDecision allow", /REWRITTEN/.test(c.result.result || ""), JSON.stringify(c.result.result || "").slice(0, 60));
 
+// 6: Read guard fires through the real CLI (re-read of an unchanged file) and does not trigger a permission prompt
+fs.writeFileSync(path.join(work, "cwd", "notes.txt"), "line\n".repeat(20));
+const d = run("Use the Read tool on notes.txt, then use the Read tool on notes.txt a second time, then reply: done", { extra: ["--allowedTools", "Read"] });
+const rh = d.events.find((e) => e.subtype === "hook_response" && e.hook_event === "PreToolUse" && /already read in full/.test(e.output || ""));
+check("Read guard hints on an unchanged re-read", Boolean(rh), rh ? "hint delivered" : "no hint seen");
+check("Read guard asked for no permission", (d.result.permission_denials || []).length === 0);
 console.log(`\nworkdir: ${work}`);
 console.log(failures ? `${failures} live check(s) failed` : "All live checks passed");
 process.exit(failures ? 1 : 0);

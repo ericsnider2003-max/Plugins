@@ -35,6 +35,9 @@ Optional Codex extras (run in a terminal; <bin> is the folder 2-INSTALL-CODEX pr
       node <bin>/scripts/codex-governor.mjs savings         what trimming really saved (measured vs estimated)
       node <bin>/scripts/codex-governor.mjs backup          saves your Codex usage-max setup (restore --check to verify)
 
+CHATS (Claude.ai, Cowork, ChatGPT have no hooks): paste 5-PASTE-INTO-CHAT-SETTINGS.txt into each app's standing
+instructions ONCE; after that every chat follows it with no reminding.
+
 THEN: run 3-CHECK-EVERYTHING any time. Lines starting with FIX say exactly what to do.
 
 Biggest saving to do once: type  /usage-max diet  in Claude. It lists the plugins that add the most
