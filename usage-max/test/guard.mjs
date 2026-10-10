@@ -186,4 +186,35 @@ await t("local offload: loopback only, refuses secrets and oversize, runs a job 
   } finally { srv.close(); }
   assert.equal((await O.status("http://example.com")).ready, false); assert.match((await O.status("http://127.0.0.1:1")).why, /no local model server/);
 });
+await t("codex guards: 3rd identical command gets a note and keeps its exit code; big cat is capped (really run in sh); win32/off do nothing", async () => {
+  const CG = await import(pathToFileURL(path.join(root, "codex/scripts/codex-guards.mjs")).href); const { spawnSync } = await import("node:child_process");
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "cgd-")); const big = path.join(d, "big file.txt"), big2 = path.join(d, "big.txt"); fs.writeFileSync(big2, Array.from({ length: 8000 }, (_, i) => "line " + i).join("\n"));
+  assert.equal(CG.guard(d, "s", "make test-all", d, "linux"), null); assert.equal(CG.guard(d, "s", "make test-all", d, "linux"), null);
+  const c3 = CG.guard(d, "s", "make test-all", d, "linux"); assert.match(c3, /rc=\$\?/); assert.match(c3, /run 3 times in a row/);
+  const r = spawnSync("sh", ["-c", c3.replace("make test-all", "sh -c 'echo hi; exit 7'")], { encoding: "utf8" }); assert.equal(r.status, 7, "original exit code kept"); assert.match(r.stdout, /hi/); assert.match(r.stdout, /run 3 times/);
+  assert.equal(CG.guard(d, "s", "make other-thing", d, "linux"), null, "a different command resets the streak");
+  const bc = CG.guard(d, "s2", "cat big.txt", d, "linux"); assert.ok(bc.startsWith("sed -n '1,200p'")); const o = spawnSync("sh", ["-c", bc], { encoding: "utf8" }); assert.equal(o.stdout.split("\n").filter((x) => x.startsWith("line ")).length, 200); assert.match(o.stdout, /only the first 200 lines are shown/);
+  fs.writeFileSync(path.join(d, "small.txt"), "hi"); assert.equal(CG.guard(d, "s2", "cat small.txt", d, "linux"), null); assert.equal(CG.guard(d, "s2", "cat big.txt | head", d, "linux"), null); assert.equal(CG.guard(d, "s2", "cat big.txt", d, "win32"), null);
+  assert.equal(CG.guard(d, "s2", "cat big.txt", d, "linux", { USAGE_MAX_GUARDS: "off" }), null); assert.ok(CG.stats(d).bigCats >= 1);
+});
+await t("codex trim check: re-runs within 3 minutes switch trim off after 10 samples; re-enable resets", async () => {
+  const TC = await import(pathToFileURL(path.join(root, "codex/scripts/trimcheck.mjs")).href); const d = fs.mkdtempSync(path.join(os.tmpdir(), "tcc-"));
+  for (let i = 0; i < 6; i++) TC.record(d, "npm test " + i, 1000 + i); for (let i = 0; i < 4; i++) TC.record(d, "npm test " + i, 2000 + i); assert.equal(TC.isDisabled(d), true, "4 of 10 re-run");
+  TC.setEnabled(d, true); assert.equal(TC.isDisabled(d), false); assert.equal(TC.summary(d), null);
+});
+await t("auto handoff: builds a resume file from a transcript with no model call (requests, edited files, open todos), skips system noise", async () => {
+  const H = await import(pathToFileURL(path.join(root, "scripts/autohandoff.mjs")).href); const d = fs.mkdtempSync(path.join(os.tmpdir(), "ah-")); const tf = path.join(d, "t.jsonl");
+  const u = (c) => JSON.stringify({ type: "user", cwd: d, gitBranch: "feat", message: { content: c } }) + "\n"; const a = (b) => JSON.stringify({ type: "assistant", message: { content: b } }) + "\n";
+  fs.writeFileSync(tf, u("fix the login bug") + u("<system-reminder>ignore me</system-reminder>") + a([{ type: "tool_use", name: "Edit", input: { file_path: "/x/auth.js" } }, { type: "tool_use", name: "Edit", input: { file_path: "/x/auth.js" } }, { type: "tool_use", name: "TodoWrite", input: { todos: [{ content: "add test", status: "pending" }, { content: "done thing", status: "completed" }] } }]) + u("now add a test"));
+  const f = H.write(d, "abcdef123456", tf, { now: new Date("2026-10-10T10:00:00Z") }); assert.ok(fs.existsSync(f)); const md = fs.readFileSync(f, "utf8");
+  assert.match(md, /1\. fix the login bug/); assert.match(md, /2\. now add a test/); assert.ok(!/ignore me/.test(md)); assert.match(md, /auth\.js \(2 edits\)/); assert.match(md, /\[ \] add test/); assert.ok(!/done thing/.test(md)); assert.match(md, /Branch: feat/);
+  assert.equal(H.write(d, "x", path.join(d, "missing.jsonl")), null);
+});
+await t("codex weights: learned only with real plan movement; relative to the cheapest model", async () => {
+  const W = await import(pathToFileURL(path.join(root, "codex/scripts/codex-weights.mjs")).href); const ev = []; let wk = 0, t = 0;
+  for (let i = 0; i < 40; i++) { wk += 0.5; ev.push({ t: t++, model: "cheap", wk, input: 10000, cached: 9000, output: 200 }); }
+  for (let i = 0; i < 25; i++) { wk += 2; ev.push({ t: t++, model: "pricey", wk, input: 10000, cached: 9000, output: 200 }); }
+  const r = W.learn(ev); assert.equal(r.rows.length, 2); assert.equal(r.rows.find((x) => x.model === "cheap").weight, 1); assert.ok(r.rows.find((x) => x.model === "pricey").weight >= 3);
+  assert.equal(W.learn(ev.slice(0, 5)).rows.length, 0); assert.match(W.format(W.learn([])), /not enough/);
+});
 console.log(`${n} passing`);

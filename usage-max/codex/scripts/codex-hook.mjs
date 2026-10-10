@@ -3,11 +3,12 @@
 //  SessionStart     -> meter + evaluate; plain stdout = context (budget directive when AMBER/RED)
 //  UserPromptSubmit -> once per session per mode: directive context in AMBER/RED
 //  Stop             -> re-evaluate; on mode change apply profile + systemMessage
+//  PreToolUse Bash  -> guards (codex-guards.mjs: 3rd identical command note, big `cat` capped) WITHOUT a permission decision, so approval is never changed; then
 //  PreToolUse Bash  -> trim noisy simple commands via updatedInput -> `node run-trimmed.mjs run <plain words>` (readable, any shell). Off: USAGE_MAX_TRIM=off or config.json trim:"off".
 //                      win32 only after `codex-governor.mjs selftest-trim` wrote trim-ok.json (or USAGE_MAX_TRIM=force).
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import { evaluate, applyMode, dataDir, modeKey, codexHome } from "./codex-governor.mjs";
-import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs";
+import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import { guard } from "./codex-guards.mjs"; import * as TC from "./trimcheck.mjs";
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
 const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
 export { wrap };
@@ -27,7 +28,10 @@ function main() {
   seen(ev);
   if (ev === "PreToolUse") {
     if (input.tool_name !== "Bash" || !input.tool_input) return;
-    const nc = rewrite(input.tool_input.command, path.join(path.dirname(fileURLToPath(import.meta.url)), "run-trimmed.mjs"));
+    const nc = TC.isDisabled(dataDir()) ? null : rewrite(input.tool_input.command, path.join(path.dirname(fileURLToPath(import.meta.url)), "run-trimmed.mjs"));
+    if (nc) TC.record(dataDir(), input.tool_input.command);
+    const gc = nc ? null : guard(dataDir(), input.session_id || "?", input.tool_input.command, input.cwd);
+    if (gc) { process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { ...input.tool_input, command: gc } } })); return; }
     if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", updatedInput: { ...input.tool_input, command: nc } } }));
     return;
   }

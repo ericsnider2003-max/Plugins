@@ -19,7 +19,7 @@
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
 //   chat-prefs      paste-once text for Claude.ai / Cowork / ChatGPT (chats have no hooks)
 //   enable-here [dir] [--lean a,b]  (--lean: turn every other installed plugin off for that repo) make every session on a repo load usage-max (writes <dir>/.claude/settings.json; commit it)
-//   codex <sub>     doctor|status|install|models|calibrate|mode|diet|diagnose|gate (the Codex side)
+//   codex <sub>     doctor|status|install|models|calibrate|mode|diet|diagnose|weights|gate (the Codex side)
 //   route|handoff   handled by the model (see commands/usage-max.md)
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -148,7 +148,7 @@ const map = {
   audit: () => { const a = run(S("audit.mjs"), rest); return a || run(S("inventory.mjs"), rest); },
   diet: () => run(S("plugin-diet.mjs"), rest),
   rescue: () => rescue(rest),
-  codex: () => { const s = rest[0] || "status"; const f = { diet: "codex-diet.mjs", install: "install.mjs", lean: "codex-lean.mjs", diagnose: "codex-diagnose.mjs" }[s]; return f ? run(C(f), rest.slice(1)) : run(C("codex-governor.mjs"), rest.length ? rest : ["status"]); },
+  codex: () => { const s = rest[0] || "status"; const f = { diet: "codex-diet.mjs", install: "install.mjs", lean: "codex-lean.mjs", diagnose: "codex-diagnose.mjs", weights: "codex-weights.mjs" }[s]; return f ? run(C(f), rest.slice(1)) : run(C("codex-governor.mjs"), rest.length ? rest : ["status"]); },
   context: () => run(S("ctxfiles.mjs"), rest),
   digest: () => { const d = digestOf(); console.log(d.lines.length ? `usage-max actions since ${String(d.since).slice(0, 10)} (counts only; what each saved depends on your work):\n${d.lines.join("\n")}` : "usage-max: nothing recorded yet (the guards count what they do as you work)."); console.log(""); return run(C("codex-governor.mjs"), ["savings"]); },
   savings: async () => {

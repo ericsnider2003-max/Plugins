@@ -32,7 +32,9 @@ try {
   } else if (ev === "UserPromptSubmit") {
     const msg = G.promptCheck(dir, sid, { ctx: G.lastContext(input.transcript_path), ttlMs: G.cacheTtlMs(home) });
     const cap = G.loadCap(dir), capMsg = cap ? G.capCheck(dir, sid, G.sessionCost(input.transcript_path), cap) : null;
-    if (msg || capMsg) out({ systemMessage: [msg, capMsg].filter(Boolean).join("\n") });
+    let handoffMsg = null;
+    if (msg && /sat idle/.test(msg)) { try { const { write } = await import("../scripts/autohandoff.mjs"); const hf = write(dir, sid, input.transcript_path); if (hf) { G.bump(dir, "autoHandoffs"); handoffMsg = `usage-max wrote a free handoff (no model call): ${hf}\nTo avoid re-reading the cold context: /clear, then say "Continue from the handoff file at ${hf}".`; } } catch {} }
+    if (msg || capMsg || handoffMsg) out({ systemMessage: [msg, handoffMsg, capMsg].filter(Boolean).join("\n") });
   } else if (ev === "Stop") {
     G.touch(dir, sid);
   } else if (ev === "PostToolUse") {

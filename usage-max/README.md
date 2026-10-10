@@ -2,6 +2,12 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.14.0 (Oct 10 2026) — closing the open items
+- **Automatic handoff (Claude).** When the idle-cache warning fires on a big context, usage-max now also writes a handoff file straight from the transcript, with no model call: your recent requests, files changed, open todos, git status and recent commits. `/clear`, then point the new session at the file. Files live in `~/.claude/usage-max/handoffs` and are deleted after 14 days.
+- **Codex guards.** The 3rd identical shell command in a row gets a note appended to its output (exit code preserved); a bare `cat <big file>` shows the first 200 lines plus how to read ranges. They never change approval (no permission decision is sent), do nothing on Windows (shell quoting unverified there), and switch off with `USAGE_MAX_GUARDS=off` or `config.json` `"guards":"off"`. Whether your Codex version honours the rewrite is unverified: if it does not, they are harmless no-ops.
+- **Codex trim self-test.** Same rule as Claude: a trimmed command re-run within 3 minutes counts against trim, and above 30% after 10 samples trim switches itself off.
+- **`/usage-max codex weights`**: learns each model's relative plan cost from your own logs (plan points moved per token), so you do not need the rate card; `--apply` writes them into the Codex governor config. An estimate, needing real movement per model before it reports.
+
 ## 0.13.0 (Oct 10 2026) — local-model offload
 - **`/usage-max offload`**: bounded text jobs (`summarize`, `commit`, `explain`, `docstrings`, `convert:<format>`) run on a model on YOUR machine (Ollama), so they cost no Claude or Codex usage and the code never leaves the PC. Example: `git diff --staged | usage-max offload commit`.
 - Built-in safety: loopback addresses only (refuses anything not 127.0.0.1/localhost), refuses secrets files and text containing private keys or tokens, input capped at 60k characters, output labelled "unverified". It never installs or downloads a model: `offload status` tells you what to install (Ollama, then e.g. `ollama pull qwen2.5-coder:7b`).

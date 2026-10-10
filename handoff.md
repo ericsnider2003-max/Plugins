@@ -91,3 +91,6 @@ codex-diagnose.mjs (real rate-limit % attribution), hooks/cross-gate.mjs (PreToo
 
 ## 0.13.0 notes
 scripts/offload.mjs (Ollama, loopback only, tested with a stub server, never with a real model). User wants local-model offload. First real-world check: install Ollama, pull a small coder model, run `usage-max offload status` then `git diff --staged | usage-max offload commit`.
+
+## 0.14.0 notes
+Closed: Claude auto-handoff (scripts/autohandoff.mjs, wired in hooks/guard.mjs), Codex guards (codex-guards.mjs; NO permissionDecision on purpose), Codex trim self-test (trimcheck.mjs), `codex weights` (codex-weights.mjs). Known: Codex trim hook still returns permissionDecision allow (pre-existing, finding #8 in this file); live-verify updatedInput without allow in a real Codex before removing it. Still needs the user's PC: real Ollama, real Codex logs, live.mjs.
