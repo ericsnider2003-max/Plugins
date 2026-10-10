@@ -83,7 +83,7 @@ export function meterFiles(m, files) {
   let added = 0;
   const seen = new Set(m.recentIds || []);
   for (const f of files) {
-    const r = scanFrom(f, m.offsets[f] || 0, 0, seen);
+    const r = scanFrom(f, m.offsets[f] || 0, Date.now() - 8 * 86400000, seen);
     m.offsets[f] = r.end;
     m.cum += r.cost;
     added += r.cost;

@@ -55,7 +55,9 @@ async function loopMentions(projectsDir, recentDays) {
       if (!line || !line.includes("/loop")) continue;
       try {
         const record = JSON.parse(line);
-        if (record && record.type === "user") {
+        const c = record && record.message && record.message.content;
+        const text = typeof c === "string" ? c : Array.isArray(c) ? c.map((x) => (x && x.text) || "").join(" ") : "";
+        if (record && record.type === "user" && /^\s*(?:<command-name>)?\/loop\b/.test(text)) {
           hits.push({ file, project: path.basename(path.dirname(file)), timestamp: record.timestamp || null });
           break;
         }

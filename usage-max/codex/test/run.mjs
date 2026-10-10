@@ -43,7 +43,7 @@ console.log(`${n} passing (incl. diet)`);
   t("hook SessionStart injects RED directive once", () => { const a = hook("SessionStart", { session_id: "s1" }); assert.match(a.stdout, /usage-max RED/); assert.equal(hook("UserPromptSubmit", { session_id: "s1" }).stdout, ""); assert.match(hook("UserPromptSubmit", { session_id: "s2" }).stdout, /RED/); });
   g("mode", "green");
   t("hook Stop reports mode change; green silent start", () => { assert.equal(hook("SessionStart", { session_id: "s9" }).stdout, ""); });
-  t("hook PreToolUse trims noisy bash (posix) / skips win32", () => { const o = JSON.parse(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "pytest" } }, { USAGE_MAX_TRIM: "force" }).stdout); assert.equal(o.hookSpecificOutput.permissionDecision, undefined); assert.match(o.hookSpecificOutput.updatedInput.command, /pipefail; pytest 2>&1 \| node ".*trim.mjs"/); assert.equal(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "ls" } }, { USAGE_MAX_TRIM: "force" }).stdout, ""); assert.equal(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "pytest" } }, { USAGE_MAX_TRIM: "off" }).stdout, ""); });
+  t("hook PreToolUse trims noisy bash (posix) / skips win32", () => { const o = JSON.parse(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "pytest" } }, { USAGE_MAX_TRIM: "force" }).stdout); assert.equal(o.hookSpecificOutput.permissionDecision, "allow"); /* Codex rejects updatedInput without allow; allow only continues with the rewritten input */ assert.match(o.hookSpecificOutput.updatedInput.command, /pipefail; pytest 2>&1 \| node ".*trim.mjs"/); assert.equal(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "ls" } }, { USAGE_MAX_TRIM: "force" }).stdout, ""); assert.equal(hook("PreToolUse", { tool_name: "Bash", tool_input: { command: "pytest" } }, { USAGE_MAX_TRIM: "off" }).stdout, ""); });
   t("hook fail-open on garbage", () => { const r = spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "Stop"], { input: "{{", encoding: "utf8", env }); assert.equal(r.status, 0); });
   t("installer merges hooks.json preserving others", () => { fs.writeFileSync(path.join(ch, "hooks.json"), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "echo mine" }] }] } })); for (let i = 0; i < 2; i++) spawnSync("node", [path.join(root, "scripts/install.mjs")], { env }); const h = JSON.parse(fs.readFileSync(path.join(ch, "hooks.json"), "utf8")); assert.equal(h.hooks.Stop.length, 2); assert.ok(JSON.stringify(h).includes("echo mine")); for (const e of ["SessionStart", "UserPromptSubmit", "Stop", "PreToolUse"]) assert.equal(JSON.stringify(h.hooks[e]).split("codex-hook.mjs").length, 2, e); });
   t("models command lists seen models", () => { const r = g("models"); assert.match(r.stdout, /gpt-6\.1-sol/); });
@@ -91,5 +91,32 @@ console.log(`${n} passing (incl. hooks)`);
     fs.appendFileSync(f, tok(t0 - 500)); gov.evaluate(t0 + 1000); const b = Object.values(gov.loadMeter().hours).reduce((x, y) => x + y, 0); assert.equal(b, a);
     gov.evaluate(t0 + 2000, true); const c = Object.values(gov.loadMeter().hours).reduce((x, y) => x + y, 0); assert.ok(c > a);
   });
+}
+// auto-calibration from Codex's own rate_limits
+const cgMod = await import(pathToFileURL(path.join(root, "scripts/codex-governor.mjs")).href);
+{
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), "umrl-")); const e2 = { ...process.env, USAGE_MAX_HOME: h }; delete e2.CODEX_HOME;
+  const d = path.join(h, ".codex/sessions/2026/10/10"); fs.mkdirSync(d, { recursive: true }); const now2 = Date.now();
+  const ev = (ms, rl, info) => JSON.stringify({ timestamp: new Date(now2 - ms).toISOString(), type: "event_msg", payload: { type: "token_count", info, rate_limits: rl } });
+  const wk = (pct) => ({ primary: { used_percent: 20, window_minutes: 300, resets_at: Math.floor(now2 / 1000) + 3 * 3600 }, secondary: { used_percent: pct, window_minutes: 10080, resets_at: Math.floor(now2 / 1000) + 36 * 3600 } });
+  fs.writeFileSync(path.join(d, "rollout-rl.jsonl"), [JSON.stringify({ timestamp: new Date(now2 - 7200e3).toISOString(), type: "turn_context", payload: { model: "m" } }), ev(3600e3, wk(60), { last_token_usage: { input_tokens: 100000, cached_input_tokens: 0, output_tokens: 5000 } }), ev(60e3, wk(67), null)].join("\n") + "\n");
+  const r = spawnSync("node", [path.join(root, "scripts/codex-governor.mjs"), "status"], { env: e2, encoding: "utf8" });
+  t("auto-calibrates from rate_limits (no manual calibrate)", () => { assert.match(r.stdout, /plan \(from Codex rate_limits\): weekly 67%/); assert.match(r.stdout, /5h window 20%/); assert.match(r.stdout, /est plan 67/); assert.match(r.stdout, /hours to reset 3[56]/); });
+  const hot = ev(1e3, { primary: { used_percent: 96, window_minutes: 300, resets_at: Math.floor(now2 / 1000) + 3600 }, secondary: { used_percent: 30, window_minutes: 10080, resets_at: Math.floor(now2 / 1000) + 100 * 3600 } }, null);
+  fs.appendFileSync(path.join(d, "rollout-rl.jsonl"), hot + "\n");
+  const g2 = spawnSync("node", [path.join(root, "scripts/codex-governor.mjs"), "gate"], { env: e2, encoding: "utf8" });
+  t("5-hour window at 96% forces RED even when the week is fine", () => assert.equal(g2.status, 20, g2.stdout));
+  t("fiveFloor is pace-aware", () => { const { fiveFloor } = cgMod; const n3 = Date.now(); assert.equal(fiveFloor({ pct: 85, resetsAt: Math.floor(n3 / 1000) + 1200, windowMinutes: 300 }, n3), "green"); assert.equal(fiveFloor({ pct: 45, resetsAt: Math.floor(n3 / 1000) + 3 * 3600, windowMinutes: 300 }, n3), "amber"); assert.equal(fiveFloor({ pct: 60, resetsAt: Math.floor(n3 / 1000) + 3 * 3600, windowMinutes: 300 }, n3), "red"); assert.equal(fiveFloor({ pct: 96, resetsAt: Math.floor(n3 / 1000) + 3600, windowMinutes: 300 }, n3), "red"); });
+  const hk = spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "SessionStart"], { input: JSON.stringify({ session_id: "zz" }), env: e2, encoding: "utf8" });
+  t("SessionStart tells the model the real plan numbers", () => assert.match(hk.stdout, /usage-max plan: weekly \d+% used, \d+h to reset, 5h window 96%, mode RED/));
+}
+{
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), "umdoc-")); const e3 = { ...process.env, USAGE_MAX_HOME: h }; delete e3.CODEX_HOME;
+  const doc = () => spawnSync("node", [path.join(root, "scripts/codex-governor.mjs"), "doctor"], { env: e3, encoding: "utf8" }).stdout;
+  t("doctor: fresh machine says what to fix", () => { const d = doc(); assert.match(d, /FIX\s+hooks not installed/); assert.match(d, /not calibrated/); });
+  spawnSync("node", [path.join(root, "scripts/install.mjs")], { env: e3 });
+  t("doctor: installed-but-never-run hooks are called out as needing /hooks trust", () => assert.match(doc(), /NEVER run[\s\S]*\/hooks/));
+  spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "SessionStart"], { input: "{}", env: e3 });
+  t("doctor: after a hook fires it reports hooks are running", () => assert.match(doc(), /ok\s+hooks are running/));
 }
 console.log(`${n} passing (incl. rollover/throttle/install)`);

@@ -6,6 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pace } from "./lib.mjs";
+import { aboveCeiling } from "./ceiling.mjs";
 
 const home = process.env.USAGE_MAX_HOME || os.homedir();
 const dataDir = path.join(home, ".claude", "usage-max");
@@ -18,12 +19,6 @@ function compact(value) {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
   if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
   return String(Math.round(n));
-}
-function aboveCeiling(model) {
-  const name = String(model || "").toLowerCase();
-  if (name.includes("fable")) return true;
-  const m = name.match(/opus-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
-  return m ? Number(m[1]) + (m[2] ? Number(m[2]) / 10 : 0) > 5.5 : false;
 }
 async function readStdin() {
   if (process.stdin.isTTY) return "";

@@ -6,6 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { aboveCeiling } from "../scripts/ceiling.mjs";
 
 // Resolve from this file, not CLAUDE_PLUGIN_ROOT: that env var can be inherited from another plugin's process.
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -25,13 +26,6 @@ function readJson(file) {
   }
 }
 
-function aboveCeiling(model) {
-  const name = String(model || "").toLowerCase();
-  if (name.includes("fable")) return true;
-  const m = name.match(/opus-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
-  if (!m) return false;
-  return Number(m[1]) + (m[2] ? Number(m[2]) / 10 : 0) > 5.5;
-}
 
 try {
   let input = {};
@@ -47,12 +41,20 @@ try {
     input = {};
   }
   const home = process.env.USAGE_MAX_HOME || os.homedir();
-  const settings = readJson(path.join(home, ".claude", "settings.json")) || {};
   const profile = readJson(path.join(pluginRoot, "profiles", "settings.enforced.json")) || {};
   // Missing/unreadable profile falls back to the strict defaults, never to "anything goes".
   const expected = profile.model || "claude-opus-5-5";
-  const expectedOpusAlias = (profile.env && profile.env.ANTHROPIC_DEFAULT_OPUS_MODEL) || "claude-opus-5-5";
+  const notes = [];
 
+  // Configure ourselves: merge the profile (settings, status line, marketplace auto-update) once per session.
+  let applied = null;
+  try {
+    const { apply, autoApplyEnabled } = await import("../scripts/profile.mjs");
+    if (autoApplyEnabled(home)) applied = apply({ write: true, home, root: pluginRoot });
+  } catch {}
+  if (applied && applied.wrote) notes.push(`auto-applied the usage profile (${applied.changes.filter((c) => !c.startsWith("statusLine: left")).length} settings${applied.backup ? `; backup ${applied.backup}` : ""}) — takes effect in NEW sessions`);
+
+  const settings = readJson(path.join(home, ".claude", "settings.json")) || {};
   let model = null;
   let source = null;
   if (input.model) [model, source] = [typeof input.model === "string" ? input.model : input.model.id, "session"];
@@ -60,16 +62,20 @@ try {
   else if (settings.model) [model, source] = [settings.model, "settings"];
   else [model, source] = ["unset", "none"];
 
-  const opusAlias = (settings.env && settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL) || process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || null;
-  const gov = readJson(path.join(home, ".claude", "usage-max", "governor.json"), null);
+  const gov = readJson(path.join(home, ".claude", "usage-max", "governor.json"));
   const budgetMode = gov && gov.mode ? gov.mode : "green";
-  const enforced = budgetMode !== "green" || settings.model === expected && (!expectedOpusAlias || opusAlias === expectedOpusAlias);
-  const notes = [];
-  if (!enforced) notes.push(`profile not applied (expected model=${expected}${expectedOpusAlias ? `, opus alias=${expectedOpusAlias}` : ""}); run /usage-max:rescue apply`);
+  const calibrated = Boolean(gov && gov.calib);
+  const live = readJson(path.join(home, ".claude", "usage-max", "limits.json"));
+  const expectedOpusAlias = (profile.env && profile.env.ANTHROPIC_DEFAULT_OPUS_MODEL) || "claude-opus-5-5";
+  const opusAlias = (settings.env && settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL) || process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || null;
+  // The governor deliberately moves the model in amber/red, so only GREEN requires the exact profile model.
+  const enforced = budgetMode !== "green" ? Boolean(settings.model) : settings.model === expected && opusAlias === expectedOpusAlias;
+  if (!enforced && !(applied && applied.wrote)) notes.push("profile not applied; run /usage-max:rescue apply");
   if (aboveCeiling(model)) notes.push(`model ${model} is ABOVE the Opus 5.5 ceiling — switch with /model ${expected}`);
-  if (source !== "session") notes.push("a --model flag or /model switch is not visible here; the status line shows the live model and the ledger hook warns if a turn runs above the ceiling");
+  if (!calibrated && !live) notes.push("budget is still learning: real plan % appears once the status line has rendered a reply (or /usage-max:budget calibrate <pct> --resets <date>)");
 
-  console.log(`usage-max routing-active model=${model} (${source}) profile=${enforced ? "enforced" : "not-applied"} budget=${budgetMode} ceiling=opus-5.5 subagents=haiku,sonnet${notes.length ? ` — ${notes.join("; ")}` : ""}`);
+  const rules = "usage-max rules: delegate search/read/web/format to usage-max-scout (Haiku) and edits/tests/refactors to usage-max-worker (Sonnet); gate big changes with usage-max-reviewer; subagents never above Sonnet; do micro-tasks inline; keep one model per session; be terse. " + (budgetMode === "green" ? "" : `Budget is ${budgetMode.toUpperCase()}: work economically.`);
+  console.log(`usage-max routing-active model=${model} (${source}) profile=${enforced || (applied && applied.wrote) ? "enforced" : "not-applied"} budget=${budgetMode} ceiling=opus-5.5${notes.length ? ` — ${notes.join("; ")}` : ""}\n${rules}`);
   process.exitCode = 0;
 } catch {
   process.exitCode = 0;

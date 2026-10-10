@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PreToolUse(Bash): wrap known-noisy simple commands so only head/tail/error lines reach the model. Fail-open.
+// PreToolUse(Bash): no permissionDecision on purpose, so your normal permission prompt still applies. wrap known-noisy simple commands so only head/tail/error lines reach the model. Fail-open.
 // Off: USAGE_MAX_TRIM=off. Never rewrites commands containing pipes/redirects/&&/;/subshells or --no-trim marker.
 import fs from "node:fs";
 import path from "node:path";
@@ -16,7 +16,7 @@ try {
   if (input.tool_name === "Bash" && input.tool_input) {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const nc = rewrite(input.tool_input.command, path.join(here, "..", "scripts", "trim.mjs"));
-    if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", permissionDecisionReason: "usage-max output trim", updatedInput: { ...input.tool_input, command: nc } } }));
+    if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { ...input.tool_input, command: nc } } }));
   }
 } catch {}
 process.exit(0);

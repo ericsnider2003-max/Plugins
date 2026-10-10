@@ -43,4 +43,6 @@ else console.log("existing notify= left untouched; run `node scripts/notify.mjs`
   }
 }
 writeProfiles(loadConfig()); const { mode, cfg } = evaluate(); applyMode(mode, cfg);
-console.log(`installed. mode=${mode}. Next: node scripts/codex-governor.mjs calibrate <pct from /status> --resets <ISO>`);
+console.log(`installed. mode=${mode}.
+REQUIRED once: start Codex and run /hooks, then trust the usage-max hooks. Codex silently skips untrusted hooks, so until you do this usage-max does nothing in Codex.
+Calibration is automatic (read from Codex's own rate_limits) after your first Codex turn. Verify anytime: node scripts/codex-governor.mjs doctor`);

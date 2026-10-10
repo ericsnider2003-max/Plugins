@@ -12,3 +12,8 @@ Tested offline (27 tests, `node test/run.mjs`).
 - `service_tier` is unset in all modes (fast mode off).
 ChatGPT web/app: no hooks exist; see chatgpt/CUSTOM-INSTRUCTIONS.md (manual policy).
 Weights are relative (luna 1, sol 20, astra 65) per code; calibration absorbs the scale.
+
+## Codex checklist (read this if it "does nothing")
+1. `node scripts/install.mjs`
+2. Start Codex, run `/hooks`, and **trust the usage-max hooks**. Codex silently skips untrusted hooks. Re-trust after moving or reinstalling the plugin (the path is part of the hook identity).
+3. `node scripts/codex-governor.mjs doctor` tells you exactly what is missing. Calibration is automatic after your first Codex turn (the plan % is read from Codex's own `rate_limits`).

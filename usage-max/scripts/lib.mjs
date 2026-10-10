@@ -15,7 +15,9 @@ export function normalizeUsage(usage) {
     read: 0,
     thinking: 0,
     webSearch: 0,
-    webFetch: 0
+    webFetch: 0,
+    created5m: 0,
+    created1h: 0
   };
   if (!usage || typeof usage !== "object") return zero;
   let input = asNumber(usage.input_tokens);
@@ -36,7 +38,10 @@ export function normalizeUsage(usage) {
       read += part.read;
     }
   }
-  return { input, output, created, read, thinking, webSearch, webFetch };
+  const cc = usage.cache_creation && typeof usage.cache_creation === "object" ? usage.cache_creation : null;
+  const created5m = cc ? asNumber(cc.ephemeral_5m_input_tokens) : 0;
+  const created1h = cc ? asNumber(cc.ephemeral_1h_input_tokens) : created - created5m;
+  return { input, output, created, read, thinking, webSearch, webFetch, created5m, created1h: Math.max(created1h, 0) };
 }
 
 export function contextTokens(usage) {

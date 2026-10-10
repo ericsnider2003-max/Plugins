@@ -14,9 +14,11 @@ export function priceFor(model) {
   const name = String(model || "").toLowerCase();
   return TABLE.find((p) => p.match.test(name)) || null;
 }
+// Cache-write cost honouring the real 5m/1h split when the transcript carries it (else everything at the 1h rate).
+export const writeCost = (u, p) => (u.created5m || u.created1h ? u.created5m * p.write5m + (u.created - u.created5m) * p.write1h : u.created * p.write1h);
 export function turnCost(u, p) {
   if (!p) return { total: 0, read: 0, write: 0, output: 0, input: 0 };
-  const read = (u.read * p.read) / 1e6, write = (u.created * p.write1h) / 1e6, output = (u.output * p.output) / 1e6, input = (u.input * p.input) / 1e6;
+  const read = (u.read * p.read) / 1e6, write = writeCost(u, p) / 1e6, output = (u.output * p.output) / 1e6, input = (u.input * p.input) / 1e6;
   return { total: read + write + output + input, read, write, output, input };
 }
 
@@ -28,7 +30,7 @@ export function replayTtl(turns) {
   for (const { t, u, p } of turns) {
     if (!p) continue;
     const base = (u.output * p.output + u.input * p.input) / 1e6;
-    actual += base + (u.created * p.write1h + u.read * p.read) / 1e6;
+    actual += base + (writeCost(u, p) + u.read * p.read) / 1e6;
     const gap = prevT === null ? 0 : t - prevT;
     const miss = gap > 5 * 60000 && gap <= 60 * 60000;
     sim5m += base + (miss ? ((u.created + u.read) * p.write5m) / 1e6 : (u.created * p.write5m + u.read * p.read) / 1e6);

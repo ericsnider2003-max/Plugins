@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // usage-max for OpenAI Codex CLI: meter ~/.codex sessions, estimate plan %, pick mode, write profiles.
-// CLI: models | status | calibrate <pct> --resets <ISO> | mode <auto|green|amber|red> | apply | profiles | gate
+// CLI: doctor | models | status | calibrate <pct> --resets <ISO> | mode <auto|green|amber|red> | apply | profiles | gate
 // gate exit codes: 0 green, 10 amber, 20 red (for batch/eval harnesses: skip or defer work on 20).
 import fs from "node:fs";
 import os from "node:os";
@@ -32,13 +32,16 @@ export function* walk(dir) { let es; try { es = fs.readdirSync(dir, { withFileTy
 // Tolerant parse: token_count events (last_token_usage) priced by the model in the latest turn_context/session_meta.
 export function scanFile(file, offset, cfg) {
   const buf = fs.readFileSync(file); if (offset > buf.length) offset = 0;
-  const text = buf.subarray(offset).toString("utf8"); const end = text.lastIndexOf("\n"); if (end < 0) return { items: [], offset };
-  const items = []; let model = null;
-  if (offset === 0 || true) { /* model state resolved below from lines */ }
+  const text = buf.subarray(offset).toString("utf8"); const end = text.lastIndexOf("\n"); if (end < 0) return { items: [], offset, limits: null };
+  const items = []; let model = null; let limits = null;
   for (const line of text.slice(0, end).split("\n")) {
     if (!line.trim()) continue; let o; try { o = JSON.parse(line); } catch { continue; }
     const p = o.payload || o;
     if (p.model && (o.type === "turn_context" || o.type === "session_meta" || p.type === "turn_context")) model = p.model;
+    if (p.type === "token_count" || o.type === "token_count") { // Codex logs the plan's real rate limits on every token_count event
+      const rl = p.rate_limits || o.rate_limits;
+      if (rl && (rl.primary || rl.secondary)) limits = { ts: Date.parse(o.timestamp || p.timestamp) || fs.statSync(file).mtimeMs, primary: rl.primary || null, secondary: rl.secondary || null };
+    }
     if ((p.type === "token_count" || o.type === "token_count") && (p.info || p).last_token_usage) {
       const u = (p.info || p).last_token_usage; const ts = Date.parse(o.timestamp || p.timestamp) || fs.statSync(file).mtimeMs;
       const inp = u.input_tokens || 0, cached = u.cached_input_tokens || 0, out = (u.output_tokens || 0) + (u.reasoning_output_tokens && !u.output_tokens ? u.reasoning_output_tokens : 0);
@@ -46,7 +49,7 @@ export function scanFile(file, offset, cfg) {
       items.push({ ts, cost, model: model || "?" });
     }
   }
-  return { items, offset: offset + Buffer.byteLength(text.slice(0, end + 1)) };
+  return { items, limits, offset: offset + Buffer.byteLength(text.slice(0, end + 1)) };
 }
 export function loadMeter() { return j(path.join(dataDir(), "meter.json"), { files: {}, hours: {} }); }
 export const METER_TTL_MS = 20e3;
@@ -57,6 +60,7 @@ export function meterAll(cfg = loadConfig(), nowMs = Date.now(), force = false) 
     const prev = m.files[f] || { offset: 0, size: 0 }; if (st.size === prev.size) continue;
     const r = scanFile(f, prev.offset, cfg); m.files[f] = { offset: r.offset, size: st.size };
     for (const it of r.items) { const h = Math.floor(it.ts / 36e5); m.hours[h] = (m.hours[h] || 0) + it.cost; }
+    if (r.limits && (!m.limits || r.limits.ts >= m.limits.ts)) m.limits = r.limits;
   }
   for (const h of Object.keys(m.hours)) if (h < (nowMs - 8 * 864e5) / 36e5) delete m.hours[h];
   m.lastRun = nowMs; wj(path.join(dataDir(), "meter.json"), m); return m;
@@ -83,11 +87,39 @@ export function estimate(state, m, now, cfg) {
   const rate = (state.k || 0) * spendLast(m, cfg.burnWindowHours, now) / cfg.burnWindowHours;
   return { est, hoursLeft, rate };
 }
+// Real plan numbers straight from Codex's own logs: the long window (>= ~7 days) calibrates the weekly estimate
+// (no manual `calibrate` needed), the short window (<= ~10 h, the 5-hour cap) becomes an extra guard.
+export function windows(limits) {
+  const ws = [limits && limits.primary, limits && limits.secondary].filter((w) => w && typeof w.used_percent === "number" && w.window_minutes);
+  return { weekly: ws.filter((w) => w.window_minutes >= 7000).sort((a, b) => b.window_minutes - a.window_minutes)[0] || null, short: ws.filter((w) => w.window_minutes <= 600).sort((a, b) => a.window_minutes - b.window_minutes)[0] || null };
+}
+export function absorbLimits(st, m, now) {
+  const w = windows(m.limits); st.five = w.short ? { pct: w.short.used_percent, resetsAt: w.short.resets_at || null, windowMinutes: w.short.window_minutes, ts: m.limits.ts } : null;
+  if (!w.weekly || !w.weekly.resets_at) return false;
+  const at = m.limits.ts, resets = new Date(w.weekly.resets_at * 1000).toISOString(), c = st.calib;
+  if (c && c.at >= at && c.source === "plan") return false;
+  const sameWindow = c && Math.abs(Date.parse(c.resets) - w.weekly.resets_at * 1000) < 120000;
+  if (sameWindow && c.at < at) { const d = spendSince(m, c.at) - spendSince(m, at), dp = w.weekly.used_percent - c.pct; if (spendSince(m, c.at) - spendSince(m, at) > 0 && dp > 0) st.k = st.k ? 0.7 * st.k + 0.3 * (dp / d) : dp / d; }
+  if (!st.k) { const week = spendSince(m, w.weekly.resets_at * 1000 - 7 * 864e5); if (week > 0 && w.weekly.used_percent > 0) st.k = w.weekly.used_percent / week; }
+  st.calib = { pct: w.weekly.used_percent, at, resets, source: "plan" }; return true;
+}
+// Pace-aware 5-hour guard: only tighten when the current burn would hit 100% before the window resets.
+export function fiveFloor(f, now) {
+  if (!f || !f.resetsAt || f.resetsAt * 1000 <= now) return "green";
+  const win = (f.windowMinutes || 300) * 60000, start = f.resetsAt * 1000 - win, elapsed = Math.min(Math.max((now - start) / win, 0), 1);
+  if (f.pct >= 100) return "red"; if (elapsed < 0.02) return "green";
+  const projected = f.pct / elapsed; if (projected <= 100) return "green";
+  return projected > 140 || f.pct >= 95 ? "red" : "amber";
+}
 export function evaluate(now = Date.now(), force = false) {
   const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json");
   const st = j(sf, { mode: "green", override: null, calib: null, k: null }); const m = meterAll(cfg, now, force);
+  absorbLimits(st, m, now);
   let mode = st.mode, e = estimate(st, m, now, cfg);
-  if (st.override) mode = st.override; else if (e) mode = decide({ estPct: e.est, hoursLeft: e.hoursLeft, ratePerHour: e.rate, prevMode: st.mode, cfg });
+  if (st.override) mode = st.override; else {
+    if (e) mode = decide({ estPct: e.est, hoursLeft: e.hoursLeft, ratePerHour: e.rate, prevMode: st.mode, cfg });
+    const floor = fiveFloor(st.five, now); const rank = { green: 0, amber: 1, red: 2 }; if (rank[floor] > rank[mode]) mode = floor;
+  }
   st.mode = mode; wj(sf, st); return { mode, e, st, cfg };
 }
 export function calibrate(pct, resets, now = Date.now()) {
@@ -125,9 +157,27 @@ export function modelsSeen() {
   const out = {}; for (const f of walk(path.join(codexHome(), "sessions"))) { let t; try { t = fs.readFileSync(f, "utf8"); } catch { continue; } for (const m of t.matchAll(/"model"\s*:\s*"([^"]+)"/g)) out[m[1]] = (out[m[1]] || 0) + 1; }
   return out;
 }
+// `doctor`: say plainly whether usage-max is actually active in Codex, and what to do if not.
+export function doctor(home = codexHome()) {
+  const out = []; const ok = (m) => out.push(`  ok   ${m}`); const bad = (m, fix) => out.push(`  FIX  ${m}${fix ? `\n       -> ${fix}` : ""}`);
+  const rd = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return ""; } };
+  const cfg = loadConfig(); const toml = rd(path.join(home, "config.toml")); const hooks = rd(path.join(home, "hooks.json")); const gs = j(path.join(dataDir(), "governor.json"), {}); const seen = j(path.join(dataDir(), "hook-seen.json"), {});
+  /codex-hook\.mjs/.test(hooks) ? ok("hooks.json has the usage-max hooks") : bad("hooks not installed", "node scripts/install.mjs");
+  const evs = Object.keys(seen);
+  if (evs.length) ok(`hooks are running (last: ${evs.map((e) => `${e} ${seen[e].slice(11, 19)}`).join(", ")})`);
+  else if (/codex-hook\.mjs/.test(hooks)) bad("hooks are installed but have NEVER run — Codex skips hooks until you trust them", "start Codex, type /hooks, select the usage-max hooks and trust them (re-do this if you move/reinstall the plugin: the path is part of the hook's identity)");
+  /^\s*notify\s*=/m.test(toml) ? ok("notify is set (fallback metering)") : bad("notify not set (optional fallback)", "node scripts/install.mjs");
+  const placeholder = Object.values(cfg.modes).some((m) => m.model && /^gpt-6/.test(m.model) && !modelsSeen()[m.model]);
+  placeholder ? bad("a mode uses a model name your sessions never used (placeholder?)", "node scripts/codex-governor.mjs models, then edit ~/.usage-max-codex/config.json modes") : ok("mode models are unset (your own model is kept) or match models you have used");
+  gs.calib ? ok(`calibrated (${gs.calib.source === "plan" ? "automatically from Codex rate_limits" : "manually"}): ${gs.calib.pct}%`) : bad("not calibrated yet", "use Codex once (the plan % is read from its own logs) or: calibrate <pct from /status> --resets <ISO>");
+  /usage-max:start/.test(rd(path.join(home, "AGENTS.md"))) ? ok("AGENTS.md block present") : bad("AGENTS.md block missing", "node scripts/install.mjs");
+  const walkCount = [...walk(path.join(home, "sessions"))].length; walkCount ? ok(`${walkCount} Codex session logs found`) : bad("no Codex session logs under " + path.join(home, "sessions"), "run Codex once; check CODEX_HOME");
+  return out.join("\n");
+}
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const [cmd = "status", ...a] = process.argv.slice(2); const flag = n => { const i = a.indexOf(n); return i >= 0 ? a[i + 1] : null; };
+  if (cmd === "doctor") { console.log("usage-max codex doctor:\n" + doctor()); process.exit(0); }
   if (cmd === "models") { const m = modelsSeen(); console.log(Object.keys(m).length ? "models seen in your Codex sessions (set config.json modes to ones your plan has):\n" + Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `  ${k}  (${v})`).join("\n") : "no sessions found under " + codexHome()); process.exit(0); }
   if (cmd === "calibrate") { const pct = Number(a[0]); const r = flag("--resets"); if (!(pct >= 0) || !r) { console.error("usage: calibrate <pct from /status or chatgpt.com/codex/settings/usage> --resets <ISO>"); process.exit(2); } calibrate(pct, r); }
   if (cmd === "mode") { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.override = a[0] === "auto" ? null : a[0]; wj(sf, st); }
@@ -136,6 +186,7 @@ if (isMain) {
   if (cmd === "profiles") writeProfiles(cfg);
   const mc = cfg.modes[mode];
   console.log(`mode=${mode.toUpperCase()}${st.override ? " (manual)" : ""}  new sessions: ${mc.model || "(your model)"} @ ${mc.effort}`);
+  if (st.calib && st.calib.source === "plan") console.log(`plan (from Codex rate_limits): weekly ${st.calib.pct}% as of ${new Date(st.calib.at).toLocaleString()}${st.five ? `, 5h window ${st.five.pct}%` : ""}`);
   console.log(e ? `est plan ${e.est.toFixed(1)}%  hours to reset ${e.hoursLeft.toFixed(1)}  burn ${e.rate.toFixed(2)}%/h  sustainable ${(Math.max(0, cfg.target - e.est) / Math.max(e.hoursLeft, .5)).toFixed(2)}%/h` : "not calibrated: run `calibrate <pct> --resets <ISO>` using the % shown by /status");
   if (cmd === "gate") process.exit({ green: 0, amber: 10, red: 20 }[mode]);
 }

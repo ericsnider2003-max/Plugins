@@ -14,7 +14,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Agent|Bash|Edit|Write",
+        "matcher": "Agent",
         "hooks": [
           {
             "type": "command",

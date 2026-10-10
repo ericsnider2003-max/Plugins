@@ -57,4 +57,18 @@ t("profile apply refuses to touch invalid settings.json", () => { const h = fs.m
 t("diet sees org-synced plugins", () => { const h = fs.mkdtempSync(path.join(os.tmpdir(), "umsync-")); const pd = path.join(h, ".claude/plugins/synced/org_acct/bigsync"); fs.mkdirSync(path.join(pd, "skills/s1"), { recursive: true }); fs.mkdirSync(path.join(pd, ".claude-plugin"));
   fs.writeFileSync(path.join(pd, ".claude-plugin/plugin.json"), JSON.stringify({ name: "bigsync" })); fs.writeFileSync(path.join(pd, "skills/s1/SKILL.md"), `---\nname: s1\ndescription: ${"y".repeat(2400)}\n---\n`);
   const r = diet({ home: h, cwd: h }); assert.ok(r.rows.some((x) => x.id === "bigsync" && x.kind === "plugin(synced)" && x.tokens > 600)); assert.ok(r.advice.some((a) => a.id === "bigsync" && /claude\.ai/.test(a.action))); });
+// ---- governor learns from real plan percentages (no manual calibrate, no k needed)
+{
+  const dd = fs.mkdtempSync(path.join(os.tmpdir(), "umgov-")); process.env.USAGE_MAX_HOME = dd; const ud = path.join(dd, ".claude/usage-max"); fs.mkdirSync(ud, { recursive: true });
+  const now = Date.now(); const resets = Math.floor((now + 36 * 3600e3) / 1000);
+  const run = (snaps, five = null) => { fs.writeFileSync(path.join(ud, "governor.json"), JSON.stringify({ mode: "green", override: null, calib: null, k: null, sessionsNotified: {}, history: [] }));
+    for (const x of snaps) { fs.writeFileSync(path.join(ud, "limits.json"), JSON.stringify({ capturedAt: new Date(x.at).toISOString(), seven_day: { used_percentage: x.pct, resets_at: resets }, five_hour: five })); gov.evaluate({ meter: { cum: 0, offsets: {}, buckets: {} }, nowMs: x.at }); }
+    return gov.evaluate({ meter: { cum: 0, offsets: {}, buckets: {} }, nowMs: now }); };
+  t("steady pace (67% -> 68% over 6h, 36h left) stays GREEN without any calibrate/k", () => { const s = run([{ at: now - 6 * 3600e3, pct: 67 }, { at: now - 3 * 3600e3, pct: 67.5 }, { at: now - 60e3, pct: 68 }]); assert.equal(s.mode, "green"); assert.equal(s.last.rateSource, "plan %"); assert.ok(s.last.estPct > 67.9); });
+  t("burning 85% -> 94% in 4h with 36h left goes RED from plan % alone", () => { const s = run([{ at: now - 4 * 3600e3, pct: 85 }, { at: now - 2 * 3600e3, pct: 90 }, { at: now - 60e3, pct: 94 }]); assert.equal(s.mode, "red"); });
+  t("5-hour window at 96% forces RED even when the week is fine", () => { const s = run([{ at: now - 6 * 3600e3, pct: 20 }, { at: now - 60e3, pct: 21 }], { used_percentage: 96, resets_at: Math.floor(now / 1000) + 3600 }); assert.equal(s.mode, "red"); });
+  t("85% of the 5h window with only 20 min left does NOT throttle you (it resets before you hit the cap)", () => { const s = run([{ at: now - 6 * 3600e3, pct: 20 }, { at: now - 60e3, pct: 21 }], { used_percentage: 85, resets_at: Math.floor(now / 1000) + 1200 }); assert.equal(s.mode, "green"); });
+  t("k is learned from the first real delta", () => { fs.writeFileSync(path.join(ud, "governor.json"), JSON.stringify({ mode: "green", calib: null, k: null, sessionsNotified: {}, history: [] })); const st = { calib: null, k: null }; gov.absorbSnapshot(st, { capturedAt: new Date(now - 7200e3).toISOString(), seven_day: { used_percentage: 50, resets_at: resets } }, 10); gov.absorbSnapshot(st, { capturedAt: new Date(now).toISOString(), seven_day: { used_percentage: 52, resets_at: resets } }, 11); assert.ok(Math.abs(st.k - 2) < 1e-9, String(st.k)); });
+  delete process.env.USAGE_MAX_HOME;
+}
 console.log(`${n} passing`);

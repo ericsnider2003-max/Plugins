@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { aboveCeiling } from "../scripts/ceiling.mjs";
 
 function homeDir() {
   return process.env.USAGE_MAX_HOME || os.homedir();
@@ -111,14 +112,6 @@ function transcriptFor(input) {
   return { file: main, scope: "hub" };
 }
 
-// Ceiling: Opus 5.5. Above it (fable, opus > 5.5) the hook surfaces a one-time warning per session/model.
-function aboveCeiling(model) {
-  const name = String(model || "").toLowerCase();
-  if (name.includes("fable")) return true;
-  const m = name.match(/opus-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
-  if (!m) return false;
-  return Number(m[1]) + (m[2] ? Number(m[2]) / 10 : 0) > 5.5;
-}
 
 function firstWarning(dir, key) {
   const file = path.join(dir, "ceiling-warned.json");

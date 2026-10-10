@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pace } from "./lib.mjs";
 import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap } from "./meter.mjs";
 
 export const DEFAULT_CONFIG = {
@@ -69,17 +70,22 @@ export function decide({ estPct, hoursLeft, ratePerHour, prevMode, config }) {
   return { mode, ratio, allowedPerHour, remaining };
 }
 
-// Fold a newer real snapshot (from the status line) into the calibration; refine k from the delta.
+// Fold a newer real snapshot (from the status line) into the calibration. Keeps a small (time, pct) history so the
+// burn rate can come from the plan's own percentages (which include Cowork/chat), and learns k (plan % per $ of
+// local spend) from real deltas instead of needing a manual `calibrate`.
 export function absorbSnapshot(state, limits, meterCum) {
   const sd = limits && limits.seven_day;
   if (!sd || typeof sd.used_percentage !== "number" || !sd.resets_at) return false;
   const at = Date.parse(limits.capturedAt) || Date.now();
   const c = state.calib;
   if (c && c.at >= at) return false;
-  if (c && c.resetsAt === sd.resets_at && state.k) {
+  state.snaps = (state.snaps || []).filter((x) => x.resetsAt === sd.resets_at).slice(-199);
+  const last = state.snaps[state.snaps.length - 1];
+  if (!last || at - last.at >= 5 * 60000 || sd.used_percentage !== last.pct) state.snaps.push({ at, pct: sd.used_percentage, resetsAt: sd.resets_at });
+  if (c && c.resetsAt === sd.resets_at) {
     const dPct = sd.used_percentage - c.pct;
     const dSpend = meterCum - c.cumAt;
-    if (dSpend > 2 && dPct > 0) state.k = 0.7 * state.k + 0.3 * (dPct / dSpend); // smoothed
+    if (dSpend > 0.25 && dPct > 0) state.k = state.k ? 0.7 * state.k + 0.3 * (dPct / dSpend) : dPct / dSpend;
   }
   state.calib = { pct: sd.used_percentage, at, cumAt: meterCum, resetsAt: sd.resets_at, source: "plan" };
   return true;
@@ -101,13 +107,23 @@ export function rollWindow(state, meter, nowMs = Date.now()) {
 
 export function estimate(state, meter, nowMs = Date.now(), config = DEFAULT_CONFIG) {
   const c = state.calib;
-  if (!c || !state.k) return { estPct: null, hoursLeft: null, ratePerHour: null };
+  if (!c) return { estPct: null, hoursLeft: null, ratePerHour: null };
   if (c.resetsAt * 1000 <= nowMs) return { estPct: 0, hoursLeft: 168, ratePerHour: 0, note: "window reset — waiting for a fresh snapshot" };
-  const estPct = c.pct + state.k * Math.max(meter.cum - c.cumAt, 0);
+  const estPct = c.pct + (state.k ? state.k * Math.max(meter.cum - c.cumAt, 0) : 0);
   const hoursLeft = (c.resetsAt * 1000 - nowMs) / 3600000;
-  const ratePerHour = (state.k * spendInLast(meter, config.burnWindowHours, nowMs)) / config.burnWindowHours;
-  return { estPct, hoursLeft, ratePerHour };
+  // Prefer the plan's own percentages: gain over the burn window, divided by the time since the window's first point.
+  const win = (state.snaps || []).filter((x) => x.resetsAt === c.resetsAt && x.at >= nowMs - config.burnWindowHours * 3600000);
+  let ratePerHour = null, rateSource = null;
+  if (win.length >= 2 && win[win.length - 1].at - win[0].at >= 1800000) {
+    ratePerHour = Math.max(0, (win[win.length - 1].pct - win[0].pct) / Math.max((nowMs - win[0].at) / 3600000, 0.5));
+    rateSource = "plan %";
+  } else if (state.k) {
+    ratePerHour = (state.k * spendInLast(meter, config.burnWindowHours, nowMs)) / config.burnWindowHours;
+    rateSource = "local spend";
+  }
+  return { estPct, hoursLeft, ratePerHour: ratePerHour === null ? 0 : ratePerHour, rateSource: rateSource || "none yet" };
 }
+
 
 // Set the mode's model/effort on a settings object (owned keys only). Returns true when something changed.
 export function patchModel(s, want) {
@@ -141,7 +157,17 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   absorbSnapshot(state, readJson(files().limits, null), meter.cum);
   if (rollWindow(state, meter, nowMs)) state.mode = "green"; // new week: no hysteresis from last week's mode
   const est = estimate(state, meter, nowMs, config);
-  const d = state.override ? { mode: state.override, ratio: null, allowedPerHour: null } : decide({ ...est, prevMode: state.mode, config });
+  let d = state.override ? { mode: state.override, ratio: null, allowedPerHour: null } : decide({ ...est, prevMode: state.mode, config });
+  // The 5-hour cap bites before the weekly one: near it, tighten regardless of the weekly pace.
+  // Pace-aware: a high % near the end of a window that is about to reset costs nothing, so only tighten when the
+  // current burn would hit 100% before the window resets (amber), or is far beyond it (red).
+  const fh = !state.override && (readJson(files().limits, null) || {}).five_hour;
+  const fp = fh && fh.resets_at * 1000 > nowMs ? pace(fh, 5 * 3600, nowMs) : null;
+  if (fp && fp.state === "over") {
+    const rank = { green: 0, amber: 1, red: 2 };
+    const floor = fp.used >= 95 || fp.projected > 140 ? "red" : "amber";
+    if (rank[floor] > rank[d.mode]) d = { ...d, mode: floor, reason: `5-hour window ${Math.round(fp.used)}%, projected ${Math.round(fp.projected)}%` };
+  }
   const changed = d.mode !== state.mode;
   state.last = { at: new Date(nowMs).toISOString(), ...est, ...d };
   if (changed) {
@@ -192,7 +218,7 @@ async function cli() {
   const want = config.modes[s.mode];
   console.log(`usage-max budget: ${s.mode.toUpperCase()}${s.override ? " (pinned)" : ""}`);
   console.log(`  week ~${fmt(l.estPct)}% (est.), ${fmt(l.hoursLeft, 0)}h to reset, target ${config.target}%`);
-  console.log(`  burn ${fmt(l.ratePerHour, 2)}%/h over last ${config.burnWindowHours}h vs sustainable ${fmt(l.allowedPerHour, 2)}%/h → ${fmt(l.ratio, 2)}× ${l.ratio > 1 ? "(over)" : "(ok)"}`);
+  console.log(`  burn ${fmt(l.ratePerHour, 2)}%/h over last ${config.burnWindowHours}h${l.rateSource ? ` (from ${l.rateSource})` : ""} vs sustainable ${fmt(l.allowedPerHour, 2)}%/h → ${fmt(l.ratio, 2)}× ${l.ratio > 1 ? "(over)" : "(ok)"}`);
   const hasSettings = fs.existsSync(files().settings);
   console.log(`  new sessions: ${want.model} @ ${want.effort} effort${config.manageSettings ? "" : " (settings management OFF)"}${config.manageSettings && !hasSettings ? " — NOT APPLIED: ~/.claude/settings.json is missing; run profile.mjs --write" : ""}`);
   console.log(`  calibration: ${s.calib ? `${s.calib.pct}% at ${new Date(s.calib.at).toLocaleString()} (${s.calib.source}), k=${fmt(s.k, 4)} %/$` : "none — run: calibrate <pct> --resets <date>"}`);

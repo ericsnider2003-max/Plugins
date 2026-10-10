@@ -14,21 +14,26 @@ export function rewrite(cmd, trimPath, platform = process.platform) {
   return `set -o pipefail; ${c} 2>&1 | node "${trimPath.replace(/\\/g, "/")}"`;
 }
 const DIRECTIVE = { amber: "usage-max AMBER: weekly budget is being burned faster than sustainable. Use low reasoning effort, keep scope tight, avoid re-reading files, no large autonomous jobs without asking.", red: "usage-max RED: weekly budget is nearly exhausted for the time left. Cheapest path only: minimal reads, no exploratory work, no fast mode, no long autonomous runs; ask before anything big." };
+function seen(ev) { try { const f = path.join(dataDir(), "hook-seen.json"); let o = {}; try { o = JSON.parse(fs.readFileSync(f, "utf8")); } catch {} o[ev] = new Date().toISOString(); fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o)); } catch {} }
 function main() {
   const ev = process.argv[2]; let input = {}; try { input = JSON.parse(fs.readFileSync(0, "utf8") || "{}"); } catch {}
+  seen(ev);
   if (ev === "PreToolUse") {
     if (input.tool_name !== "Bash" || !input.tool_input) return;
     const nc = rewrite(input.tool_input.command, path.join(path.dirname(fileURLToPath(import.meta.url)), "trim.mjs"));
-    if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { ...input.tool_input, command: nc } } }));
+    if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", updatedInput: { ...input.tool_input, command: nc } } }));
     return;
   }
   const sf = path.join(dataDir(), "hook-state.json"); let st = {}; try { st = JSON.parse(fs.readFileSync(sf, "utf8")); } catch {}
   const before = (() => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), "governor.json"), "utf8")).mode; } catch { return "green"; } })();
-  const { mode, cfg } = evaluate(); if (mode !== before) { try { applyMode(mode, cfg); } catch {} }
+  const { mode, cfg, st: gs, e: ge } = evaluate(); if (mode !== before) { try { applyMode(mode, cfg); } catch {} }
   const sid = input.session_id || "?"; st.sent = st.sent || {};
   if (ev === "SessionStart" || ev === "UserPromptSubmit") {
     const k = `${sid}:${mode}`;
-    if (DIRECTIVE[mode] && !st.sent[k]) { st.sent[k] = Date.now(); process.stdout.write(DIRECTIVE[mode]); }
+    if (!st.sent[k]) {
+      const plan = ev === "SessionStart" && gs.calib && gs.calib.source === "plan" && ge ? `usage-max plan: weekly ${Math.round(ge.est)}% used, ${Math.round(ge.hoursLeft)}h to reset${gs.five ? `, 5h window ${Math.round(gs.five.pct)}%` : ""}, mode ${mode.toUpperCase()}. ` : "";
+      const text = plan + (DIRECTIVE[mode] || ""); if (text) { st.sent[k] = Date.now(); process.stdout.write(text); } else st.sent[k] = Date.now();
+    }
     const keys = Object.keys(st.sent); if (keys.length > 200) for (const x of keys.slice(0, keys.length - 100)) delete st.sent[x];
     try { fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(sf, JSON.stringify(st)); } catch {}
   } else if (ev === "Stop" && mode !== before) {

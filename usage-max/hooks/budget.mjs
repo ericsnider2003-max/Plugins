@@ -3,10 +3,11 @@
 // a governor bug must never block work, so every path exits 0 unless it deliberately decides.
 //   Stop / SubagentStop   meter this session's spend, re-evaluate mode, enforce on change
 //   UserPromptSubmit      once per session per mode: budget directive for Claude + notice for you
-//   PreToolUse (Agent)    amber/red: downgrade Opus/Fable or inheriting subagents to Sonnet; always cap Fable
+//   PreToolUse (Agent)    any mode: downgrade Opus/Fable or inheriting subagents to Sonnet
 //   PreModelSwitch        block switches above Opus 5.5; in red, ask before switching to Opus
 import { loadMeter, saveMeter, sessionFiles, meterFiles } from "../scripts/meter.mjs";
 import { evaluate, loadState, saveState, loadConfig } from "../scripts/governor.mjs";
+import { aboveCeiling } from "../scripts/ceiling.mjs";
 
 async function readStdin() {
   if (process.stdin.isTTY) return "";
@@ -18,12 +19,6 @@ const out = (o) => process.stdout.write(JSON.stringify(o));
 const pct = (n) => (n === null || n === undefined || !Number.isFinite(n) ? "?" : `${Math.round(n)}%`);
 const INHERITING = new Set(["general-purpose", "Plan", "claude", "fork", ""]);
 
-function aboveCeiling(model) {
-  const n = String(model || "").toLowerCase();
-  if (n.includes("fable")) return true;
-  const m = n.match(/opus-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?/);
-  return m ? Number(m[1]) + (m[2] ? Number(m[2]) / 10 : 0) > 5.5 : false;
-}
 
 function directive(state) {
   const l = state.last || {};
@@ -64,8 +59,8 @@ try {
     const state = loadState();
     const requested = String(ti.model || "").toLowerCase();
     let next = null;
-    if (requested === "fable" || aboveCeiling(requested)) next = state.mode === "green" ? "opus" : "sonnet";
-    else if (state.mode !== "green" && (requested === "opus" || requested.includes("opus") || (!requested && INHERITING.has(String(ti.subagent_type || ""))))) next = "sonnet";
+    // Policy (routing skill): subagents are Haiku/Sonnet, never Opus/Fable, in every budget mode.
+    if (requested === "fable" || aboveCeiling(requested) || requested.includes("opus") || (!requested && INHERITING.has(String(ti.subagent_type || "")))) next = "sonnet";
     if (next && next !== requested) {
       out({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", permissionDecisionReason: `usage-max: ${requested || "inherited"} -> ${next} (budget ${state.mode})`, updatedInput: { ...ti, model: next }, additionalContext: `usage-max ran this subagent on ${next} instead of ${requested || "the session model"} (budget ${state.mode}).` } });
     }

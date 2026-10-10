@@ -2,12 +2,17 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.3.0 (Oct 10 2026)
+- **Self-configuring.** SessionStart now merges the usage profile (settings, status line, marketplace auto-update) with a backup, and tells Claude the routing rules. Opt out: `USAGE_MAX_AUTOAPPLY=off`.
+- **Governor learns from real plan %.** The burn rate now comes from the plan's own percentages (so Cowork/chat usage counts) with no manual calibrate; a pace-aware 5-hour-cap guard tightens only if you would hit the cap before it resets.
+- Subagents never run above Sonnet in any budget mode; the output-trim hook no longer bypasses your permission prompts; ledger only logs subagent dispatches; one shared ceiling check.
+- **Codex:** reads the plan's real `rate_limits` from its own logs (auto-calibration + 5-hour guard), `codex-governor.mjs doctor` diagnoses why it is not active (hooks must be trusted via `/hooks`), reset roll-forward, no placeholder models written, working install paths, throttled metering.
+- Cache-write pricing honours the real 5m/1h split; `/loop` detection no longer false-positives.
+
 ## 0.2.0 (Oct 10 2026)
-- Fixed: usage was counted ~2x (one transcript record per content block repeats the same usage); everything now counts each message once.
-- Fixed: weekly reset no longer leaves the governor stuck in last week's mode (Claude and Codex).
-- New `scripts/profile.mjs`: real `/rescue apply` (creates/merges `~/.claude/settings.json`, status line, marketplace auto-update, backup, idempotent).
-- Diet now sees claude.ai/org-synced plugins and reports the measured session-start context. usage-check is cost-weighted. Haiku 5.5 is priced and is the scout model.
-- Pending (needs hook-file approval): SessionStart auto-apply + routing rules, subagents capped at Sonnet in every mode, trim hook no longer bypasses permission prompts.
+- Usage was counted ~2x (one transcript record per content block repeats the same usage); everything now counts each message once.
+- Weekly reset no longer leaves the governor stuck in last week's mode (Claude and Codex).
+- `scripts/profile.mjs` is the real `/rescue apply`. Diet sees claude.ai/org-synced plugins and reports the measured session-start context. usage-check is cost-weighted. Haiku 5.5 is priced and is the scout model.
 
 ## Install
 
@@ -15,7 +20,7 @@ Route every task to the smallest capable model tier and prove the savings from l
 /plugin marketplace add ericsnider2003-max/Plugins
 /plugin install usage-max@eric-plugins
 ```
-Then run `node scripts/profile.mjs --write` once (the SessionStart hook will do this automatically after the pending hook update). Future versions arrive automatically (`autoUpdate` is set by the profile).
+The first session configures everything itself (check with `/usage-max:budget`). Future versions arrive automatically (`autoUpdate` is set by the profile). Codex: see `codex/README.md`.
 
 Uninstall: restore the settings backup, then `claude plugin uninstall usage-max`.
 
