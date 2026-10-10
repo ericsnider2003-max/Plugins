@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Installs usage-max into Codex: skill, AGENTS.md block, notify hook, profiles. Idempotent; backs up config.toml.
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
-import { codexHome, dataDir, setTopLevel, writeProfiles, loadConfig, applyMode, evaluate, modelsSeen, weightFor, DEFAULT_CONFIG } from "./codex-governor.mjs";
+import { codexHome, dataDir, setTopLevel, writeProfiles, loadConfig, applyMode, evaluate, markInstalled, modelsSeen, weightFor, DEFAULT_CONFIG } from "./codex-governor.mjs";
 import { binDir, syncBin } from "./sync.mjs";
 const plugin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."); const sr = syncBin({ root: plugin, force: true }); if (sr.error) console.error("sync to stable dir failed (using existing copy if any):", sr.error);
 const root = binDir(); const ch = codexHome(); fs.mkdirSync(ch, { recursive: true });
@@ -44,7 +44,7 @@ else console.log(`existing notify= left untouched; run node ${rp}/scripts/notify
     }
   }
 }
-writeProfiles(loadConfig()); const { mode, cfg, st: ist } = evaluate(); applyMode(mode, cfg, Boolean(ist && ist.surplus && mode === "green"));
+writeProfiles(loadConfig()); markInstalled(); const { mode, cfg, st: ist } = evaluate(); applyMode(mode, cfg, Boolean(ist && ist.surplus && mode === "green"));
 console.log(`installed. mode=${mode}.
 REQUIRED once: start Codex and run /hooks, then trust the usage-max hooks. Codex silently skips untrusted hooks, so until you do this usage-max does nothing in Codex.
 Calibration is automatic (read from Codex's own rate_limits) after your first Codex turn. Verify anytime: node "${rp}/scripts/codex-governor.mjs" doctor`);

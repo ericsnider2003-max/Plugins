@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // usage-max for OpenAI Codex CLI: meter ~/.codex sessions, estimate plan %, pick mode, write profiles.
-// CLI: doctor | models | status | calibrate <pct> --resets <ISO> | mode <auto|green|amber|red> | apply | profiles | gate
+// CLI: doctor | selftest-trim | savings [--days N --since ISO --json] | backup [--out dir] | restore --check <dir> | restore <dir> --apply | models | status | calibrate <pct> --resets <ISO> | mode <auto|green|amber|red> | apply | profiles | gate
 // gate exit codes: 0 green, 10 amber, 20 red (for batch/eval harnesses: skip or defer work on 20).
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { binDir } from "./sync.mjs";
 import { writeSelf, readOther, isFresh } from "./shared.mjs";
 
@@ -128,6 +129,7 @@ export function evaluate(now = Date.now(), force = false) {
   }
   const fl = fiveFloor(st.five, now); let surplus = false;
   if (mode === "green" && e && fl === "green") { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12) : proj < 80 && e.hoursLeft > 12; e.projected = proj; }
+  if (mode !== st.mode) { st.history = [...(Array.isArray(st.history) ? st.history : []), { at: new Date(now).toISOString(), from: st.mode, to: mode }].slice(-200); }
   st.mode = mode; st.surplus = surplus; st.appliedKey = st.appliedKey || null; wj(sf, st);
   try { writeSelf({ mode, surplus, estPct: e?.est ?? null, hoursLeft: e?.hoursLeft ?? null, fivePct: st.five?.pct ?? null, updatedAt: new Date(now).toISOString() }); } catch {}
   return { mode, surplus, e, st, cfg };
@@ -158,6 +160,7 @@ export function writeProfiles(cfg = loadConfig()) {
     fs.mkdirSync(codexHome(), { recursive: true }); fs.writeFileSync(f, `# managed by usage-max (mode ${mode})\n` + t);
   }
 }
+export function markInstalled(now = Date.now()) { const sf = path.join(dataDir(), "governor.json"); const st = { mode: "green", override: null, calib: null, k: null, ...j(sf, {}) }; if (!st.installedAt) { st.installedAt = new Date(now).toISOString(); wj(sf, st); } }
 export const modeKey = (mode, surplus) => mode + (surplus ? "+s" : "");
 export function markApplied(key) { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.appliedKey = key; wj(sf, st); }
 export function applyMode(mode, cfg = loadConfig(), surplus = false) {
@@ -170,7 +173,7 @@ export function modelsSeen() {
   return out;
 }
 // `doctor`: say plainly whether usage-max is actually active in Codex, and what to do if not.
-export function doctor(home = codexHome()) {
+export function doctor(home = codexHome(), platform = process.platform) {
   const out = []; const ok = (m) => out.push(`  ok   ${m}`); const bad = (m, fix) => out.push(`  FIX  ${m}${fix ? `\n       -> ${fix}` : ""}`);
   const rd = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return ""; } };
   const cfg = loadConfig(); const toml = rd(path.join(home, "config.toml")); const hooks = rd(path.join(home, "hooks.json")); const gs = j(path.join(dataDir(), "governor.json"), {}); const seen = j(path.join(dataDir(), "hook-seen.json"), {});
@@ -189,13 +192,47 @@ export function doctor(home = codexHome()) {
   gs.calib ? ok(`calibrated (${gs.calib.source === "plan" ? "automatically from Codex rate_limits" : "manually"}): ${gs.calib.pct}%`) : bad("not calibrated yet", "use Codex once (the plan % is read from its own logs) or: calibrate <pct from /status> --resets <ISO>");
   /usage-max:start/.test(rd(path.join(home, "AGENTS.md"))) ? ok("AGENTS.md block present") : bad("AGENTS.md block missing", "node scripts/install.mjs");
   { const o = readOther(); o ? (isFresh(o) ? ok("shared status with Claude: fresh") : ok("shared status with Claude: stale")) : ok("shared status with Claude: none"); }
+  { const tok = j(path.join(dataDir(), "trim-ok.json"), null), ts = j(path.join(dataDir(), "trim-stats.json"), null), off = process.env.USAGE_MAX_TRIM === "off" || cfg.trim === "off";
+    if (off) ok("output trimming is switched OFF (USAGE_MAX_TRIM=off or config.json trim:\"off\")");
+    else if (tok && tok.ok) ok(`output trimming self-test passed (${(tok.shells || []).join(", ")}) on ${String(tok.at).slice(0, 10)}`);
+    else if (platform === "win32") bad("output trimming is disabled on Windows until the self-test passes", `run: node ${binDir().replace(/\\/g, "/")}/scripts/codex-governor.mjs selftest-trim`);
+    else ok("output trimming self-test not needed (enabled by default on this platform)");
+    if (ts) ok(`trim stats: ${ts.rewrites} rewrites, ${ts.rawBytes} -> ${ts.outBytes} bytes (last ${ts.lastAt})`); }
   const walkCount = [...walk(path.join(home, "sessions"))].length; walkCount ? ok(`${walkCount} Codex session logs found`) : bad("no Codex session logs under " + path.join(home, "sessions"), "run Codex once; check CODEX_HOME");
   return out.join("\n");
 }
+export async function selftestTrim(platform = process.platform) {
+  const { wrap } = await import("./run-trimmed.mjs"); const here = path.dirname(fileURLToPath(import.meta.url)); const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "umtrim-")); const env = { ...process.env, USAGE_MAX_HOME: tmpHome };
+  fs.writeFileSync(path.join(tmpHome, "noisy.mjs"), "for(let i=0;i<400;i++)console.log('line '+i);console.error('ERROR boom');process.exitCode=3;\n");
+  const wrapped = wrap("node noisy.mjs", path.join(here, "run-trimmed.mjs")); // plain words only, run with cwd = tmpHome
+  const shells = platform === "win32" ? [["powershell", "powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", wrapped], {}], ["cmd", "cmd.exe", ["/d", "/s", "/c", `"${wrapped}"`], { windowsVerbatimArguments: true }]] : [["sh", "sh", ["-c", wrapped], {}]];
+  const res = [];
+  for (const [name, exe, args, opt] of shells) {
+    const r = spawnSync(exe, args, { env, cwd: tmpHome, encoding: "utf8", timeout: 60000, ...opt }); if (r.error && r.error.code === "ENOENT") { res.push({ name, skipped: true }); continue; }
+    const out = (r.stdout || "") + (r.stderr || ""); const checks = { exit3: r.status === 3, trimmed: /trimmed/.test(out), error: /ERROR boom/.test(out), tail: /line 399/.test(out) };
+    res.push({ name, pass: Object.values(checks).every(Boolean), checks, status: r.status, bytes: out.length });
+  }
+  fs.rmSync(tmpHome, { recursive: true, force: true });
+  const ran = res.filter((x) => !x.skipped), pass = ran.length > 0 && ran.every((x) => x.pass), f = path.join(dataDir(), "trim-ok.json");
+  if (pass) wj(f, { ok: true, at: new Date().toISOString(), shells: ran.map((x) => x.name) }); else try { fs.rmSync(f, { force: true }); } catch {}
+  return { pass, res };
+}
+async function extCli(cmd, a, flag) {
+  if (cmd === "selftest-trim") { const { pass, res } = await selftestTrim(); for (const x of res) console.log(x.skipped ? `SKIP ${x.name}: not found` : `${x.pass ? "PASS" : "FAIL"} ${x.name}: exit=${x.status} (want 3) ${Object.entries(x.checks).map(([k, v]) => `${k}=${v ? "ok" : "NO"}`).join(" ")} output=${x.bytes}B`);
+    console.log(pass ? `trim self-test PASSED: trim-ok.json written (${path.join(dataDir(), "trim-ok.json")})` : "trim self-test FAILED or no shell ran: trim-ok.json removed, rewriting stays off on Windows"); return (pass ? 0 : 1); }
+  if (cmd === "savings") { const { savings, format } = await import("./savings.mjs"); const d = flag("--days"); const r = savings({ days: d ? Number(d) || 7 : 7, since: flag("--since") }); console.log(a.includes("--json") ? JSON.stringify(r, null, 2) : format(r)); return (0); }
+  if (cmd === "backup") { const { backup } = await import("./backup.mjs"); try { const r = backup(flag("--out")); console.log(`backup written: ${r.dir}\n  ${r.files.length} files; skipped (missing): ${r.skipped.join(", ") || "none"}`); return (0); } catch (e) { console.error("backup failed: " + e.message); return (1); } }
+  if (cmd === "restore") { const B = await import("./backup.mjs"); const chk = a.indexOf("--check") >= 0, dir = a.filter((x, i) => !x.startsWith("--") && a[i - 1] !== "--out")[0];
+    if (!dir || (!chk && !a.includes("--apply"))) { console.error("usage: restore --check <dir>   |   restore <dir> --apply [--out <dir for the pre-restore backup>]"); return (2); }
+    if (chk) { const c = B.check(path.resolve(dir)); if (c.error) console.log("FAIL " + c.error); for (const r of c.rows) console.log(`${r.verified ? "ok  " : "BAD "} ${r.path}  [${r.verified ? "sha256 verified" : "sha256 MISMATCH/missing"}; ${r.state}]`); console.log(c.ok ? "manifest check OK (nothing changed)" : "manifest check FAILED"); return (c.ok ? 0 : 1); }
+    try { const r = B.restore(path.resolve(dir), flag("--out")); if (r.error) { console.error("restore refused: " + r.error); return (1); } console.log(`restored ${r.restored.length} files; pre-restore backup: ${r.preRestore}\nNext: fully quit and reopen the Codex app, then run /hooks in the Codex CLI and confirm the usage-max hooks show as trusted.`); return (0); } catch (e) { console.error("restore failed: " + e.message); return (1); } }
+}
+const EXT = new Set(["selftest-trim", "savings", "backup", "restore"]);
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const [cmd = "status", ...a] = process.argv.slice(2); const flag = n => { const i = a.indexOf(n); return i >= 0 ? a[i + 1] : null; };
   if (cmd === "doctor") { console.log("usage-max codex doctor:\n" + doctor()); process.exit(0); }
+  if (EXT.has(cmd)) extCli(cmd, a, flag).then((c) => process.exit(c), (e) => { console.error(e.message); process.exit(1); }); else {
   if (cmd === "models") { const m = modelsSeen(); console.log(Object.keys(m).length ? "models seen in your Codex sessions (set config.json modes to ones your plan has):\n" + Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `  ${k}  (${v})`).join("\n") : "no sessions found under " + codexHome()); process.exit(0); }
   if (cmd === "calibrate") { const pct = Number(a[0]); const r = flag("--resets"); if (!(pct >= 0) || !r) { console.error("usage: calibrate <pct from /status or chatgpt.com/codex/settings/usage> --resets <ISO>"); process.exit(2); } calibrate(pct, r); }
   if (cmd === "mode") { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.override = a[0] === "auto" ? null : a[0]; wj(sf, st); }
@@ -211,4 +248,5 @@ if (isMain) {
   if (surplus && e) { const p = e.projected; console.log(`surplus: projected ~${Math.round(p)}% at reset, ~${Math.round(100 - p)}% of the week would go unused — higher effort allowed on hard problems`); }
   { const o = readOther(); if (o && isFresh(o)) console.log(`claude plan: ${o.mode}${o.surplus ? "+surplus" : ""}${typeof o.estPct === "number" ? `, week ~${Math.round(o.estPct)}% used` : ""}${typeof o.hoursLeft === "number" ? `, ${Math.round(o.hoursLeft)}h to reset` : ""}`); }
   if (cmd === "gate") process.exit({ green: 0, amber: 10, red: 20 }[mode]);
+  }
 }

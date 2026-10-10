@@ -3,16 +3,20 @@
 //  SessionStart     -> meter + evaluate; plain stdout = context (budget directive when AMBER/RED)
 //  UserPromptSubmit -> once per session per mode: directive context in AMBER/RED
 //  Stop             -> re-evaluate; on mode change apply profile + systemMessage
-//  PreToolUse Bash  -> trim noisy simple commands via updatedInput (POSIX shells only; USAGE_MAX_TRIM=off disables)
+//  PreToolUse Bash  -> trim noisy simple commands via updatedInput -> `node run-trimmed.mjs run <plain words>` (readable, any shell). Off: USAGE_MAX_TRIM=off or config.json trim:"off".
+//                      win32 only after `codex-governor.mjs selftest-trim` wrote trim-ok.json (or USAGE_MAX_TRIM=force).
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
-import { evaluate, applyMode, dataDir, modeKey } from "./codex-governor.mjs";
-import { readOther, balanceAdvice } from "./shared.mjs";
+import { evaluate, applyMode, dataDir, modeKey, codexHome } from "./codex-governor.mjs";
+import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs";
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
-export function rewrite(cmd, trimPath, platform = process.platform) {
+const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
+export { wrap };
+export function rewrite(cmd, runPath, platform = process.platform) {
   if (typeof cmd !== "string" || process.env.USAGE_MAX_TRIM === "off") return null;
-  if (platform === "win32" && process.env.USAGE_MAX_TRIM !== "force") return null;
-  const c = cmd.trim(); if (!NOISY.test(c) || /[|><;&`$()]|\n/.test(c) || /--no-trim|--reporter|--json|-q\b|--quiet/.test(c)) return null;
-  return `set -o pipefail; ${c} 2>&1 | node "${trimPath.replace(/\\/g, "/")}"`;
+  const cj = rj("config.json"); if (cj && cj.trim === "off") return null;
+  if (platform === "win32" && process.env.USAGE_MAX_TRIM !== "force") { const ok = rj("trim-ok.json"); if (!ok || ok.ok !== true) return null; }
+  const c = cmd.trim(); if (!NOISY.test(c) || /[|><;&`$()]|\n|\r/.test(c) || /--no-trim|--reporter|--json|-q\b|--quiet/.test(c)) return null;
+  return wrap(c, runPath);
 }
 const DIRECTIVE = { amber: "usage-max AMBER: weekly budget is being burned faster than sustainable. Use low reasoning effort, keep scope tight, avoid re-reading files, no large autonomous jobs without asking.", red: "usage-max RED: weekly budget is nearly exhausted for the time left. Cheapest path only: minimal reads, no exploratory work, no fast mode, no long autonomous runs; ask before anything big." };
 function seen(ev) { try { const f = path.join(dataDir(), "hook-seen.json"); let o = {}; try { o = JSON.parse(fs.readFileSync(f, "utf8")); } catch {} o[ev] = new Date().toISOString(); fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o)); } catch {} }
@@ -23,7 +27,7 @@ function main() {
   seen(ev);
   if (ev === "PreToolUse") {
     if (input.tool_name !== "Bash" || !input.tool_input) return;
-    const nc = rewrite(input.tool_input.command, path.join(path.dirname(fileURLToPath(import.meta.url)), "trim.mjs"));
+    const nc = rewrite(input.tool_input.command, path.join(path.dirname(fileURLToPath(import.meta.url)), "run-trimmed.mjs"));
     if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", updatedInput: { ...input.tool_input, command: nc } } }));
     return;
   }

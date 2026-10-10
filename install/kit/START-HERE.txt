@@ -30,6 +30,11 @@ PICK WHAT YOU USE (you can do more than one)
       3. In the Codex CLI window type  /hooks  and trust the usage-max hooks. (The Codex app cannot open
          /hooks; the trust is saved in your Codex config and is shared.)
 
+Optional Codex extras (run in a terminal; <bin> is the folder 2-INSTALL-CODEX printed):
+      node <bin>/scripts/codex-governor.mjs selftest-trim   turns on output trimming on Windows once it passes
+      node <bin>/scripts/codex-governor.mjs savings         what trimming really saved (measured vs estimated)
+      node <bin>/scripts/codex-governor.mjs backup          saves your Codex usage-max setup (restore --check to verify)
+
 THEN: run 3-CHECK-EVERYTHING any time. Lines starting with FIX say exactly what to do.
 
 Biggest saving to do once: type  /usage-max diet  in Claude. It lists the plugins that add the most

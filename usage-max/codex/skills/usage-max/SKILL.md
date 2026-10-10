@@ -9,3 +9,5 @@ Run from the plugin folder (`<usage-max>` = where it was installed/unzipped):
 - `... mode auto|green|amber|red` — manual override. New sessions pick up model/effort; a running session needs `/model`.
 - `... gate` — exit 0/10/20 (green/amber/red) for scripts. `codex-lean.mjs --hold-red <args>` launches codex on the right profile or defers in RED.
 Policy: GREEN normal; AMBER low effort + smaller scope; RED cheapest model, no big autonomous jobs. Never claim exact % — it is an estimate until calibrated.
+Routing: send routine search, inspection, formatting and test-output summarisation to the cheapest capable lane; reserve higher reasoning for architecture, ambiguous debugging and final review; use surplus effort only when `status` shows SURPLUS. When this plan is RED/AMBER and `status` shows the other plan (Claude) has headroom, RECOMMEND that the user shift work there; do not switch accounts or models yourself. Never silently downgrade a model the user explicitly requested.
+- `... savings [--days 7] [--since ISO] [--json]` — read-only report; every line is `measured` or `estimate`.

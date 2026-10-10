@@ -2,6 +2,13 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.7.0 (Oct 10 2026) — Codex: Windows-safe trimming, savings report, backup/restore
+- **Trimming on Windows** now works through a Node wrapper (`node ".../run-trimmed.mjs" run npm test`). The command stays readable, so Codex's approval and auto-review see the real command. Only plain words are wrapped; anything with pipes, redirects, chaining, quotes, globs, `--json`/`--reporter`/`-q`/`--no-trim` is left untouched. Exit codes are forwarded. On Windows it stays OFF until you run `node <bin>/scripts/codex-governor.mjs selftest-trim` once (it proves PowerShell and cmd on your PC).
+- **Rollback:** set `USAGE_MAX_TRIM=off`, or `"trim":"off"` in the Codex usage-max `config.json`.
+- **`codex-governor savings`** (read-only): measured numbers (sessions, turns, tool-output bytes, trim rewrites and bytes removed) kept separate from estimates, split before/after install. No invented provider numbers.
+- **`codex-governor backup` / `restore --check` / `restore --apply`**: timestamped, never overwritten, sha256 manifest, private file modes; restore takes a pre-restore backup first. After a restore, restart the Codex app (and re-trust hooks in the CLI `/hooks` if it asks).
+- Claude hooks are unchanged.
+
 ## 0.6.4 (Oct 10 2026)
 - **`/usage-max` no longer asks permission.** The command now pre-approves exactly its own script (`allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/usage-max.mjs":*)`, nothing broader) and runs it inline before the model starts, so it also costs one model turn instead of two. A live test (`test/live.mjs`) fails if a permission prompt ever comes back.
 - Plain English after the command (for example `/usage-max as the new version`) shows the status with a short note instead of failing; cloud sessions no longer say "profile not applied" (it cannot apply there).
