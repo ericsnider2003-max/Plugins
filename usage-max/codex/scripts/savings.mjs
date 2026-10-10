@@ -57,5 +57,8 @@ export function format(r) {
     M(`before: ${b.sessions} sessions, ${b.turns} turns; after: ${a.sessions} sessions, ${a.turns} turns`);
     row("tool-output bytes/turn", b.perTurn?.toolOutputBytes, a.perTurn?.toolOutputBytes); row("input tokens/turn", b.perTurn?.inputTokens, a.perTurn?.inputTokens);
   } else o.push("before/after: no split point. Run the installer (records installedAt) or pass --since <ISO> to split the window.");
+  const tot = Object.values(m.lanes).reduce((a, b) => a + b, 0), hi = Object.entries(m.lanes).filter(([k]) => /\/(high|xhigh)$/.test(k)).reduce((a, [, v]) => a + v, 0);
+  if (tot) o.push(hi / tot > 0.5 ? `what-if   ${Math.round(100 * hi / tot)}% of turns ran at high/xhigh effort. Use medium for routine edits and reads; keep high for hard design or debugging (\`usage-max codex mode\` does this when the plan runs low).` : `what-if   effort mix is already modest (${Math.round(100 * hi / tot)}% high/xhigh).`);
+  if (m.turns && m.toolOutputBytes / m.turns > 20000) o.push(`what-if   ~${n(Math.round(m.toolOutputBytes / m.turns))} bytes of tool output per turn. Trim rewrites cut this (\`usage-max codex selftest-trim\` on Windows, then enable); avoid dumping whole files or logs.`);
   return o.join("\n");
 }

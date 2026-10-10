@@ -8,6 +8,7 @@
 //   rescue [apply [--write]|migrate|halt]
 //   balance         Claude vs Codex headroom
 //   context [--archive f]  what CLAUDE.md/AGENTS.md (+ imports) cost on every turn; reversible archive
+//   savings [--days N]  what usage-max saved and where more is left, Claude and Codex side by side (measured vs estimate vs what-if)
 //   digest          what the guards did (counts) + Codex measured savings
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
 //   chat-prefs      paste-once text for Claude.ai / Cowork / ChatGPT (chats have no hooks)
@@ -144,11 +145,18 @@ const map = {
   codex: () => { const s = rest[0] || "status"; const f = { diet: "codex-diet.mjs", install: "install.mjs", lean: "codex-lean.mjs" }[s]; return f ? run(C(f), rest.slice(1)) : run(C("codex-governor.mjs"), rest.length ? rest : ["status"]); },
   context: () => run(S("ctxfiles.mjs"), rest),
   digest: () => { const d = digestOf(); console.log(d.lines.length ? `usage-max actions since ${String(d.since).slice(0, 10)} (counts only; what each saved depends on your work):\n${d.lines.join("\n")}` : "usage-max: nothing recorded yet (the guards count what they do as you work)."); console.log(""); return run(C("codex-governor.mjs"), ["savings"]); },
+  savings: async () => {
+    const { claudeSavings, formatClaude } = await import("./savings.mjs"); const i = rest.indexOf("--days"); const days = i === -1 ? 7 : Number(rest[i + 1]) || 7;
+    console.log(formatClaude(await claudeSavings({ dir: path.join(home, ".claude", "projects"), days }))); console.log("");
+    console.log("CODEX"); const c = run(C("codex-governor.mjs"), ["savings", "--days", String(days)]);
+    console.log("\nSame yardstick on both: measured = read from your logs; estimate = a stated counterfactual; what-if = a lever, not a saving. Neither side is favoured; spend moves to whichever plan has headroom (`usage-max balance`).");
+    return c;
+  },
   queue: () => queue(rest),
   "chat-prefs": () => { console.log(fs.readFileSync(path.join(root, "chat-preferences.md"), "utf8")); return 0; },
   route: () => { console.log("route/handoff are model tasks: follow commands/usage-max.md."); return 0; },
   handoff: () => map.route()
 };
 // Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
-if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status doctor budget gate check diagnose audit diet rescue balance enable-here context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status savings doctor budget gate check diagnose audit diet rescue balance enable-here context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
 process.exit(await map[sub]());

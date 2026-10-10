@@ -232,7 +232,7 @@ const withHome = (h, f) => { const old = process.env.USAGE_MAX_HOME; process.env
     assert.equal(r.status, 0, r.stderr); assert.equal(js.measured.sessions, 2); assert.equal(js.measured.turns, 3); assert.equal(js.measured.toolOutputBytes, 4800); assert.deepEqual(js.measured.tokens, { input: 1600, cachedInput: 800, output: 20, events: 2 });
     assert.equal(js.measured.lanes["m-b/low"], 2); assert.equal(js.measured.lanes["m-a/high"], 1); assert.equal(js.measured.trim.rewrites, 4); assert.equal(js.estimate.toolOutputTokens, 1200); assert.equal(js.estimate.trimTokensRemoved, 1500);
     assert.match(r.stdout, /^measured  sessions 2, turns 3/m); assert.match(r.stdout, /^estimate  tool-output tokens ~1,200 \(bytes\/4\)/m); assert.match(r.stdout, /no split point/); assert.equal(js.beforeAfter, undefined);
-    for (const l of r.stdout.split("\n").slice(1)) if (l.trim() && !/^(measured|estimate)  |^before\/after/.test(l)) assert.fail("unlabeled line: " + l);
+    for (const l of r.stdout.split("\n").slice(1)) if (l.trim() && !/^(measured|estimate|what-if)  |^before\/after/.test(l)) assert.fail("unlabeled line: " + l);
   });
   t("savings: mode time from governor history; 'no history' otherwise", () => { const m = js.measured.modeTimeMs; assert.ok(m.green > 0 && m.amber > 0); assert.ok(Math.abs(m.amber - 2 * 864e5) < 5000); assert.match(r.stdout, /budget mode time: .*amber/); const Z = mkHome(); assert.match(gg(Z.e, "savings").stdout, /no history recorded yet/); });
   t("savings: read-only (no files created or touched)", () => assert.equal(snap(), s0));

@@ -2,6 +2,11 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.9.1 (Oct 10 2026) — one savings report for both plans
+- **`/usage-max savings [--days N]`** shows Claude and Codex side by side with the same labels: `measured` (read from your logs), `estimate` (a stated counterfactual, e.g. what subagent work would have cost on the main model) and `what-if` (a lever, not a saving). Neither plan is favoured.
+- Each side ends with "more:" hints computed from your own numbers: Claude delegation share and main-model spend; Codex high/xhigh effort share and tool-output bytes per turn.
+- Honest limit: there is no "without usage-max" run to compare against, so totals are workload-dependent; only the labelled counterfactuals are estimates.
+
 ## 0.9.0 (Oct 10 2026) — lean mode and burn visibility
 - **Lean RED/AMBER.** Besides model and effort, tightening now caps context growth (`autoCompactWindow` 160k AMBER / 120k RED) and turns off always-on thinking in RED. Back in GREEN your own values are left alone and anything usage-max wrote is removed.
 - **Time to empty.** `/usage-max status` and the budget directive say "at this pace the plan runs out in ~Xh, before the reset in Yh" (only from real plan-% data, only when it beats the reset).
