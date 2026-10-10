@@ -119,4 +119,6 @@ const map = {
   route: () => { console.log("route/handoff are model tasks: follow commands/usage-max.md."); return 0; },
   handoff: () => map.route()
 };
-process.exit(await (map[sub] || (async () => { console.log(`unknown subcommand "${sub}". Try: status doctor budget gate check diagnose audit diet rescue balance enable-here codex route handoff`); return 2; }))());
+// Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status doctor budget gate check diagnose audit diet rescue balance enable-here codex route handoff)\n`); process.exit(await map.status()); }
+process.exit(await map[sub]());

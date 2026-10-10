@@ -44,6 +44,12 @@ check("unified /usage-max command registered", (init.slash_commands || []).some(
 check("Stop hook metered the session", fs.existsSync(path.join(sandbox, ".claude", "usage-max", "meter.json")));
 check("nothing above Sonnet billed for a trivial turn", !Object.keys(a.result.modelUsage || {}).some((m) => /opus|fable/.test(m)), Object.keys(a.result.modelUsage || {}).join(","));
 
+// 2b: the command itself must not ask for permission (this was a real complaint) and must cost a single model turn
+const cmd = run("/usage-max:usage-max status");
+check("/usage-max runs with NO permission prompt", (cmd.result.permission_denials || []).length === 0, JSON.stringify(cmd.result.permission_denials || []).slice(0, 120));
+check("/usage-max answers (budget status relayed)", /GREEN|AMBER|RED|budget/i.test(cmd.result.result || ""), String(cmd.result.result || "").slice(0, 80));
+check("/usage-max costs one model turn", cmd.result.num_turns === 1, `turns=${cmd.result.num_turns}`);
+
 // 3: Opus subagent request becomes Sonnet
 const b = run("Use the Agent tool exactly once with subagent_type general-purpose and model opus, prompt: reply with the single word pong. Then reply with the subagent's answer only.");
 const hook = b.events.find((e) => e.subtype === "hook_response" && e.hook_event === "PreToolUse" && /usage-max/.test(e.output || ""));

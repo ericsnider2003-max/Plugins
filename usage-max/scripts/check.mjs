@@ -100,6 +100,14 @@ for (const cmd of ["usage-max.md"]) {
   else fail(`command ${cmd}`);
 }
 
+// 4b. The one command must run without a permission prompt: pre-approved narrowly (only this plugin's script) and executed inline.
+{
+  const text = fs.readFileSync(path.join(root, "commands", "usage-max.md"), "utf8");
+  const okAllow = /^allowed-tools:\s*Bash\(node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/usage-max\.mjs":\*\)\s*$/m.test(text);
+  const okInline = /^!`node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/usage-max\.mjs" \$ARGUMENTS`\s*$/m.test(text);
+  okAllow && okInline ? pass("command is pre-approved (narrow) and runs inline") : fail("command pre-approval", `allowed-tools ok=${okAllow}, inline ok=${okInline}`);
+}
+
 // 5. Hooks file: top-level hooks key, referenced scripts exist.
 const hooks = readJson(path.join(root, "hooks", "hooks.json"));
 if (hooks && hooks.hooks && hooks.hooks.SessionStart && hooks.hooks.PostToolUse) pass("hooks structure");

@@ -2,6 +2,10 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.6.4 (Oct 10 2026)
+- **`/usage-max` no longer asks permission.** The command now pre-approves exactly its own script (`allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/usage-max.mjs":*)`, nothing broader) and runs it inline before the model starts, so it also costs one model turn instead of two. A live test (`test/live.mjs`) fails if a permission prompt ever comes back.
+- Plain English after the command (for example `/usage-max as the new version`) shows the status with a short note instead of failing; cloud sessions no longer say "profile not applied" (it cannot apply there).
+
 ## 0.6.3 (Oct 10 2026) — "/usage-max is not available in my cloud sessions or Cowork"
 - Cause (checked in a live cloud container): cloud/desktop sessions and Cowork only see plugins in your claude.ai plugin list, and the old upload had been removed with no new one there; sessions also freeze their plugin list when they start.
 - **New: `/usage-max enable-here [dir]`** writes the repo's `.claude/settings.json` (GitHub marketplace pinned to `main`, auto-update, plugin enabled) without touching anything else (an explicit "off" is respected). Commit it and every session on that repo, cloud or terminal, loads usage-max with no upload. Verified headless in an isolated config with nothing installed. This repo ships with it.
