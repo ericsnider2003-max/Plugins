@@ -1,0 +1,58 @@
+{
+  "description": "usage-max Codex hooks (loaded when the plugin is installed in Codex; skipped if you ran codex/scripts/install.mjs, which installs the same hooks user-wide).",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/codex/scripts/codex-hook.mjs\" SessionStart",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\codex\\scripts\\codex-hook.mjs\" SessionStart",
+            "timeout": 15,
+            "statusMessage": "usage-max"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/codex/scripts/codex-hook.mjs\" UserPromptSubmit",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\codex\\scripts\\codex-hook.mjs\" UserPromptSubmit",
+            "timeout": 15,
+            "statusMessage": "usage-max"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/codex/scripts/codex-hook.mjs\" Stop",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\codex\\scripts\\codex-hook.mjs\" Stop",
+            "timeout": 15,
+            "statusMessage": "usage-max"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/codex/scripts/codex-hook.mjs\" PreToolUse",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\codex\\scripts\\codex-hook.mjs\" PreToolUse",
+            "timeout": 15,
+            "statusMessage": "usage-max"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ]
+  }
+}

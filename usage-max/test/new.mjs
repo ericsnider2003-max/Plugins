@@ -141,4 +141,17 @@ await ta("ttlAdvice: needs enough sessions, then recommends the cheaper cache li
     const a = fs.mkdtempSync(path.join(os.tmpdir(), "umsync1-")); run3(a); assert.equal(fs.existsSync(path.join(a, ".usage-max-codex")), false);
     const b = fs.mkdtempSync(path.join(os.tmpdir(), "umsync2-")); fs.mkdirSync(path.join(b, ".usage-max-codex/bin"), { recursive: true }); fs.writeFileSync(path.join(b, ".usage-max-codex/bin/VERSION"), "0.0.1"); run3(b);
     assert.equal(fs.readFileSync(path.join(b, ".usage-max-codex/bin/VERSION"), "utf8").trim(), ver); assert.ok(fs.existsSync(path.join(b, ".usage-max-codex/bin/scripts/codex-hook.mjs"))); }); }
+{ const hh = fs.mkdtempSync(path.join(os.tmpdir(), "umhost-"));
+  const base = { ...process.env, USAGE_MAX_HOME: hh, USAGE_MAX_AUTOAPPLY: "", USAGE_MAX_HOST: "" };
+  const codexEnv = { ...base, CLAUDECODE: "", PLUGIN_ROOT: "/some/codex/plugin/root" }, claudeEnv = { ...base, CLAUDECODE: "1", PLUGIN_ROOT: "" };
+  const hk = (file, args, input, env) => spawnSync("node", [path.join(root, "hooks", file), ...args], { input: JSON.stringify(input), env, encoding: "utf8" });
+  t("Claude hooks stay silent and touch nothing inside Codex (turn_id payload, or PLUGIN_ROOT without CLAUDECODE)", () => {
+    for (const env of [claudeEnv, codexEnv]) { const r = hk("session-start.mjs", [], { turn_id: "t1", session_id: "s" }, env); assert.equal(r.status, 0); assert.equal(r.stdout, "", "turn_id payload must be treated as Codex"); }
+    assert.equal(hk("session-start.mjs", [], {}, codexEnv).stdout, ""); assert.equal(fs.existsSync(path.join(hh, ".claude")), false, "must not create Claude settings from inside Codex");
+    assert.equal(hk("budget.mjs", ["PreToolUse"], { hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: "general-purpose" }, turn_id: "t" }, claudeEnv).stdout, "");
+    assert.equal(hk("bash-trim.mjs", [], { tool_name: "Bash", tool_input: { command: "npm test" }, turn_id: "t" }, claudeEnv).stdout, "");
+    assert.equal(hk("ledger.mjs", [], { tool_name: "Agent", tool_input: {}, session_id: "s", turn_id: "t" }, claudeEnv).stdout, ""); });
+  t("the same hooks still work in Claude Code", () => { assert.match(hk("session-start.mjs", [], { session_id: "s" }, claudeEnv).stdout, /usage-max routing-active/); assert.match(hk("bash-trim.mjs", [], { tool_name: "Bash", tool_input: { command: "npm test" } }, claudeEnv).stdout, /updatedInput/); });
+  t("Codex plugin manifest: hooks file exists, Codex schema shape, Windows command uses %PLUGIN_ROOT%", () => { const cx = JSON.parse(fs.readFileSync(path.join(root, ".codex-plugin/plugin.json"), "utf8")); const hf = JSON.parse(fs.readFileSync(path.join(root, cx.hooks), "utf8")); assert.deepEqual(Object.keys(hf.hooks).sort(), ["PreToolUse", "SessionStart", "Stop", "UserPromptSubmit"]);
+    for (const groups of Object.values(hf.hooks)) for (const g of groups) for (const x of g.hooks) { assert.equal(x.type, "command"); assert.match(x.command, /\$\{PLUGIN_ROOT\}\/codex\/scripts\/codex-hook\.mjs/); assert.match(x.commandWindows, /%PLUGIN_ROOT%\\codex\\scripts\\codex-hook\.mjs/); assert.equal(x.timeout > 0, true); } assert.equal(hf.hooks.PreToolUse[0].matcher, "Bash"); assert.equal(cx.version, JSON.parse(fs.readFileSync(path.join(root, ".claude-plugin/plugin.json"), "utf8")).version); }); }
 console.log(`${n} passing`);

@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { aboveCeiling } from "../scripts/ceiling.mjs";
 import { readOther, balanceAdvice } from "../scripts/shared.mjs";
 import { oldSyncedCopies, DISABLE_OLD } from "../scripts/dupes.mjs";
+import { underCodex } from "../scripts/host.mjs";
 
 // Resolve from this file, not CLAUDE_PLUGIN_ROOT: that env var can be inherited from another plugin's process.
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -42,6 +43,7 @@ try {
   } catch {
     input = {};
   }
+  if (underCodex(input)) process.exit(0); // running inside Codex: never touch Claude settings from there
   const home = process.env.USAGE_MAX_HOME || os.homedir();
   const profile = readJson(path.join(pluginRoot, "profiles", "settings.enforced.json")) || {};
   // Missing/unreadable profile falls back to the strict defaults, never to "anything goes".

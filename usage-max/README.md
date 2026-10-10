@@ -2,6 +2,13 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.6.1 (Oct 10 2026) — found from a real Codex screenshot
+- **Codex runs Claude plugins' hooks.** Verified in Codex's source: it loads `.claude-plugin/plugin.json` plugins, runs their `hooks/hooks.json`, and sets `CLAUDE_PLUGIN_ROOT`. The old uploaded copy's seven Claude-only hooks were therefore running inside your Codex app (and had saved trust), which is the likely cause of disrupted turns.
+- Every Claude hook now detects Codex and does nothing there (never touches Claude settings from inside Codex).
+- The plugin ships a Codex manifest (`.codex-plugin/plugin.json` -> `codex/hooks.json`, with a Windows `commandWindows`), so if it is installed into Codex it loads only the Codex hooks. If you also ran the Codex installer, the plugin copy defers (nothing runs twice).
+- `doctor` flags leftover usage-max plugin entries in Codex config. CI checks that the three manifests agree on the version.
+- Launchers: find the installed plugin when run from inside a zip (with a plain-English message), and stop claiming success after a failure.
+
 ## 0.6.0 (Oct 10 2026)
 - **One-step install** (`install/install-usage-max.cmd` for Windows, `.sh` for macOS/Linux): adds the marketplace pinned to `main`, installs the plugin, turns off the older uploaded copy. Verified end to end in an isolated Claude config, including re-runs. Auto-update follows `main` regardless of GitHub's default branch.
 - **Codex survives plugin updates.** Codex scripts now install to a stable folder (`~/.usage-max-codex/bin`) and are refreshed automatically whenever the Claude plugin updates, so hook paths (and your `/hooks` trust) never change.

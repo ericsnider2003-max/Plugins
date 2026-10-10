@@ -61,3 +61,6 @@ Next step (fix implementation): **Sonnet** (`usage-max-worker`) for the mechanic
 ## State after 0.6.0
 PR #1 merged to `main`; installs and auto-updates from `ericsnider2003-max/Plugins#main` (verified in an isolated config). One-step installers in `install/`. Codex installs to `~/.usage-max-codex/bin` and is refreshed by the Claude plugin. Live proof: `node usage-max/test/live.mjs`.
 Only the user can do: (1) run the installer on their machine; (2) Codex: `node ~/.usage-max-codex/...` not needed - run `usage-max/codex/scripts/install.mjs` once, then `/hooks` -> trust the hooks, then `/usage-max codex doctor`; (3) disable unused synced plugins (`/usage-max diet` prints the commands).
+
+## Codex desktop app note (0.6.1)
+The user runs the Codex DESKTOP app plus the CLI. The app cannot open `/hooks` (CLI only). Codex loads Claude plugins' hooks natively (PLUGIN_ROOT/CLAUDE_PLUGIN_ROOT), so the old uploaded 0.1.0 plugin ran 7 Claude-only hooks inside Codex. Fixes: host guard in all Claude hooks, `.codex-plugin/plugin.json` -> `codex/hooks.json`, defer when user-wide hooks are installed. User must remove the old plugin in Codex and trust the new hooks via `/hooks` in the Codex CLI (trust is shared via ~/.codex/config.toml).

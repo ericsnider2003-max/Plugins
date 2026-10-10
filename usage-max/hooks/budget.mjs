@@ -8,6 +8,7 @@
 import { loadMeter, saveMeter, sessionFiles, meterFiles } from "../scripts/meter.mjs";
 import { evaluate, loadState, saveState, loadConfig } from "../scripts/governor.mjs";
 import { aboveCeiling } from "../scripts/ceiling.mjs";
+import { underCodex } from "../scripts/host.mjs";
 import { readOther, balanceAdvice } from "../scripts/shared.mjs";
 import { readJson } from "../scripts/meter.mjs";
 
@@ -35,6 +36,7 @@ try {
   const raw = await readStdin();
   let input = {};
   try { input = raw ? JSON.parse(raw) : {}; } catch { input = {}; }
+  if (underCodex(input)) process.exit(0); // Codex has its own hooks
   const event = input.hook_event_name || process.argv[2] || "";
 
   if (event === "Stop" || event === "SubagentStop") {
