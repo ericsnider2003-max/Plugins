@@ -70,3 +70,6 @@ Kit lives in `install/kit` + `install/build-kit.py` (builds `usage-max-desktop.z
 
 ## 0.6.3 notes
 Cloud sessions (desktop app, cloud icon, CLAUDE_CODE_REMOTE=true) start from a blank container: no persistent ~/.claude, no status line, plugin list frozen at start. usage-max works there via the repo route (`enable-here` -> committed `.claude/settings.json`, verified headless) or an uploaded zip. Plan tracking (status line / calibrate / profile) belongs on the user's PC. The Plugins repo itself has `.claude/settings.json` committed. Cowork: upload only, untested.
+
+## 0.7.0 notes
+Codex handoff P1-P4 shipped: Windows-safe trim wrapper (plain words only, off on Windows until `selftest-trim` passes), `savings`, `backup`/`restore`. PowerShell/cmd are unverified in the cloud; the user must run `selftest-trim` once.
