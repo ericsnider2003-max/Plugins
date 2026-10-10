@@ -88,3 +88,6 @@ Built the open research items: scripts/trimtest.mjs (+hook/trim wiring, `usage-m
 
 ## 0.12.0 notes
 codex-diagnose.mjs (real rate-limit % attribution), hooks/cross-gate.mjs (PreToolUse Bash, asks only), guard.mjs editPattern/capCheck/crossCheck. Ideas left: local-model offload (Ollama) for bulk jobs (needs the user's PC), Codex rate-card routing (needs the rate card), Codex-side loop/Read guards, auto-handoff at cold cache.
+
+## 0.13.0 notes
+scripts/offload.mjs (Ollama, loopback only, tested with a stub server, never with a real model). User wants local-model offload. First real-world check: install Ollama, pull a small coder model, run `usage-max offload status` then `git diff --staged | usage-max offload commit`.

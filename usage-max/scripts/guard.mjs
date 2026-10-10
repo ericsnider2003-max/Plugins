@@ -137,6 +137,7 @@ export function digest(dir) {
   row("rereadHints", "re-reads of an unchanged file flagged");
   row("codexCalls", "Claude->Codex calls seen (they spend the Codex plan)");
   row("codexCallsAsked", "of those, times you were asked first (Codex RED or 3rd+ round)");
+  row("offloadJobs", "jobs run on your local model instead of the plan");
   row("scriptFirstHints", "same-edit-in-many-files flagged (script it instead)");
   row("capNear", "session cap 80% warnings");
   row("capReached", "session cap reached warnings");

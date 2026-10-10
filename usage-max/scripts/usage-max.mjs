@@ -14,6 +14,7 @@
 //   trim [on|off]   measured result of the Claude shell-output trim (bytes removed, re-run rate); switches itself off if it causes re-runs
 //   budgets [on|off]  opt-in: smaller skill-list and MCP description budgets (cuts first-turn context; rarely used skills may trigger less)
 //   cap <usd|off>   optional per-session spend cap (list-price dollars): warns at 80% and 100%, so one runaway session cannot eat the week
+//   offload status|<job> <file...>  run bounded jobs (summarize, commit, explain, docstrings, convert:<fmt>) on a model on THIS PC (Ollama): no plan usage, code stays local
 //   digest          what the guards did (counts) + Codex measured savings
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
 //   chat-prefs      paste-once text for Claude.ai / Cowork / ChatGPT (chats have no hooks)
@@ -170,11 +171,12 @@ const map = {
   trim: async () => { const T = await import("./trimtest.mjs"); const d = dataDir(); if (rest[0] === "on" || rest[0] === "off") { T.setEnabled(d, rest[0] === "on"); console.log(`trim is now ${rest[0].toUpperCase()}`); return 0; } console.log(T.report(d)); return 0; },
   budgets: async () => (await import("./budgets.mjs")).run(rest, home),
   cap: () => { const f = G.capFile(dataDir()); if (!rest[0]) { const c = G.loadCap(dataDir()); console.log(c ? `session cap: $${c} (list price). Change: usage-max cap <usd> | off` : "session cap: off. Set one: usage-max cap 5"); return 0; } if (rest[0] === "off") { try { fs.rmSync(f); } catch {} console.log("session cap off"); return 0; } const v = Number(rest[0]); if (!(v > 0)) { console.log("usage: usage-max cap <dollars>|off"); return 1; } writeJsonAtomic(f, { usd: v }); console.log(`session cap $${v}: you will be warned at 80% and 100% in each session (new prompts only; nothing is blocked)`); return 0; },
+  offload: async () => (await import("./offload.mjs")).main(rest),
   queue: () => queue(rest),
   "chat-prefs": () => { console.log(fs.readFileSync(path.join(root, "chat-preferences.md"), "utf8")); return 0; },
   route: () => { console.log("route/handoff are model tasks: follow commands/usage-max.md."); return 0; },
   handoff: () => map.route()
 };
 // Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
-if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status savings cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
 process.exit(await map[sub]());

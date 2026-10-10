@@ -6,5 +6,6 @@
 - Before a large autonomous/batch job run `node <usage-max>/scripts/codex-governor.mjs gate`; exit 20 = RED: defer or shrink. 10 = AMBER: low effort, smaller scope.
 - When this plan is RED/AMBER and the other plan (Claude, per `status` shared line) has headroom, RECOMMEND the user shift work there; do not switch accounts or models yourself.
 - Cheap first: try mechanical work on low effort and let the test/linter judge; on failure retry once with the error, then raise effort one step. Hard design or unverifiable work starts higher.
+- If `usage-max offload status` is ready, summaries, commit messages and log explanations go to the local model (`... | usage-max offload commit`).
 - Mode: `codex-governor.mjs status`. If the user says the week is tight, treat as RED. `/compact` at breaks, `/new` between tasks.
 <!-- usage-max:end -->

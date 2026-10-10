@@ -2,6 +2,12 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.13.0 (Oct 10 2026) — local-model offload
+- **`/usage-max offload`**: bounded text jobs (`summarize`, `commit`, `explain`, `docstrings`, `convert:<format>`) run on a model on YOUR machine (Ollama), so they cost no Claude or Codex usage and the code never leaves the PC. Example: `git diff --staged | usage-max offload commit`.
+- Built-in safety: loopback addresses only (refuses anything not 127.0.0.1/localhost), refuses secrets files and text containing private keys or tokens, input capped at 60k characters, output labelled "unverified". It never installs or downloads a model: `offload status` tells you what to install (Ollama, then e.g. `ollama pull qwen2.5-coder:7b`).
+- The Claude routing skill and the Codex AGENTS block tell the agent to use it when it reports ready. `savings` shows jobs run and the input tokens kept off your plan (an estimate: characters/4).
+- Tested against a stub Ollama server only; not yet tried with a real model.
+
 ## 0.12.0 (Oct 10 2026) — where Codex usage really goes, and four new brakes
 - **`/usage-max codex diagnose`** (also summarised in `savings`): Codex logs the plan's real rate-limit percentages on every call, so the weekly % that moved between two calls is attributed to the session, model/effort, folder, day and start type (interactive vs `codex exec`/automation) that made it. Measured, not estimated; resets are ignored. Plus token mix (fresh vs cached input, output, reasoning), context size per call, and plain "what stands out" findings.
 - **Cross-agent gate.** Claude calling Codex (`codex exec` / `codex review`, which is what the codex-review and codex-dispatch plugins run) spends your Codex plan. A new Claude hook counts those calls and ASKS first (never auto-approves) when Codex is RED or when a session is on its 3rd+ Codex call in an hour (each review round re-sends the plan/diff).

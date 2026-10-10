@@ -171,4 +171,19 @@ await t("codex diagnose: attributes the weekly % that moved to the session that 
   assert.match(r.text, /by session/); assert.ok(r.findings.some((f) => /xhigh|high\/xhigh/.test(f)) || r.findings.some((f) => /context per call/.test(f)), r.findings.join("|")); assert.ok(r.findings.some((f) => /non-interactive/.test(f)));
   assert.match(D.diagnose({ days: 1, home: path.join(ch, "nope") }).text, /no Codex token events/);
 });
+await t("local offload: loopback only, refuses secrets and oversize, runs a job against a stub Ollama, counts it", async () => {
+  const O = await import(pathToFileURL(path.join(root, "scripts/offload.mjs")).href); const http = await import("node:http");
+  assert.equal(O.isLoopback("http://127.0.0.1:11434"), true); assert.equal(O.isLoopback("http://localhost:1"), true); assert.equal(O.isLoopback("http://example.com"), false); assert.equal(O.isLoopback("http://127.0.0.1.evil.com"), false);
+  assert.match(O.secretReason(".env", ""), /secrets file/); assert.match(O.secretReason("a.txt", "x -----BEGIN RSA PRIVATE KEY-----"), /key or token/); assert.equal(O.secretReason("a.js", "const a = 1"), null);
+  assert.match(O.buildPrompt("commit", "diff"), /BEGIN INPUT/); assert.equal(O.buildPrompt("nope", "x"), null); assert.match(O.buildPrompt("convert:yaml", "x"), /Convert the text below to yaml/);
+  const bodies = []; const srv = http.createServer((req, res) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { res.setHeader("content-type", "application/json"); if (req.url === "/api/tags") return res.end(JSON.stringify({ models: [{ name: "llama3:8b" }, { name: "qwen2.5-coder:7b" }] })); bodies.push(JSON.parse(b)); res.end(JSON.stringify({ response: " - did a thing " })); }); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r)); const host = "http://127.0.0.1:" + srv.address().port;
+  try {
+    const st = await O.status(host); assert.equal(st.ready, true); assert.equal(O.pickModel(st.models, null), "llama3:8b"); assert.equal(O.pickModel(st.models, "qwen2.5-coder:7b"), "qwen2.5-coder:7b");
+    const ok = await O.run("summarize", "hello world", { host, name: "a.txt" }); assert.equal(ok.ok, true); assert.equal(ok.out, "- did a thing"); assert.match(bodies[0].prompt, /hello world/); assert.equal(bodies[0].stream, false);
+    assert.match((await O.run("summarize", "x".repeat(O.MAX_IN + 1), { host })).error, /at most/); assert.match((await O.run("summarize", "k", { host, name: ".env" })).error, /refused/); assert.match((await O.run("zzz", "k", { host })).error, /unknown job/);
+    assert.equal(bodies.length, 1, "refused and oversize jobs never reach the model");
+  } finally { srv.close(); }
+  assert.equal((await O.status("http://example.com")).ready, false); assert.match((await O.status("http://127.0.0.1:1")).why, /no local model server/);
+});
 console.log(`${n} passing`);
