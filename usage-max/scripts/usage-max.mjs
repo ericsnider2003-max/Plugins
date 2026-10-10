@@ -34,7 +34,8 @@ function balance() {
   return 0;
 }
 
-async function doctor() {
+async function doctor(fix = false) {
+  if (fix) { console.log("usage-max doctor --fix: applying the usage profile first (your own settings are never overwritten)"); run(S("profile.mjs"), ["--write"]); console.log(""); }
   const out = []; const ok = (m) => out.push(`  ok   ${m}`); const bad = (m, fix) => out.push(`  FIX  ${m}${fix ? `\n       -> ${fix}` : ""}`);
   const st = json(path.join(home, ".claude", "settings.json")); const gov = json(path.join(home, ".claude", "usage-max", "governor.json")) || {}; const lim = json(path.join(home, ".claude", "usage-max", "limits.json"));
   console.log("usage-max doctor — Claude Code");
@@ -42,9 +43,11 @@ async function doctor() {
   if (st) {
     st.promptCacheTtl === "5m" && st.model ? ok(`profile applied (model ${st.model}, cache TTL 5m)`) : bad("usage profile not applied", "usage-max rescue apply --write");
     st.statusLine && /usage-max/.test(JSON.stringify(st.statusLine)) ? ok("status line installed (feeds real plan % to the governor)") : bad("usage-max status line not installed", st.statusLine ? "you have your own status line; the governor then needs `budget calibrate`" : "usage-max rescue apply --write");
-    st.extraKnownMarketplaces && st.extraKnownMarketplaces["eric-plugins"] && st.extraKnownMarketplaces["eric-plugins"].autoUpdate ? ok("auto-update on for the eric-plugins marketplace") : bad("auto-update not configured", "usage-max rescue apply --write");
+    const fromUpload = /[\\/]plugins[\\/]synced[\\/]/.test(root);
+    if (fromUpload) ok("installed through the claude.ai / desktop-app upload: no auto-update (re-upload the newer usage-max-plugin zip to update, or install via 1-INSTALL-CLAUDE for automatic updates)");
+    else st.extraKnownMarketplaces && st.extraKnownMarketplaces["eric-plugins"] && st.extraKnownMarketplaces["eric-plugins"].autoUpdate ? ok("auto-update on for the eric-plugins marketplace") : bad("auto-update not configured", "usage-max doctor --fix   (or: usage-max rescue apply --write)");
   }
-  lim ? ok(`real plan % captured ${Math.round((Date.now() - Date.parse(lim.capturedAt)) / 60000)} min ago`) : bad("no plan % captured yet", "it appears after the first reply once the status line renders (needs a claude.ai login)");
+  lim ? ok(`real plan % captured ${Math.round((Date.now() - Date.parse(lim.capturedAt)) / 60000)} min ago`) : bad("no live plan % yet (the status line only exists in the Claude Code TERMINAL app, not the desktop app or Cowork)", "in the terminal app it appears after your first reply; otherwise calibrate once, 10 seconds (read % and reset time from Settings > Usage): usage-max budget calibrate 67 --resets \"Oct 11 2026 11:00 AM\"   (or run 4-CALIBRATE-CLAUDE)");
   gov.calib ? ok(`governor calibrated (${gov.calib.source}), mode ${String(gov.mode).toUpperCase()}${gov.surplus ? "+SURPLUS" : ""}`) : bad("governor not calibrated", "will learn from the status line, or: usage-max budget calibrate <pct> --resets <date>");
   const mine = (json(path.join(root, ".claude-plugin", "plugin.json")) || {}).version || "?";
   let latest = null;
@@ -76,7 +79,7 @@ function status() {
 }
 
 const map = {
-  status, balance, doctor,
+  status, balance, doctor: () => doctor(rest.includes("--fix")),
   budget: () => run(S("governor.mjs"), rest.length ? rest : ["status"]),
   gate: () => run(S("governor.mjs"), ["gate"]),
   check: () => run(S("usage-check.mjs"), ["--write-status", path.join(home, ".claude", "usage-max", "status.json"), ...rest]),

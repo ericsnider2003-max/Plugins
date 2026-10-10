@@ -144,6 +144,18 @@ if (fableViolations === 0) pass("no fable references");
   okShape ? pass("codex hooks file shape") : fail("codex hooks file shape");
 }
 
+// 6c. Kit launchers: Windows .cmd files must avoid ( ) blocks (cmd.exe misparses parentheses inside them) and every part must exist.
+{
+  const kit = path.join(root, "..", "install", "kit");
+  if (fs.existsSync(kit)) {
+    const need = ["1-INSTALL-CLAUDE", "2-INSTALL-CODEX", "3-CHECK-EVERYTHING", "4-CALIBRATE-CLAUDE"].flatMap((n) => [`${n}.cmd`, `${n}.sh`]).concat("START-HERE.txt");
+    const missing = need.filter((f) => !fs.existsSync(path.join(kit, f)));
+    missing.length ? fail("kit files", `missing ${missing.join(", ")}`) : pass("kit files");
+    const blocky = fs.readdirSync(kit).filter((f) => f.endsWith(".cmd")).filter((f) => fs.readFileSync(path.join(kit, f), "utf8").split("\n").some((l) => /\(\s*$/.test(l) || /^\s*\)/.test(l)));
+    blocky.length ? fail("cmd launchers use ( ) blocks", blocky.join(", ")) : pass("cmd launchers avoid ( ) blocks");
+  }
+}
+
 // 7. Official validator (local, no model usage).
 const haveClaude = spawnSync(process.platform === "win32" ? "claude.cmd" : "claude", ["--version"], { stdio: "ignore", shell: process.platform === "win32" }).status === 0;
 if (!haveClaude && !process.argv.includes("--require-claude")) {

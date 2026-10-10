@@ -67,10 +67,11 @@ export function scanFrom(file, offset = 0, sinceMs = 0, seen = new Set()) {
 export function loadMeter() {
   return readJson(path.join(dataDir(), "meter.json"), { cum: 0, offsets: {}, buckets: {}, startedAt: new Date().toISOString() });
 }
+export const writeFailures = [];
 export function saveMeter(m) {
   const cutoff = Date.now() - 8 * 86400000;
   for (const k of Object.keys(m.buckets)) if (Date.parse(k) < cutoff) delete m.buckets[k];
-  writeJsonAtomic(path.join(dataDir(), "meter.json"), m);
+  try { writeJsonAtomic(path.join(dataDir(), "meter.json"), m); } catch (e) { writeFailures.push(`meter.json: ${e.code || e.message}`); }
 }
 
 // Files belonging to one session: the main transcript plus its subagent transcripts.

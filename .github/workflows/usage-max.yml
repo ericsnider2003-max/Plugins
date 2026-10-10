@@ -19,3 +19,8 @@ jobs:
           node usage-max/test/new.mjs
       - name: Codex tests
         run: node usage-max/codex/test/run.mjs
+      - name: Build the desktop kit and plugin zip
+        run: |
+          python3 install/build-kit.py --out "$RUNNER_TEMP/kit"
+          unzip -l "$RUNNER_TEMP"/kit/usage-max-plugin-*.zip | grep -q "usage-max/.claude-plugin/plugin.json"
+          unzip -l "$RUNNER_TEMP"/kit/usage-max-desktop.zip | grep -q "usage-max-desktop/4-CALIBRATE-CLAUDE.cmd"

@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { pace } from "./lib.mjs";
 import { writeSelf } from "./shared.mjs";
 import { ownedSet, loadApplied, saveApplied } from "./owned.mjs";
-import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap } from "./meter.mjs";
+import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap, writeFailures } from "./meter.mjs";
 
 export const DEFAULT_CONFIG = {
   target: 98,
@@ -49,7 +49,7 @@ export function saveState(s) {
   const keys = Object.keys(s.sessionsNotified || {});
   if (keys.length > 300) for (const k of keys.slice(0, keys.length - 300)) delete s.sessionsNotified[k];
   s.history = (s.history || []).slice(-50);
-  writeJsonAtomic(files().state, s);
+  try { writeJsonAtomic(files().state, s); } catch (e) { writeFailures.push(`governor.json: ${e.code || e.message}`); } // read-only sandbox: keep going
 }
 
 // Pure decision function (tested).
@@ -123,9 +123,12 @@ export function estimate(state, meter, nowMs = Date.now(), config = DEFAULT_CONF
   if (win.length >= 2 && win[win.length - 1].at - win[0].at >= 1800000) {
     ratePerHour = Math.max(0, (win[win.length - 1].pct - win[0].pct) / Math.max((nowMs - win[0].at) / 3600000, 0.5));
     rateSource = "plan %";
-  } else if (state.k) {
-    ratePerHour = (state.k * spendInLast(meter, config.burnWindowHours, nowMs)) / config.burnWindowHours;
-    rateSource = "local spend";
+  } else {
+    // Only one reading: use your AVERAGE pace since the week began (plan % / elapsed hours). It needs no local data and cannot be
+    // inflated by usage that happens elsewhere (Cowork, chat, other devices) the way a local-spend scale factor can.
+    const elapsedH = Math.max(168 - hoursLeft, 6);
+    ratePerHour = c.pct / elapsedH;
+    rateSource = "average so far";
   }
   return { estPct, hoursLeft, ratePerHour: ratePerHour === null ? 0 : ratePerHour, rateSource: rateSource || "none yet" };
 }
@@ -212,7 +215,7 @@ async function cli() {
   const flag = (n) => { const i = rest.indexOf(`--${n}`); return i > -1 ? rest[i + 1] : null; };
   const config = loadConfig();
   if (cmd === "calibrate") {
-    const pct = Number(rest[0]);
+    const pct = Number(String(rest[0] || "").replace(/%/g, "").trim());
     if (!Number.isFinite(pct)) { console.log("usage: calibrate <weekly % from Settings > Usage> [--resets <ISO date or epoch seconds>]"); process.exit(1); }
     let resetsAt = flag("resets");
     if (resetsAt) resetsAt = /^\d+$/.test(resetsAt) ? Number(resetsAt) : Math.floor(Date.parse(resetsAt) / 1000);
@@ -221,13 +224,22 @@ async function cli() {
     if (!resetsAt) { console.log("need --resets <when the weekly limit resets> (shown in Settings > Usage)"); process.exit(1); }
     const projects = flag("projects-dir") || path.join(process.env.USAGE_MAX_HOME || os.homedir(), ".claude", "projects");
     const { meter, windowSpend } = await bootstrap(projects, resetsAt * 1000 - 7 * 86400000);
-    if (windowSpend <= 0) { console.log("no local spend found in this window; cannot derive k"); process.exit(1); }
-    saveMeter(meter);
     const state = loadState();
-    state.k = pct / windowSpend;
-    state.calib = { pct, at: Date.now(), cumAt: 0, resetsAt, source: "manual" };
-    saveState(state);
-    console.log(`calibrated: ${pct}% of the week = $${windowSpend.toFixed(2)} local list-price spend → k=${state.k.toFixed(4)} %/$ (resets ${new Date(resetsAt * 1000).toString()})`);
+    const now = Date.now();
+    // Every manual reading also becomes a plan-% snapshot, so two readings a few hours apart give a real burn rate.
+    state.snaps = [...(state.snaps || []).filter((x) => x.resetsAt === resetsAt).slice(-199), { at: now, pct, resetsAt }];
+    if (windowSpend > 0) {
+      saveMeter(meter);
+      state.k = pct / windowSpend;
+      state.calib = { pct, at: now, cumAt: 0, resetsAt, source: "manual" };
+      saveState(state);
+      console.log(`calibrated: ${pct}% of the week = $${windowSpend.toFixed(2)} local list-price spend → k=${state.k.toFixed(4)} %/$ (resets ${new Date(resetsAt * 1000).toString()})`);
+    } else {
+      // No local Claude Code history here (cloud/desktop sessions). Still useful: remember the reading and the reset time.
+      state.calib = { pct, at: now, cumAt: loadMeter().cum || 0, resetsAt, source: "manual" };
+      saveState(state);
+      console.log(`saved: ${pct}% used, resets ${new Date(resetsAt * 1000).toString()}. There is no local usage history on this machine, so the estimate will not grow between readings: re-run this whenever you look at Settings > Usage (two readings a few hours apart also give a real burn rate).`);
+    }
   } else if (cmd === "mode") {
     const m = rest[0];
     if (!["auto", "green", "amber", "red"].includes(m)) { console.log("usage: mode <auto|green|amber|red>"); process.exit(1); }
@@ -237,6 +249,8 @@ async function cli() {
     console.log(m === "auto" ? "mode override cleared (automatic)" : `mode pinned to ${m} until 'mode auto'`);
   }
   const s = evaluate();
+  if ((cmd === "calibrate" || cmd === "mode") && writeFailures.length) { console.error(`could not save (${writeFailures.join(", ")}): this shell is read-only. Run the same command from a normal terminal.`); process.exit(1); }
+  if (writeFailures.length) console.log(`note: could not save state (${[...new Set(writeFailures)].join(", ")}) because this shell is read-only (a sandbox). Numbers are computed live; saved state is unchanged.`);
   const l = s.last || {};
   const want = config.modes[s.mode === "green" && s.surplus ? "surplus" : s.mode];
   console.log(`usage-max budget: ${s.mode.toUpperCase()}${s.surplus ? "+SURPLUS" : ""}${s.override ? " (pinned)" : ""}`);

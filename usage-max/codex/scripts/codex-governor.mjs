@@ -13,7 +13,10 @@ export const HOME = () => process.env.USAGE_MAX_HOME || os.homedir();
 export const codexHome = () => process.env.CODEX_HOME || path.join(HOME(), ".codex");
 export const dataDir = () => path.join(HOME(), ".usage-max-codex");
 const j = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return d; } };
-const wj = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); const t = f + ".tmp"; fs.writeFileSync(t, JSON.stringify(v, null, 2)); fs.renameSync(t, f); };
+// Codex runs shell commands the model starts in a sandbox that may forbid writing outside the workspace (EPERM). Reading and
+// computing still work, so never crash: remember the failure and say so plainly (hooks run on the host and CAN save).
+export const writeFailures = [];
+const wj = (f, v) => { try { fs.mkdirSync(path.dirname(f), { recursive: true }); const t = f + ".tmp"; fs.writeFileSync(t, JSON.stringify(v, null, 2)); fs.renameSync(t, f); return true; } catch (e) { writeFailures.push(`${path.basename(f)}: ${e.code || e.message}`); return false; } };
 
 // Relative cost weights per model family (only ratios matter; k calibrates to plan %). From Plus 5h message ratios.
 export const DEFAULT_CONFIG = {
@@ -179,7 +182,7 @@ export function doctor(home = codexHome()) {
     paths.length && paths.some((p) => !p.startsWith(bin + "/")) ? bad("scripts run from a stable location (" + bin + "), not from a plugin cache path: hooks.json points elsewhere", "node <plugin>/codex/scripts/install.mjs again") : ok("scripts run from a stable location (" + bin + "), not from a plugin cache path" + (ver ? ` (installed version ${ver})` : "")); }
   const evs = Object.keys(seen);
   if (evs.length) ok(`hooks are running (last: ${evs.map((e) => `${e} ${seen[e].slice(11, 19)}`).join(", ")})`);
-  else if (/codex-hook\.mjs/.test(hooks)) bad("hooks are installed but have NEVER run — Codex skips hooks until you trust them", "start Codex, type /hooks, select the usage-max hooks and trust them (re-do this if you move/reinstall the plugin: the path is part of the hook's identity)");
+  else if (/codex-hook\.mjs/.test(hooks)) bad("hooks are installed but have NEVER run — Codex skips hooks until you trust them", "start Codex, type /hooks, select the usage-max hooks and trust them (the path never changes, so you only do this once)");
   /^\s*notify\s*=/m.test(toml) ? ok("notify is set (fallback metering)") : bad("notify not set (optional fallback)", "node scripts/install.mjs");
   const placeholder = Object.values(cfg.modes).some((m) => m.model && /^gpt-6/.test(m.model) && !modelsSeen()[m.model]);
   placeholder ? bad("a mode uses a model name your sessions never used (placeholder?)", "node scripts/codex-governor.mjs models, then edit ~/.usage-max-codex/config.json modes") : ok("mode models are unset (your own model is kept) or match models you have used");
@@ -197,6 +200,8 @@ if (isMain) {
   if (cmd === "calibrate") { const pct = Number(a[0]); const r = flag("--resets"); if (!(pct >= 0) || !r) { console.error("usage: calibrate <pct from /status or chatgpt.com/codex/settings/usage> --resets <ISO>"); process.exit(2); } calibrate(pct, r); }
   if (cmd === "mode") { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.override = a[0] === "auto" ? null : a[0]; wj(sf, st); }
   const { mode, surplus, e, st, cfg } = evaluate(Date.now(), true);
+  if ((cmd === "mode" || cmd === "calibrate") && writeFailures.length) { console.error(`could not save (${[...new Set(writeFailures)].join(", ")}): this shell is read-only (Codex sandbox?). Run the same command from a normal terminal.`); process.exit(1); }
+  if (writeFailures.length) console.log(`note: could not save state (${[...new Set(writeFailures)].join(", ")}) because this shell is read-only (the Codex sandbox). Numbers below are computed live from Codex's own logs; the hooks (which run outside the sandbox) keep the saved state current.`);
   if (cmd === "apply" || cmd === "mode" || cmd === "calibrate") { try { applyMode(mode, cfg, surplus); } catch (x) { console.error("apply failed:", x.message); } }
   if (cmd === "profiles") writeProfiles(cfg);
   const mc = cfg.modes[mode === "green" && surplus ? "surplus" : mode];
