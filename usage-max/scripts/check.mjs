@@ -133,6 +133,17 @@ for (const file of ["profiles/settings.enforced.json", "profiles/settings.strict
 }
 if (fableViolations === 0) pass("no fable references");
 
+// 6b. Codex manifest: versions in sync, hooks file exists and has the Codex schema shape (deny_unknown_fields upstream).
+{
+  const cx = readJson(path.join(root, ".codex-plugin", "plugin.json"));
+  const mk = readJson(path.join(root, "..", ".claude-plugin", "marketplace.json"));
+  if (cx && manifest && cx.version === manifest.version && (!mk || mk.plugins.every((p) => p.version === manifest.version))) pass("versions in sync (claude, codex, marketplace)");
+  else fail("versions out of sync", `claude ${manifest && manifest.version}, codex ${cx && cx.version}, marketplace ${mk && mk.plugins.map((p) => p.version)}`);
+  const hf = cx && readJson(path.join(root, String(cx.hooks || "").replace(/^\.\//, "")));
+  const okShape = hf && Object.keys(hf).every((k) => ["description", "hooks"].includes(k)) && Object.values(hf.hooks || {}).every((groups) => groups.every((g) => Object.keys(g).every((k) => ["matcher", "hooks"].includes(k)) && g.hooks.every((x) => x.type === "command" && /codex-hook\.mjs/.test(x.command) && /%PLUGIN_ROOT%/.test(x.commandWindows || ""))));
+  okShape ? pass("codex hooks file shape") : fail("codex hooks file shape");
+}
+
 // 7. Official validator (local, no model usage).
 const haveClaude = spawnSync(process.platform === "win32" ? "claude.cmd" : "claude", ["--version"], { stdio: "ignore", shell: process.platform === "win32" }).status === 0;
 if (!haveClaude && !process.argv.includes("--require-claude")) {

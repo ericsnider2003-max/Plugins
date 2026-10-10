@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { aboveCeiling } from "../scripts/ceiling.mjs";
+import { underCodex } from "../scripts/host.mjs";
 
 function homeDir() {
   return process.env.USAGE_MAX_HOME || os.homedir();
@@ -146,6 +147,7 @@ try {
   } catch {
     input = {};
   }
+  if (underCodex(input)) process.exit(0);
   const file = ledgerPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   rotateIfNeeded(file);
