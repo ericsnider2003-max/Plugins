@@ -10,6 +10,15 @@ function put(o, p, v) {
   x[ks[ks.length - 1]] = v;
 }
 
+// Remove a key only if it still holds the value usage-max wrote (the user's own value is never removed). Returns true when removed.
+export function ownedUnset(obj, keyPath, applied) {
+  if (!(keyPath in applied)) return false;
+  const cur = get(obj, keyPath), ours = J(cur) === J(applied[keyPath]); delete applied[keyPath];
+  if (!ours || cur === undefined) return false;
+  const ks = keyPath.split("."), last = ks.pop(), parent = ks.reduce((x, k) => (x ? x[k] : undefined), obj);
+  if (parent) { delete parent[last]; if (ks.length && Object.keys(parent).length === 0) { const gp = ks.slice(0, -1).reduce((x, k) => x[k], obj); delete gp[ks[ks.length - 1]]; } }
+  return true;
+}
 export const loadApplied = (file) => readJson(file, {});
 export const saveApplied = (file, applied) => writeJsonAtomic(file, applied);
 

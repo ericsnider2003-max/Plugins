@@ -9,6 +9,8 @@
 //   balance         Claude vs Codex headroom
 //   context [--archive f]  what CLAUDE.md/AGENTS.md (+ imports) cost on every turn; reversible archive
 //   savings [--days N]  what usage-max saved and where more is left, Claude and Codex side by side (measured vs estimate vs what-if)
+//   anomaly         is either plan burning much faster than your own usual rate right now, and who is responsible
+//   crosscheck <ccusage.json>  compare our Claude total with a ccusage daily JSON export you made yourself (offline; we never run it)
 //   digest          what the guards did (counts) + Codex measured savings
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
 //   chat-prefs      paste-once text for Claude.ai / Cowork / ChatGPT (chats have no hooks)
@@ -148,9 +150,17 @@ const map = {
   savings: async () => {
     const { claudeSavings, formatClaude } = await import("./savings.mjs"); const i = rest.indexOf("--days"); const days = i === -1 ? 7 : Number(rest[i + 1]) || 7;
     console.log(formatClaude(await claudeSavings({ dir: path.join(home, ".claude", "projects"), days }))); console.log("");
+    try { const { report } = await import("./anomaly.mjs"); console.log("\nBURN RATE\n" + (await report(home)).text + "\n"); } catch {}
     console.log("CODEX"); const c = run(C("codex-governor.mjs"), ["savings", "--days", String(days)]);
     console.log("\nSame yardstick on both: measured = read from your logs; estimate = a stated counterfactual; what-if = a lever, not a saving. Neither side is favoured; spend moves to whichever plan has headroom (`usage-max balance`).");
     return c;
+  },
+  anomaly: async () => { const { report } = await import("./anomaly.mjs"); console.log((await report(home)).text); return 0; },
+  crosscheck: async () => {
+    const f = rest[0]; const j = f && json(f); if (!j) { console.log("usage: usage-max crosscheck <ccusage-daily.json>  (export yourself with: ccusage daily --json > file; we never run it for you)"); return 1; }
+    const theirs = Number(j.totals?.totalCost ?? (Array.isArray(j.daily) ? j.daily.reduce((a, d) => a + (Number(d.totalCost) || 0), 0) : NaN)); if (!Number.isFinite(theirs)) { console.log("could not find totalCost in that file (format unverified: expected totals.totalCost or daily[].totalCost)."); return 1; }
+    const { claudeSavings } = await import("./savings.mjs"); const days = Number(rest[1]) || 7; const ours = (await claudeSavings({ dir: path.join(home, ".claude", "projects"), days })).total;
+    console.log(`ours ${ours.toFixed(2)} vs ccusage ${theirs.toFixed(2)} (list-price dollars, last ${days} days if you exported that range): ${theirs ? Math.round(100 * (ours - theirs) / theirs) : 0}% apart. Within ~10% means our meter agrees; larger gaps usually mean different date ranges or cache-write pricing.`); return 0;
   },
   queue: () => queue(rest),
   "chat-prefs": () => { console.log(fs.readFileSync(path.join(root, "chat-preferences.md"), "utf8")); return 0; },
@@ -158,5 +168,5 @@ const map = {
   handoff: () => map.route()
 };
 // Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
-if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status savings doctor budget gate check diagnose audit diet rescue balance enable-here context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status savings anomaly crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
 process.exit(await map[sub]());

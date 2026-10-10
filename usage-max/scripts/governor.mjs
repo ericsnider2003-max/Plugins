@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pace } from "./lib.mjs";
 import { writeSelf } from "./shared.mjs";
-import { ownedSet, loadApplied, saveApplied } from "./owned.mjs";
+import { ownedSet, ownedUnset, loadApplied, saveApplied } from "./owned.mjs";
 import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap, writeFailures } from "./meter.mjs";
 
 export const DEFAULT_CONFIG = {
@@ -146,15 +146,18 @@ export function patchModel(s, want, applied = {}, force = false) {
   return changed;
 }
 
-// Lean mode: while tightening (AMBER/RED) also cap context growth and drop always-on thinking; GREEN hands the user's own values back.
-export const LEAN = { amber: { autoCompactWindow: 160000 }, red: { autoCompactWindow: 120000, alwaysThinkingEnabled: false } };
-const LEAN_KEYS = ["autoCompactWindow", "alwaysThinkingEnabled"];
+// Lean mode: while tightening (AMBER/RED) also cap context growth, drop always-on thinking and switch off background spend
+// (auto memory; RED also scheduled tasks). GREEN hands the user's own values back.
+export const LEAN = {
+  amber: { autoCompactWindow: 160000, "env.CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1" },
+  red: { autoCompactWindow: 120000, alwaysThinkingEnabled: false, "env.CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "env.CLAUDE_CODE_DISABLE_CRON": "1" }
+};
+const LEAN_KEYS = ["autoCompactWindow", "alwaysThinkingEnabled", "env.CLAUDE_CODE_DISABLE_AUTO_MEMORY", "env.CLAUDE_CODE_DISABLE_CRON"];
 export function patchLean(s, mode, applied = {}) {
   let changed = false; const want = LEAN[mode] || {};
   for (const k of LEAN_KEYS) {
     if (k in want) { if (ownedSet(s, k, want[k], applied, true) === "set") changed = true; }
-    else if (k in applied && JSON.stringify(s[k]) === JSON.stringify(applied[k])) { delete s[k]; delete applied[k]; changed = true; } // still ours: remove it
-    else delete applied[k];
+    else if (ownedUnset(s, k, applied)) changed = true; // still ours: remove it; a user-changed value is kept
   }
   return changed;
 }

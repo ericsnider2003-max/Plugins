@@ -2,6 +2,13 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.10.0 (Oct 10 2026) — burn alarm, background-spend switches, instruction lint
+- **`/usage-max anomaly`** (also shown in `savings`): compares the last 3 hours with your own hourly median (needs about a day of history) and, when it is 3x higher, names the biggest contributor (session, model, effort). Claude in list-price dollars, Codex in tokens (Codex logs carry no price). Catches loops, stuck tasks, Fast mode or a plugin that started spending, on either plan.
+- **Lean mode now also switches off background spend while tightening:** auto memory in AMBER and RED, scheduled tasks in RED (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_CRON`). GREEN removes them again, and a value you set yourself is never touched.
+- **`context`** also flags instruction files over about 200 lines (Anthropic's guidance) and warns against unpruned `/init` output.
+- **`/usage-max crosscheck <ccusage.json>`**: optional, offline comparison with a ccusage export you made yourself. usage-max never runs ccusage.
+- Research and build plan: `docs/RESEARCH-usage-reduction.md`.
+
 ## 0.9.1 (Oct 10 2026) — one savings report for both plans
 - **`/usage-max savings [--days N]`** shows Claude and Codex side by side with the same labels: `measured` (read from your logs), `estimate` (a stated counterfactual, e.g. what subagent work would have cost on the main model) and `what-if` (a lever, not a saving). Neither plan is favoured.
 - Each side ends with "more:" hints computed from your own numbers: Claude delegation share and main-model spend; Codex high/xhigh effort share and tool-output bytes per turn.

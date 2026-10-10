@@ -107,4 +107,22 @@ await t("claude savings: dedupes by message id, splits hub vs subagent, prices d
     assert.match(formatClaude(await claudeSavings({ dir: path.join(home, "none"), days: 1 })), /no Claude transcripts/);
   });
 });
+await t("anomaly: needs a baseline, flags a 3x burst, names the culprit, stays quiet when normal", async () => {
+  const A = await import(pathToFileURL(path.join(root, "scripts/anomaly.mjs")).href); const now = 1e12, H = 36e5;
+  const base = []; for (let h = 4; h < 60; h++) base.push({ t: now - h * H, v: 1, who: "old" });
+  assert.equal(A.detect(base.slice(0, 5), { now }), null, "too little history: no verdict");
+  const burst = [...base, { t: now - H, v: 9, who: "loopy session" }, { t: now - 2 * H, v: 3, who: "other" }];
+  const r = A.detect(burst, { now }); assert.equal(r.anomalous, true); assert.equal(r.top.who, "loopy session"); assert.match(A.format("Codex", "tok", r), /BURNING FAST.*loopy session/);
+  const calm = [...base, { t: now - H, v: 1, who: "x" }]; assert.equal(A.detect(calm, { now }).anomalous, false); assert.match(A.format("Claude", "$", A.detect(calm, { now })), /normal/);
+});
+await t("lean env switches: auto memory off in AMBER/RED, cron off in RED, removed in GREEN only when still ours", () => {
+  const s = {}, ap = {}; GV.patchLean(s, "red", ap); assert.equal(s.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1"); assert.equal(s.env.CLAUDE_CODE_DISABLE_CRON, "1");
+  GV.patchLean(s, "amber", ap); assert.equal(s.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1"); assert.ok(!("CLAUDE_CODE_DISABLE_CRON" in s.env), "cron comes back in AMBER");
+  s.env.KEEP = "1"; GV.patchLean(s, "green", ap); assert.ok(!("CLAUDE_CODE_DISABLE_AUTO_MEMORY" in s.env)); assert.equal(s.env.KEEP, "1", "other env keys untouched");
+  const mine = { env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "0" } }; GV.patchLean(mine, "green", {}); assert.equal(mine.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "0", "your own value is never removed");
+});
+await t("context lint flags an instruction file over 200 lines", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-")); fs.writeFileSync(path.join(d, "CLAUDE.md"), "- rule\n".repeat(250));
+  const r = scan({ home: d, cwd: d }); assert.ok(r.advice.some((a) => /250 lines|lines \(Anthropic/.test(a.why)));
+});
 console.log(`${n} passing`);
