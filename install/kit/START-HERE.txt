@@ -7,18 +7,22 @@ their neighbours.
 
 PICK WHAT YOU USE (you can do more than one)
 
- A) Claude DESKTOP APP / claude.ai / cloud sessions (the ones with the cloud icon, like "Default - Plugins")
-    These only see plugins you UPLOAD. Do NOT upload the big kit zip - upload the plugin file:
-      1. Settings > Plugins > Your plugins: remove the old "usage-max".
-      2. "Upload local plugin" and choose  usage-max-plugin-@VERSION@.zip  (it is in this folder).
-      3. Start a NEW session. Type  /usage-max  and pick  usage-max:usage-max.
-    This route does not update itself. 3-CHECK-EVERYTHING tells you when a newer version exists;
-    then upload the new plugin file the same way.
-    There is no status line in the app, so run 4-CALIBRATE-CLAUDE once (10 seconds) and again whenever
-    you look at Settings > Usage.
+ A) Claude DESKTOP APP / claude.ai / cloud sessions (the ones with the cloud icon)
+    Easiest, no upload: put usage-max in the REPO the sessions run on. Sessions on the "Plugins" repo already
+    have it (its .claude/settings.json is committed). For any other repo, run this once in a terminal inside
+    that repo and commit the file it writes:   usage-max enable-here     (from Claude Code: /usage-max enable-here)
+    Every new session on that repo then loads usage-max by itself and updates itself.
+    Alternative (works for any session, and for Cowork): Settings > Plugins > Your plugins: remove the old
+    "usage-max", choose "Upload local plugin" and pick  usage-max-plugin-@VERSION@.zip  (in this folder).
+    An upload does not update itself; 3-CHECK-EVERYTHING tells you when a newer version exists.
+    Always start a NEW session afterwards: a session keeps the plugin list it started with.
+    What it does in the cloud: routing rules, the Sonnet cap on subagents, short replies. It cannot see your plan
+    percentage there and forgets everything between sessions, so plan tracking lives on your PC (part B).
+    Your weekly percentage is account-wide, so the PC reading covers cloud and chat use too.
 
- B) Claude Code in a TERMINAL
-    Run 1-INSTALL-CLAUDE. It installs from GitHub and updates itself. Open a NEW session.
+ B) Claude Code in a TERMINAL on your PC (this is where plan tracking runs)
+    Run 1-INSTALL-CLAUDE. It installs from GitHub and updates itself. Open a NEW session, type /usage-max.
+    4-CALIBRATE-CLAUDE is only for this PC, and only needed if the status line shows no "wk NN%".
 
  C) Codex (app and CLI)
       1. Remove the OLD usage-max from the Codex plugin list if it is there (it runs Claude-only hooks inside Codex).
