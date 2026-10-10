@@ -10,7 +10,8 @@ import { evaluate, loadState, saveState, loadConfig } from "../scripts/governor.
 import { aboveCeiling } from "../scripts/ceiling.mjs";
 import { underCodex } from "../scripts/host.mjs";
 import { readOther, balanceAdvice } from "../scripts/shared.mjs";
-import { readJson } from "../scripts/meter.mjs";
+import { readJson, dataDir } from "../scripts/meter.mjs";
+import { agentStart, bump, loadQueue } from "../scripts/guard.mjs";
 
 async function readStdin() {
   if (process.stdin.isTTY) return "";
@@ -61,7 +62,7 @@ try {
         saveState(state);
         const parts = [];
         if (state.mode !== "green") parts.push(directive(state));
-        if (surplus) parts.push(`usage-max surplus: this week is on course to leave ~${Math.round(100 - ((state.last && state.last.projected) || 0))}% of the plan unused. You may use more thorough reasoning and verification on hard problems; still delegate volume work to scouts/workers.`);
+        if (surplus) parts.push(`usage-max surplus: this week is on course to leave ~${Math.round(100 - ((state.last && state.last.projected) || 0))}% of the plan unused. You may use more thorough reasoning and verification on hard problems; still delegate volume work to scouts/workers.${loadQueue(dataDir()).length ? ` The user has ${loadQueue(dataDir()).length} queued low-priority task(s): offer to start the next one (usage-max queue next) when the current work is done.` : ""}`);
         if (advice) parts.push(advice);
         out({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: parts.join(" ") }, systemMessage: `usage-max: ${state.mode === "green" ? (surplus ? "SURPLUS — spare allowance, higher effort allowed" : "GREEN") : `budget ${state.mode.toUpperCase()}`}${advice ? "; Codex has headroom" : ""}. /usage-max for details.` });
       }
@@ -69,11 +70,14 @@ try {
   } else if (event === "PreToolUse" && (input.tool_name === "Agent" || input.tool_name === "Task")) {
     const ti = input.tool_input || {};
     const state = loadState();
+    const held = agentStart(dataDir(), input.tool_use_id, state.mode, Boolean(state.surplus));
+    if (held) { out({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: held.deny } }); process.exit(0); }
     const requested = String(ti.model || "").toLowerCase();
     let next = null;
     // Policy (routing skill): subagents are Haiku/Sonnet, never Opus/Fable, in every budget mode.
     if (requested === "fable" || aboveCeiling(requested) || requested.includes("opus") || ((!requested || requested === "inherit") && INHERITING.has(String(ti.subagent_type || "")))) next = "sonnet";
     if (next && next !== requested) {
+      bump(dataDir(), "subagentDowngrades");
       out({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecisionReason: `usage-max: ${requested || "inherited"} -> ${next} (budget ${state.mode})`, updatedInput: { ...ti, model: next }, additionalContext: `usage-max ran this subagent on ${next} instead of ${requested || "the session model"} (budget ${state.mode}).` } });
     }
   } else if (event === "PreModelSwitch") {

@@ -2,6 +2,18 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.8.0 (Oct 10 2026) — session guards (Claude Code)
+Claude Code only; they do nothing inside Codex. Every guard is silent unless it has something to say, and fails open.
+- **Stale-cache warning.** If a session sat idle past the cache lifetime and its context is 40k+ tokens, you get a one-line note (shown to you, costs no model tokens): continuing re-bills the whole context at ~10x a warm turn; hand off and start fresh is cheaper.
+- **Big-context nudge** (150k+, then every +40k): reminds you to `/compact` or hand off at a natural break.
+- **Runaway-loop detector.** The same tool call 3 times with no edit in between tells Claude to change approach; 6 times tells it to stop and ask you.
+- **Subagent cap.** At most 4 parallel subagents (5 in surplus, 2 AMBER, 1 RED); each pays its own full startup context. Override: `"maxSubagents": N` in the usage-max `config.json`.
+- **Smart Read hints.** Re-reading a file that has not changed and is already in context, or reading a 40KB+ file whole, adds a one-line hint for Claude. It never blocks or changes the read, never decides permissions, and forgets what was read after `/compact` or `/clear`.
+- `/usage-max context`: what CLAUDE.md / AGENTS.md and their `@imports` cost on every turn, with size and staleness suggestions. Nothing is deleted; `context --archive <file>` moves one file to `.usage-max-archive/` (move it back to undo).
+- `/usage-max digest`: counts of what the guards did (plus Codex measured trim savings). Shown once a day at session start if non-empty.
+- `/usage-max queue add|list|next|clear`: low-priority tasks Claude offers when the plan shows SURPLUS.
+- `/usage-max chat-prefs`: paste-once standing instructions for Claude.ai, Cowork and ChatGPT (chats have no hooks, so this is the no-reminder route).
+
 ## 0.7.0 (Oct 10 2026) — Codex: Windows-safe trimming, savings report, backup/restore
 - **Trimming on Windows** now works through a Node wrapper (`node ".../run-trimmed.mjs" run npm test`). The command stays readable, so Codex's approval and auto-review see the real command. Only plain words are wrapped; anything with pipes, redirects, chaining, quotes, globs, `--json`/`--reporter`/`-q`/`--no-trim` is left untouched. Exit codes are forwarded. On Windows it stays OFF until you run `node <bin>/scripts/codex-governor.mjs selftest-trim` once (it proves PowerShell and cmd on your PC).
 - **Rollback:** set `USAGE_MAX_TRIM=off`, or `"trim":"off"` in the Codex usage-max `config.json`.

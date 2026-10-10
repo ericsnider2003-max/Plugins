@@ -7,6 +7,10 @@
 //   check|diagnose|audit|diet [...]   reports from local transcripts
 //   rescue [apply [--write]|migrate|halt]
 //   balance         Claude vs Codex headroom
+//   context [--archive f]  what CLAUDE.md/AGENTS.md (+ imports) cost on every turn; reversible archive
+//   digest          what the guards did (counts) + Codex measured savings
+//   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
+//   chat-prefs      paste-once text for Claude.ai / Cowork / ChatGPT (chats have no hooks)
 //   enable-here [dir]  make every session on a repo load usage-max (writes <dir>/.claude/settings.json; commit it)
 //   codex <sub>     doctor|status|install|models|calibrate|mode|diet|gate (the Codex side)
 //   route|handoff   handled by the model (see commands/usage-max.md)
@@ -19,6 +23,8 @@ import { fileURLToPath } from "node:url";
 import { oldSyncedCopies, DISABLE_OLD } from "./dupes.mjs";
 import { readJson as rj, writeJsonAtomic } from "./meter.mjs";
 import { MARKETPLACE } from "./profile.mjs";
+import * as G from "./guard.mjs";
+import { dataDir } from "./meter.mjs";
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const home = process.env.USAGE_MAX_HOME || os.homedir();
 const S = (f) => path.join(root, "scripts", f);
@@ -46,6 +52,14 @@ function enableHere(dirArg) {
   return 0;
 }
 
+const digestOf = () => G.digest(dataDir());
+function queue(args) {
+  const op = args[0] || "list"; const r = G.queueOp(dataDir(), op, args.slice(1).join(" "));
+  if (r.error) { console.log(r.error); return 1; }
+  if (op === "next") console.log(r.taken ? `next queued task: ${r.taken.text}\n(${r.q.length} left)` : "queue is empty.");
+  else { console.log(r.q.length ? r.q.map((x, i) => `${i + 1}. ${x.text}`).join("\n") : "queue is empty. Add low-priority work: usage-max queue add <task>"); if (op === "add") console.log("queued. When the plan shows SURPLUS, Claude offers these."); }
+  return 0;
+}
 function cloudNote() {
   if (process.env.CLAUDE_CODE_REMOTE === "true") console.log("note: this is a CLOUD session. Routing rules and the Sonnet cap on subagents are active. Plan tracking, your settings profile and the status line live on your own computer's Claude Code (cloud sessions start from a blank machine every time). Your weekly % is account-wide, so the reading from your PC covers cloud and chat use too.\n");
 }
@@ -82,7 +96,7 @@ async function doctor(fix = false) {
   latest === null ? ok(`version ${mine} (could not reach GitHub to compare)`) : latest === mine ? ok(`version ${mine} is the latest on main`) : bad(`version ${mine}, latest on main is ${latest}`, "it updates itself at the next Claude Code start (auto-update); or: claude plugin marketplace update eric-plugins");
   const old = oldSyncedCopies(home, root);
   old.length ? bad(`older uploaded copy usage-max ${old[0].version} is enabled next to this one (every hook runs twice)`, DISABLE_OLD) : ok("no duplicate uploaded copy");
-  for (const h of ["session-start", "budget", "bash-trim", "ledger"]) fs.existsSync(path.join(root, "hooks", `${h}.mjs`)) ? 0 : bad(`hook ${h}.mjs missing`);
+  for (const h of ["session-start", "budget", "bash-trim", "ledger", "guard"]) fs.existsSync(path.join(root, "hooks", `${h}.mjs`)) ? 0 : bad(`hook ${h}.mjs missing`);
   console.log(out.join("\n"));
   console.log("\nusage-max doctor — Codex");
   return run(C("codex-governor.mjs"), ["doctor"]);
@@ -116,9 +130,13 @@ const map = {
   diet: () => run(S("plugin-diet.mjs"), rest),
   rescue: () => rescue(rest),
   codex: () => { const s = rest[0] || "status"; const f = { diet: "codex-diet.mjs", install: "install.mjs", lean: "codex-lean.mjs" }[s]; return f ? run(C(f), rest.slice(1)) : run(C("codex-governor.mjs"), rest.length ? rest : ["status"]); },
+  context: () => run(S("ctxfiles.mjs"), rest),
+  digest: () => { const d = digestOf(); console.log(d.lines.length ? `usage-max actions since ${String(d.since).slice(0, 10)} (counts only; what each saved depends on your work):\n${d.lines.join("\n")}` : "usage-max: nothing recorded yet (the guards count what they do as you work)."); console.log(""); return run(C("codex-governor.mjs"), ["savings"]); },
+  queue: () => queue(rest),
+  "chat-prefs": () => { console.log(fs.readFileSync(path.join(root, "chat-preferences.md"), "utf8")); return 0; },
   route: () => { console.log("route/handoff are model tasks: follow commands/usage-max.md."); return 0; },
   handoff: () => map.route()
 };
 // Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
-if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status doctor budget gate check diagnose audit diet rescue balance enable-here codex route handoff)\n`); process.exit(await map.status()); }
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status doctor budget gate check diagnose audit diet rescue balance enable-here context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
 process.exit(await map[sub]());
