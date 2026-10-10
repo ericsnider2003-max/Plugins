@@ -2,6 +2,12 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.6.2 (Oct 10 2026) — from the user's real Windows / desktop-app screenshots
+- **Desktop-app and cloud sessions are first-class.** They only see UPLOADED plugins, so the kit now includes `usage-max-plugin-<version>.zip` (the exact shape "Upload local plugin" accepts; the big kit zip is rejected there) and START-HERE explains which route to use for the Claude desktop app, the Claude Code terminal, and Codex.
+- **No status line in the desktop app?** `4-CALIBRATE-CLAUDE` (or `usage-max budget calibrate 67% --resets "Oct 11 2026 11:00 AM"`) now works with no local history, accepts a typed date, and every reading is also a plan-% snapshot, so two readings a few hours apart give a real burn rate. With one reading it uses your average pace since the week began (it can no longer be inflated by usage that happens elsewhere).
+- **Codex sandbox safe.** When the Codex app runs the governor in a read-only shell (EPERM) it now prints live numbers and says plainly that saving was blocked, instead of crashing; the hooks (which run outside the sandbox) keep the saved state.
+- `doctor --fix` applies the safe profile (never overwriting your settings) and then checks; uploads are recognised (no false "auto-update" FIX). The kit is built by `install/build-kit.py` and CI checks it, including that no `.cmd` uses parenthesised blocks (a cmd.exe trap).
+
 ## 0.6.1 (Oct 10 2026) — found from a real Codex screenshot
 - **Codex runs Claude plugins' hooks.** Verified in Codex's source: it loads `.claude-plugin/plugin.json` plugins, runs their `hooks/hooks.json`, and sets `CLAUDE_PLUGIN_ROOT`. The old uploaded copy's seven Claude-only hooks were therefore running inside your Codex app (and had saved trust), which is the likely cause of disrupted turns.
 - Every Claude hook now detects Codex and does nothing there (never touches Claude settings from inside Codex).

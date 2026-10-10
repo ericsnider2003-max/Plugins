@@ -64,3 +64,6 @@ Only the user can do: (1) run the installer on their machine; (2) Codex: `node ~
 
 ## Codex desktop app note (0.6.1)
 The user runs the Codex DESKTOP app plus the CLI. The app cannot open `/hooks` (CLI only). Codex loads Claude plugins' hooks natively (PLUGIN_ROOT/CLAUDE_PLUGIN_ROOT), so the old uploaded 0.1.0 plugin ran 7 Claude-only hooks inside Codex. Fixes: host guard in all Claude hooks, `.codex-plugin/plugin.json` -> `codex/hooks.json`, defer when user-wide hooks are installed. User must remove the old plugin in Codex and trust the new hooks via `/hooks` in the Codex CLI (trust is shared via ~/.codex/config.toml).
+
+## 0.6.2 notes
+Kit lives in `install/kit` + `install/build-kit.py` (builds `usage-max-desktop.zip` and `usage-max-plugin-<ver>.zip`; CI checks both). The user's Claude "desktop app" and the "cloud" sessions load only uploaded plugins (no marketplace, no status line): route them through the plugin zip + `4-CALIBRATE-CLAUDE`. Codex desktop app runs tool commands in a read-only sandbox (EPERM on ~/.usage-max-codex): governors degrade gracefully. Real Codex numbers seen: 77% weekly at ~2.15 of 7 days elapsed (~36%/day vs 4.3%/day sustainable).

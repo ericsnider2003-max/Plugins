@@ -1,0 +1,32 @@
+usage-max @VERSION@ - START HERE
+================================
+It keeps your Claude and Codex plans lasting until their weekly reset, automatically.
+
+FIRST: right-click this zip and choose "Extract All". Files run from inside the zip window cannot find
+their neighbours.
+
+PICK WHAT YOU USE (you can do more than one)
+
+ A) Claude DESKTOP APP / claude.ai / cloud sessions (the ones with the cloud icon, like "Default - Plugins")
+    These only see plugins you UPLOAD. Do NOT upload the big kit zip - upload the plugin file:
+      1. Settings > Plugins > Your plugins: remove the old "usage-max".
+      2. "Upload local plugin" and choose  usage-max-plugin-@VERSION@.zip  (it is in this folder).
+      3. Start a NEW session. Type  /usage-max  and pick  usage-max:usage-max.
+    This route does not update itself. 3-CHECK-EVERYTHING tells you when a newer version exists;
+    then upload the new plugin file the same way.
+    There is no status line in the app, so run 4-CALIBRATE-CLAUDE once (10 seconds) and again whenever
+    you look at Settings > Usage.
+
+ B) Claude Code in a TERMINAL
+    Run 1-INSTALL-CLAUDE. It installs from GitHub and updates itself. Open a NEW session.
+
+ C) Codex (app and CLI)
+      1. Remove the OLD usage-max from the Codex plugin list if it is there (it runs Claude-only hooks inside Codex).
+      2. Run 2-INSTALL-CODEX.
+      3. In the Codex CLI window type  /hooks  and trust the usage-max hooks. (The Codex app cannot open
+         /hooks; the trust is saved in your Codex config and is shared.)
+
+THEN: run 3-CHECK-EVERYTHING any time. Lines starting with FIX say exactly what to do.
+
+Biggest saving to do once: type  /usage-max diet  in Claude. It lists the plugins that add the most
+tokens to every session (about 40,000 on your setup) and prints the command to turn off the ones you never use.
