@@ -1,0 +1,21 @@
+{
+  "name": "usage-max",
+  "version": "0.5.1",
+  "description": "Route every task to the smallest capable model tier and verify the savings from local transcripts.",
+  "author": {
+    "name": "usage-max"
+  },
+  "license": "MIT",
+  "agents": [
+    "./agents/scout.md",
+    "./agents/worker.md",
+    "./agents/reviewer.md"
+  ],
+  "skills": [
+    "./skills/routing"
+  ],
+  "commands": [
+    "./commands/usage-max.md"
+  ],
+  "hooks": "./hooks/hooks.json"
+}

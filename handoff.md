@@ -1,4 +1,6 @@
-# Handoff — usage-max analysis (Claude + Codex)
+# Handoff — usage-max (Claude + Codex)
+
+> **Status Oct 10:** findings 1–9, 11, 13–20 are fixed in 0.3.0 (see usage-max/README.md changelog). Still open: see "Open items" at the bottom.
 
 ## 1. Goal and status
 Goal: find why usage-max isn't working, or isn't working as well as it should, on Claude Code and Codex, then agree on and apply fixes.
@@ -55,3 +57,7 @@ Next step (fix implementation): **Sonnet** (`usage-max-worker`) for the mechanic
 | date | task | tier | outcome |
 |---|---|---|---|
 | 2026-10-10 | usage-max full analysis (10 skills run, source review, sandbox repro) | Opus hub + 1 Haiku scout | 20 findings; no code changed |
+
+## State after 0.5.0
+Done and live-verified (`node usage-max/test/live.mjs`, all pass): self-configuring SessionStart, unified `/usage-max`, Opus->Sonnet subagent cap, Stop metering, command rewrite without `allow`. CI runs offline suites on PRs. Codex: source-verified hook contract, auto-calibration from `rate_limits`, `doctor`, surplus + balance.
+Only things that need the user: (1) make `main` the default branch (GitHub Settings > Branches) after merging PR #1; (2) Codex: `node usage-max/codex/scripts/install.mjs`, then in Codex `/hooks` -> trust the hooks, then `usage-max codex doctor`; (3) disable unused synced plugins (`/usage-max diet` prints the commands); (4) copy the zip from the app to the desktop.
