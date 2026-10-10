@@ -51,7 +51,8 @@ try {
     const advice = balanceAdvice({ mode: state.mode }, readOther("codex"), Date.now(), { selfName: "Claude", otherName: "Codex", dispatch: " (use the codex-dispatch skill if installed, otherwise tell the user)" });
     const surplus = state.mode === "green" && state.surplus;
     const key = `${state.mode}|${surplus ? "s" : ""}|${advice ? "b" : ""}`;
-    if (key !== "green||") {
+    if (key === "green||") { if (state.sessionsNotified[input.session_id || "unknown"]) { delete state.sessionsNotified[input.session_id || "unknown"]; saveState(state); } }
+    else {
       const sid = input.session_id || "unknown";
       if (state.sessionsNotified[sid] !== key) {
         state.sessionsNotified[sid] = key;
@@ -69,9 +70,9 @@ try {
     const requested = String(ti.model || "").toLowerCase();
     let next = null;
     // Policy (routing skill): subagents are Haiku/Sonnet, never Opus/Fable, in every budget mode.
-    if (requested === "fable" || aboveCeiling(requested) || requested.includes("opus") || (!requested && INHERITING.has(String(ti.subagent_type || "")))) next = "sonnet";
+    if (requested === "fable" || aboveCeiling(requested) || requested.includes("opus") || ((!requested || requested === "inherit") && INHERITING.has(String(ti.subagent_type || "")))) next = "sonnet";
     if (next && next !== requested) {
-      out({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", permissionDecisionReason: `usage-max: ${requested || "inherited"} -> ${next} (budget ${state.mode})`, updatedInput: { ...ti, model: next }, additionalContext: `usage-max ran this subagent on ${next} instead of ${requested || "the session model"} (budget ${state.mode}).` } });
+      out({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecisionReason: `usage-max: ${requested || "inherited"} -> ${next} (budget ${state.mode})`, updatedInput: { ...ti, model: next }, additionalContext: `usage-max ran this subagent on ${next} instead of ${requested || "the session model"} (budget ${state.mode}).` } });
     }
   } else if (event === "PreModelSwitch") {
     const to = String(input.to_model || "");

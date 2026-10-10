@@ -13,10 +13,13 @@ export function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return fallback; }
 }
 export function writeJsonAtomic(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
+  let target = file, mode = null;
+  try { target = fs.realpathSync(file); mode = fs.statSync(target).mode & 0o777; } catch {} // follow symlinks (stow/chezmoi), keep the file mode
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
-  fs.renameSync(tmp, file);
+  if (mode !== null) { try { fs.chmodSync(tmp, mode); } catch {} }
+  fs.renameSync(tmp, target);
 }
 
 export { recordCost };

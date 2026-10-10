@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pace } from "./lib.mjs";
 import { writeSelf } from "./shared.mjs";
+import { ownedSet, loadApplied, saveApplied } from "./owned.mjs";
 import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap } from "./meter.mjs";
 
 export const DEFAULT_CONFIG = {
@@ -40,7 +41,9 @@ export function loadConfig() {
   return { ...DEFAULT_CONFIG, ...c, modes: { ...DEFAULT_CONFIG.modes, ...(c.modes || {}) } };
 }
 export function loadState() {
-  return readJson(files().state, { mode: "green", override: null, calib: null, k: null, sessionsNotified: {}, history: [] });
+  const defaults = { mode: "green", override: null, calib: null, k: null, sessionsNotified: {}, history: [] };
+  const s = readJson(files().state, null);
+  return s && typeof s === "object" ? { ...defaults, ...s, sessionsNotified: s.sessionsNotified || {}, history: s.history || [] } : defaults;
 }
 export function saveState(s) {
   const keys = Object.keys(s.sessionsNotified || {});
@@ -78,7 +81,8 @@ export function decide({ estPct, hoursLeft, ratePerHour, prevMode, config }) {
 export function absorbSnapshot(state, limits, meterCum) {
   const sd = limits && limits.seven_day;
   if (!sd || typeof sd.used_percentage !== "number" || !sd.resets_at) return false;
-  const at = Date.parse(limits.capturedAt) || Date.now();
+  const at = Date.parse(limits.capturedAt);
+  if (!Number.isFinite(at)) return false; // no timestamp = cannot tell how old it is: never treat as fresh
   const c = state.calib;
   if (c && c.at >= at) return false;
   state.snaps = (state.snaps || []).filter((x) => x.resetsAt === sd.resets_at).slice(-199);
@@ -127,15 +131,16 @@ export function estimate(state, meter, nowMs = Date.now(), config = DEFAULT_CONF
 }
 
 
-// Set the mode's model/effort on a settings object (owned keys only). Returns true when something changed.
-export function patchModel(s, want) {
-  const before = JSON.stringify([s.model, s.effortLevel, s.modelSettings]);
-  s.model = want.model;
-  s.effortLevel = want.effort;
-  s.modelSettings = { ...(s.modelSettings || {}) };
+// Set the mode's model/effort on a settings object. Respects ownership: a model/effort the USER set is kept.
+// Returns true when something changed.
+export function patchModel(s, want, applied = {}, force = false) {
+  let changed = false;
+  const set = (k, v) => { if (ownedSet(s, k, v, applied, force) === "set") changed = true; };
+  set("model", want.model);
+  set("effortLevel", want.effort);
   // `otherEffort` lets surplus raise only the hub model while subagent models stay economical.
-  for (const m of ["claude-opus-5-5", "claude-sonnet-5-5"]) s.modelSettings[m] = { ...(s.modelSettings[m] || {}), effortLevel: m === want.model || !want.otherEffort ? want.effort : want.otherEffort };
-  return JSON.stringify([s.model, s.effortLevel, s.modelSettings]) !== before;
+  for (const m of ["claude-opus-5-5", "claude-sonnet-5-5"]) set(`modelSettings.${m}.effortLevel`, m === want.model || !want.otherEffort ? want.effort : want.otherEffort);
+  return changed;
 }
 
 // Write the mode's model/effort into user settings (new sessions only). Returns true (changed), false
@@ -147,7 +152,10 @@ export function applySettings(mode, config) {
   const file = files().settings;
   const s = readJson(file, null);
   if (!s) return null;
-  if (!patchModel(s, want)) return false;
+  const af = path.join(dataDir(), "applied.json"), applied = loadApplied(af);
+  const changed = patchModel(s, want, applied, mode === "amber" || mode === "red"); // tightening may override your values; green hands back to them
+  saveApplied(af, applied);
+  if (!changed) return false;
   writeJsonAtomic(file, s);
   return true;
 }
@@ -164,7 +172,8 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   // The 5-hour cap bites before the weekly one: near it, tighten regardless of the weekly pace.
   // Pace-aware: a high % near the end of a window that is about to reset costs nothing, so only tighten when the
   // current burn would hit 100% before the window resets (amber), or is far beyond it (red).
-  const fh = !state.override && (readJson(files().limits, null) || {}).five_hour;
+  const lim5 = !state.override ? readJson(files().limits, null) || {} : {};
+  const fh = lim5.five_hour && nowMs - Date.parse(lim5.capturedAt) < 20 * 60000 ? lim5.five_hour : null; // stale snapshot = no signal
   const fp = fh && fh.resets_at * 1000 > nowMs ? pace(fh, 5 * 3600, nowMs) : null;
   if (fp && fp.state === "over") {
     const rank = { green: 0, amber: 1, red: 2 };
@@ -180,7 +189,9 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   }
   // Surplus: the week is on course to leave >20% unused, so allow higher effort. Hysteresis 80/90, never in amber/red.
   const projected = est.estPct === null ? null : est.estPct + (est.ratePerHour || 0) * (est.hoursLeft || 0);
-  if (state.mode !== "green" || projected === null || est.hoursLeft <= 12) state.surplus = false;
+  const lastSnap = (state.snaps || [])[(state.snaps || []).length - 1];
+  const haveRealRate = est.rateSource === "plan %" && lastSnap && nowMs - lastSnap.at < 2 * 3600e3; // no data / silent status line = no surplus
+  if (state.mode !== "green" || projected === null || est.hoursLeft <= 12 || !haveRealRate || est.note) state.surplus = false;
   else if (!state.surplus && projected < 80) state.surplus = true;
   else if (state.surplus && projected > 90) state.surplus = false;
   state.last.projected = projected;

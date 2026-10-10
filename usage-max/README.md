@@ -2,6 +2,11 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.5.1 (Oct 10 2026) — from an independent adversarial review
+- **Your settings win.** usage-max records what it wrote (`~/.claude/usage-max/applied.json`) and never reverts a value you changed (cleanupPeriodDays, env vars, cache TTL, status line, model). `doctor`/`rescue apply` list what was kept. Only exception: in AMBER/RED the governor may force a cheaper model/effort for new sessions, and hands back when green returns. Opt out of all of it with `{"manageSettings": false}` or `USAGE_MAX_AUTOAPPLY=off`.
+- Surplus mode needs real, recent plan-% burn data (no data / silent status line = off). A snapshot with no valid timestamp, or a stale 5-hour reading, is never treated as fresh.
+- Settings writes follow symlinks (stow/chezmoi) and keep the file mode; subagent rewrites no longer auto-approve the Agent call; `inherit` subagents are capped to Sonnet; cache-lifetime replay is cached for 6h.
+
 ## 0.5.0 (Oct 10 2026)
 - **Live-proven.** `node test/live.mjs` runs the real `claude` CLI with this checkout loaded (state sandboxed): SessionStart self-configures and injects the routing rules, `/usage-max` registers, an Opus subagent request is rewritten to Sonnet (only Sonnet billed), Stop meters, and a command rewrite works without `permissionDecision: "allow"`. CI (`.github/workflows/usage-max.yml`) runs all offline suites on every PR.
 - **Diet uses Claude Code's own numbers** (`claude plugin details`): your synced plugins are ~40k tokens of every session start. Advice now includes the exact `claude plugin disable <name>@synced --scope user` command (use `--scope project` to slim down just one repo).
