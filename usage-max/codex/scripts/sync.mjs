@@ -10,7 +10,7 @@ export function syncBin({ root, home, force = false } = {}) {
     if (!force && cur === version) return { changed: false, version };
     const cx = path.join(root, "codex"); fs.mkdirSync(path.join(bin, "scripts"), { recursive: true });
     for (const f of fs.readdirSync(path.join(cx, "scripts"))) if (f.endsWith(".mjs")) fs.copyFileSync(path.join(cx, "scripts", f), path.join(bin, "scripts", f));
-    try { fs.copyFileSync(path.join(root, "scripts", "memory.mjs"), path.join(bin, "scripts", "memory.mjs")); } catch {} // project memory is shared with the Claude side
+    for (const f of ["memory.mjs", "resume.mjs"]) try { fs.copyFileSync(path.join(root, "scripts", f), path.join(bin, "scripts", f)); } catch {} // project memory is shared with the Claude side
     fs.rmSync(path.join(bin, "skills"), { recursive: true, force: true }); fs.cpSync(path.join(cx, "skills"), path.join(bin, "skills"), { recursive: true });
     fs.copyFileSync(path.join(cx, "AGENTS.usage-max.md"), path.join(bin, "AGENTS.usage-max.md"));
     fs.writeFileSync(vf, version + "\n");

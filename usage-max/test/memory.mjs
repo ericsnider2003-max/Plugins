@@ -78,14 +78,14 @@ t("resume: built from transcript + git, saved at Stop, handed to the next fresh 
   const text = R.buildResume({ transcript: tr, cwd: proj }); assert.match(text, /add rate limiting/); assert.match(text, /429 path/); assert.match(text, /src\/login\.js/); assert.match(text, /dirty\.txt/); assert.doesNotMatch(text, /noise|ignored/);
   assert.equal(R.buildResume({ transcript: path.join(home, "none"), cwd: proj }), null);
   hook("hooks/memory.mjs", { hook_event_name: "Stop", cwd: proj, session_id: "s2", transcript_path: tr });
-  const dir = path.join(home, ".claude", "usage-max");
+  const dir = path.join(home, ".claude", "usage-max"); fs.mkdirSync(dir, { recursive: true });
   const r1 = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "clear", cwd: proj, session_id: "s3" }).stdout).hookSpecificOutput.additionalContext; assert.match(r1, /Resume point/); assert.match(r1, /may be stale/);
   assert.doesNotMatch(JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "startup", cwd: proj, session_id: "s4" }).stdout).hookSpecificOutput.additionalContext, /Resume point/, "taken once");
-  fs.utimesSync(R.resumeFile(dir, proj), new Date(Date.now() + 5000), new Date(Date.now() + 5000));
+  fs.utimesSync(R.resumeFile(R.sharedDir(), proj), new Date(Date.now() + 5000), new Date(Date.now() + 5000));
   assert.doesNotMatch(JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "resume", cwd: proj, session_id: "s5" }).stdout).hookSpecificOutput.additionalContext, /Resume point/, "resumed sessions already have their context");
-  assert.equal(R.saveResume(dir, proj, "again", { minGapMs: 3600e3 }), false, "throttled");
+  assert.equal(R.saveResume(R.sharedDir(), proj, "again", { minGapMs: 3600e3 }), false, "throttled");
   fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ resume: "off" })); fs.rmSync(path.join(dir, "resume", "x"), { force: true });
-  const before = fs.statSync(R.resumeFile(dir, proj)).mtimeMs; fs.utimesSync(R.resumeFile(dir, proj), new Date(1), new Date(1)); hook("hooks/memory.mjs", { hook_event_name: "Stop", cwd: proj, session_id: "s2", transcript_path: tr }); assert.equal(fs.statSync(R.resumeFile(dir, proj)).mtimeMs, 1, "resume:off respected"); fs.rmSync(path.join(dir, "config.json"));
+  const before = fs.statSync(R.resumeFile(R.sharedDir(), proj)).mtimeMs; fs.utimesSync(R.resumeFile(R.sharedDir(), proj), new Date(1), new Date(1)); hook("hooks/memory.mjs", { hook_event_name: "Stop", cwd: proj, session_id: "s2", transcript_path: tr }); assert.equal(fs.statSync(R.resumeFile(R.sharedDir(), proj)).mtimeMs, 1, "resume:off respected"); fs.rmSync(path.join(dir, "config.json"));
 });
 t("cold-cache message offers /clear when the resume point is automatic, still mentions handoff", () => {
   const d = path.join(home, "g"); fs.mkdirSync(d, { recursive: true }); G.promptCheck(d, "c", { now: 1e9, ctx: 90000 });
@@ -182,5 +182,44 @@ t("readGate lets PDFs/images/notebooks through; codex hook prints memory even if
   const d = path.join(home, "g3"); fs.mkdirSync(d, { recursive: true }); const f = path.join(home, "scan.pdf"); fs.writeFileSync(f, "x".repeat(450000)); assert.equal(G.readGate(d, "p", { file_path: f }), null);
   const ch = path.join(root, "codex/scripts/codex-hook.mjs"); const bad = path.join(home, "badhome"); fs.mkdirSync(bad, { recursive: true }); fs.writeFileSync(path.join(bad, ".usage-max-codex"), "a file, not a folder"); // dataDir() is unusable
   const o = spawnSync("node", [ch, "SessionStart"], { input: JSON.stringify({ session_id: "z", cwd: proj }), encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: bad, PLUGIN_ROOT: "" } }); assert.equal(o.status, 0); assert.match(o.stdout, /Project memory/);
+});
+
+// ---- new chats with hand-offs, both tools
+const roll = path.join(home, ".codex", "sessions", "2026", "10", "11"); fs.mkdirSync(roll, { recursive: true });
+const rollFile = path.join(roll, "rollout-2026-10-11T10-00-00-cdx-sess-1.jsonl"); const cl = (o) => JSON.stringify(o) + "\n";
+fs.writeFileSync(rollFile, cl({ type: "turn_context", payload: { model: "gpt-6.1" } }) + cl({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "# AGENTS.md instructions for /x\n..." }] } })
+  + cl({ type: "event_msg", payload: { type: "user_message", message: "move the retry logic into queue/worker.js" } }) + cl({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "move the retry logic into queue/worker.js" }] } })
+  + cl({ type: "response_item", payload: { type: "custom_tool_call", name: "apply_patch", input: "*** Begin Patch\n*** Update File: queue/worker.js\n@@\n*** Add File: queue/retry.js\n*** End Patch" } })
+  + cl({ type: "event_msg", payload: { type: "agent_message", message: "Moved it; still need to update the two callers." } }) + cl({ type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 150000 } } } }));
+const cx = (ev, input, env = {}) => spawnSync("node", [path.join(root, "codex/scripts/codex-hook.mjs"), ev], { input: JSON.stringify(input), encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: home, PLUGIN_ROOT: "", USAGE_MAX_MEMORY_DIR: "/nonexistent", ...env } });
+t("Codex rollout digest: real user asks (not AGENTS.md preamble), patched files, last message; finder prefers the session id", () => {
+  const d = R.digestCodex(rollFile); assert.deepEqual(d.users, ["move the retry logic into queue/worker.js"]); assert.ok(d.files.includes("queue/worker.js") && d.files.includes("queue/retry.js")); assert.match(d.last, /two callers/);
+  assert.equal(R.findRollout({ sessionId: "cdx-sess-1", codexHome: path.join(home, ".codex") }), rollFile); assert.equal(R.findRollout({ sessionId: "nope", codexHome: path.join(home, ".codex"), now: Date.now() + 99e6 }), null);
+  assert.equal(R.findRollout({ transcript: rollFile, codexHome: "/none" }), rollFile);
+});
+t("Codex Stop saves a resume point; the next fresh CLAUDE session in that folder is told, once (cross-tool hand-off)", () => {
+  const w = path.join(home, "handoff-proj"); fs.mkdirSync(w, { recursive: true });
+  assert.equal(cx("Stop", { session_id: "cdx-sess-1", cwd: w }).status, 0); const f = R.resumeFile(R.sharedDir(), w); assert.match(fs.readFileSync(f, "utf8"), /from Codex[\s\S]*retry logic[\s\S]*queue\/worker\.js/);
+  const out = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "startup", cwd: w, session_id: "k1" }).stdout).hookSpecificOutput.additionalContext; assert.match(out, /from Codex/);
+  assert.equal(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "startup", cwd: w, session_id: "k2" }).stdout, "", "taken once per tool");
+});
+t("Claude's resume point reaches a fresh Codex chat (and not a resumed one); other folders see nothing", () => {
+  const w = path.join(home, "handoff2"); fs.mkdirSync(w, { recursive: true }); const tr = path.join(home, "tr3.jsonl");
+  fs.writeFileSync(tr, JSON.stringify({ type: "user", message: { role: "user", content: "wire the webhook retries" } }) + "\n" + JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Webhook done; docs left." }] } }) + "\n");
+  hook("hooks/memory.mjs", { hook_event_name: "Stop", cwd: w, session_id: "k3", transcript_path: tr });
+  assert.match(cx("SessionStart", { session_id: "cx9", cwd: w, source: "startup" }).stdout, /from Claude Code[\s\S]*webhook retries[\s\S]*may be stale/);
+  assert.equal(cx("SessionStart", { session_id: "cx10", cwd: w, source: "startup" }).stdout, "", "once"); R.saveResume(R.sharedDir(), w, "x2", { minGapMs: 0 });
+  assert.doesNotMatch(cx("SessionStart", { session_id: "cx11", cwd: w, source: "resume" }).stdout, /Resume point/); assert.doesNotMatch(cx("SessionStart", { session_id: "cx12", cwd: path.join(home, "elsewhere") }).stdout, /Resume point/);
+});
+t("Codex fresh-chat advice: only for a big context, once per +40k, plain text for the model to relay; fail-open on junk", () => {
+  const d = path.join(home, "cgn"); fs.mkdirSync(d, { recursive: true }); assert.equal(CG.codexContext(rollFile), 150000); assert.equal(CG.codexContext("/none"), null);
+  assert.match(CG.freshChatAdvice(d, "n1", 150000), /fresh chat.*resume point is saved automatically/s); assert.equal(CG.freshChatAdvice(d, "n1", 170000), null); assert.match(CG.freshChatAdvice(d, "n1", 195000), /195k/); assert.equal(CG.freshChatAdvice(d, "n2", 90000), null); assert.equal(CG.freshChatAdvice(d, "n3", null), null);
+  const o = cx("UserPromptSubmit", { session_id: "cdx-sess-1", cwd: home, prompt: "keep going" }); assert.equal(o.status, 0); assert.match(o.stdout, /fresh chat/);
+  assert.equal(cx("Stop", "{{garbage").status, 0);
+});
+t("resume --repo writes a redacted .codex-tasks/RESUME.md for Codex cloud/mobile; nothing to write = polite message", () => {
+  const w = path.join(home, "handoff3"); fs.mkdirSync(w, { recursive: true }); R.saveResume(R.sharedDir(), w, "Resume point\nLast: use key sk-live-abcdefghijklmnop1234 to call X", { minGapMs: 0 });
+  const o = cli(["resume", "--repo"], w); assert.match(o.stdout, /Continue from \.codex-tasks\/RESUME\.md/); const f = fs.readFileSync(path.join(w, ".codex-tasks/RESUME.md"), "utf8"); assert.doesNotMatch(f, /sk-live/); assert.match(f, /Continue the work/);
+  fs.mkdirSync(path.join(home, "none-yet"), { recursive: true }); assert.match(cli(["resume", "--repo"], path.join(home, "none-yet")).stdout, /no resume point/);
 });
 console.log(n, "passing");

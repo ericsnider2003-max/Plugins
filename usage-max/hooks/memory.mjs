@@ -25,7 +25,7 @@ try {
     const parts = []; M.saveSeen(sid, new Set()); // new/cleared/compacted context: notes may be injected again
     if (mem) parts.push(M.loadBlock(mem, { cap: Number(cfg.memoryBudgetChars) || 2500, cmd }));
     if (!input.source || input.source === "startup" || input.source === "clear") {
-      const r = cfg.resume === "off" ? null : R.takeResume(dir, cwd); if (r) parts.push(r + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)");
+      const r = cfg.resume === "off" ? null : R.takeResume(R.sharedDir(), cwd, { tool: "claude" }); if (r) parts.push(r + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)");
     }
     if (parts.length) ctx(ev, parts.join("\n\n"));
   } else if (ev === "UserPromptSubmit" && mem) {
@@ -36,7 +36,7 @@ try {
     if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen); }
     if (r.text || msg) ctx(ev, r.text, msg);
   } else if (ev === "Stop" && cfg.resume !== "off") {
-    R.saveResume(dir, cwd, R.buildResume({ transcript: input.transcript_path, cwd }));
+    R.saveResume(R.sharedDir(), cwd, R.buildResume({ transcript: input.transcript_path, cwd, tool: "claude" }));
   }
   process.exitCode = 0;
 } catch { process.exitCode = 0; }

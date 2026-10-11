@@ -9,6 +9,7 @@ import fs from "node:fs"; import path from "node:path"; import { fileURLToPath }
 import { evaluate, applyMode, dataDir, modeKey, codexHome } from "./codex-governor.mjs";
 import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import * as GD from "./codex-guard.mjs";
 // project memory: ./memory.mjs next to this file (the stable bin copy) or the plugin's scripts/ (running from the plugin). Absent = feature silently off.
+let R = null; try { R = await import("./resume.mjs"); } catch { try { R = await import("../../scripts/resume.mjs"); } catch {} }
 let M = null; try { M = await import("./memory.mjs"); } catch { try { M = await import("../../scripts/memory.mjs"); } catch {} }
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
 const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
@@ -48,6 +49,17 @@ function main() {
   }
   const sid0 = input.session_id || "?";
   if (M && (ev === "SessionStart" || ev === "UserPromptSubmit")) { try { const mt = memoryText(ev, input, sid0); if (mt) process.stdout.write(mt + "\n"); } catch {} } // first: a budget-evaluation failure must not cost you the project notes
+  // automatic resume point (shared with Claude Code): written at Stop, offered to the next fresh chat in this folder. Before the budget code on purpose.
+  if (R && (ev === "Stop" || ev === "SessionStart" || ev === "UserPromptSubmit")) {
+    try {
+      const cwdR = input.cwd || process.cwd(), cfgR = rj("config.json") || {}; const roll = R.findRollout({ transcript: input.transcript_path, sessionId: input.session_id, codexHome: codexHome() });
+      if (cfgR.resume !== "off") {
+        if (ev === "Stop" && roll) R.saveResume(R.sharedDir(), cwdR, R.buildResume({ transcript: roll, cwd: cwdR, tool: "codex" }));
+        if (ev === "SessionStart" && (!input.source || input.source === "startup" || input.source === "clear")) { const t = R.takeResume(R.sharedDir(), cwdR, { tool: "codex" }); if (t) process.stdout.write(t + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)\n"); }
+        if (ev === "UserPromptSubmit" && roll) { const adv = GD.freshChatAdvice(dataDir(), sid0, GD.codexContext(roll)); if (adv) process.stdout.write(adv + "\n"); }
+      }
+    } catch {}
+  }
   const sf = path.join(dataDir(), "hook-state.json"); let st = {}; try { st = JSON.parse(fs.readFileSync(sf, "utf8")); } catch {}
   const prev = (() => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), "governor.json"), "utf8")); } catch { return {}; } })();
   const before = prev.mode || "green", beforeKey = prev.appliedKey || modeKey(before, prev.surplus);

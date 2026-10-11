@@ -37,3 +37,26 @@ export function bigDump(dir, sid, cmd, cwd = process.cwd(), { bytes = 400000 } =
   }
   return null;
 }
+
+// Context size of a Codex chat from its rollout file (the newest token_count event). null when unknown.
+export function codexContext(file) {
+  try {
+    const fd = fs.openSync(file, "r");
+    try {
+      const size = fs.fstatSync(fd).size, len = Math.min(size, 256 * 1024), buf = Buffer.alloc(len); fs.readSync(fd, buf, 0, len, size - len);
+      for (const line of buf.toString("utf8").split("\n").reverse()) {
+        if (!line.includes("token_count")) continue;
+        try { const u = JSON.parse(line)?.payload?.info?.last_token_usage; if (u && Number.isFinite(u.input_tokens)) return u.input_tokens; } catch {}
+      }
+    } finally { fs.closeSync(fd); }
+  } catch {}
+  return null;
+}
+// "Start a fresh chat" advice, once per +40k tokens above `at`. Returns text for the model to relay (plain stdout context in Codex), or null.
+export function freshChatAdvice(dir, sid, ctx, { at = 120000 } = {}) {
+  if (!Number.isFinite(ctx) || ctx < at) return null;
+  const s = rj(sf(dir, sid), { hashes: [], warned: {} });
+  if (ctx < (s.ctxNudge || 0) + 40000 && s.ctxNudge) return null;
+  s.ctxNudge = ctx; save(dir, sid, s); bump(dir, "freshChatNudges");
+  return `usage-max: this chat's context is about ${Math.round(ctx / 1000)}k tokens and is re-read on every turn. Tell the user once, in one sentence, that a fresh chat is cheaper at the next natural break; a resume point is saved automatically and the new chat starts from it.`;
+}
