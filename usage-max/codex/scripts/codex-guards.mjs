@@ -32,17 +32,20 @@ export function guard(dir, sid, cmd, cwd, platform = process.platform, env = pro
 export const stats = (dir) => rj(path.join(dir, "guard-stats.json"), {});
 
 // ---- long-session nudge: the context a session carries is re-read on EVERY call, which is most of the plan use for long sessions.
-// sessionContext: tokens in the most recent call of this session's rollout file (found by session id; else the file written in the last 2 minutes).
+// sessionContext: tokens in the most recent call of this session's rollout file (found by session id; with no id at all, the file written in the last 2 minutes).
 function* rollouts(root) { let es; try { es = fs.readdirSync(root, { withFileTypes: true }); } catch { return; } for (const e of es) { const f = path.join(root, e.name); if (e.isDirectory()) yield* rollouts(f); else if (e.name.endsWith(".jsonl")) yield f; } }
 export function sessionContext(codexHome, sid, now = Date.now()) {
   let file = null, newest = null, newestM = 0;
   for (const f of rollouts(path.join(codexHome, "sessions"))) { if (sid && sid !== "?" && path.basename(f).includes(sid)) { file = f; break; } try { const m = fs.statSync(f).mtimeMs; if (m > newestM) { newestM = m; newest = f; } } catch {} }
-  if (!file && newest && now - newestM < 120e3) file = newest; if (!file) return null;
+  if (!file && (!sid || sid === "?") && newest && now - newestM < 120e3) file = newest; // guess only when the hook gave no session id; never attribute another session's context
+  if (!file) return null;
   let text; try { const st = fs.statSync(file), len = Math.min(st.size, 200000), fd = fs.openSync(file, "r"), buf = Buffer.alloc(len); fs.readSync(fd, buf, 0, len, st.size - len); fs.closeSync(fd); text = buf.toString("utf8"); } catch { return null; }
   const lines = text.split("\n"); for (let i = lines.length - 1; i >= 0; i--) { if (!lines[i].includes("token_count")) continue; try { const o = JSON.parse(lines[i]); const p = o.payload || o; const u = (p.info || p).last_token_usage; if (u && u.input_tokens) return u.input_tokens; } catch {} }
   return null;
 }
 export const NUDGE_AT = 120000;
+// Tighter when the plan is running low: the same long session costs more of what is left.
+export const nudgeAt = (mode) => (mode === "red" ? 60000 : mode === "amber" ? 90000 : NUDGE_AT);
 export function nudge(ctx, at = NUDGE_AT) {
   if (!ctx || ctx < at) return null; const level = ctx >= at + 80000 ? 2 : 1, k = Math.round(ctx / 1000);
   return { level, text: level === 1
