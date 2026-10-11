@@ -22,16 +22,16 @@ try {
   const mem = cfg.memory === "off" ? null : M.findMemoryDir(cwd);
   const cmd = `node "${path.join(root, "scripts", "usage-max.mjs")}" memory`;
   if (ev === "SessionStart") {
-    const parts = [];
+    const parts = []; M.saveSeen(sid, new Set()); // new/cleared/compacted context: notes may be injected again
     if (mem) parts.push(M.loadBlock(mem, { cap: Number(cfg.memoryBudgetChars) || 2500, cmd }));
     if (!input.source || input.source === "startup" || input.source === "clear") {
-      const r = cfg.resume === "off" ? null : R.takeResume(dir, cwd); if (r) parts.push(r + "\nContinue from here unless the user says otherwise.");
+      const r = cfg.resume === "off" ? null : R.takeResume(dir, cwd); if (r) parts.push(r + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)");
     }
     if (parts.length) ctx(ev, parts.join("\n\n"));
   } else if (ev === "UserPromptSubmit" && mem) {
     const prompt = String(input.prompt || ""); let msg = null;
     const dir0 = M.extractDirective(prompt);
-    if (dir0) { const r = M.decide(mem, "note-" + dir0.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).slice(0, 4).join("-"), dir0); if (!r.error && !r.unchanged) msg = "usage-max: saved to project memory (.memory/decisions.md)."; }
+    if (dir0) { const r = M.decide(mem, M.directiveKey(dir0), dir0); if (!r.error && !r.unchanged) msg = "usage-max: saved to project memory (.memory/decisions.md)."; }
     const seen = M.loadSeen(sid); const r = M.recall(mem, prompt, { seen });
     if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen); }
     if (r.text || msg) ctx(ev, r.text, msg);

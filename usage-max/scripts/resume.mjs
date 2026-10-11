@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { redact } from "./memory.mjs";
 
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const clip = (s, n) => { s = String(s || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
@@ -41,7 +42,7 @@ export function buildResume({ transcript, cwd, now = new Date() }) {
   if (d.last) L.push(`Where it stopped (last assistant message): ${d.last}`);
   if (d.files.length) L.push(`Files edited most recently: ${d.files.join(", ")}`);
   if (dirty.length) L.push(`Uncommitted: ${dirty.slice(0, 10).join("; ")}${dirty.length > 10 ? ` (+${dirty.length - 10} more)` : ""}`);
-  return L.join("\n");
+  return redact(L.join("\n"));
 }
 export function saveResume(dir, cwd, text, { now = Date.now(), minGapMs = 60e3 } = {}) {
   if (!text) return false; const f = resumeFile(dir, cwd);

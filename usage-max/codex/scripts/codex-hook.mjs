@@ -26,9 +26,9 @@ function userHooksInstalled() { try { return fs.readFileSync(path.join(codexHome
 function memoryText(ev, input, sid) {
   const mem = M.findMemoryDir(input.cwd || process.cwd()); if (!mem) return "";
   const cfg = rj("config.json"); if (cfg && cfg.memory === "off") return "";
-  if (ev === "SessionStart") return M.loadBlock(mem, { cap: Number(cfg && cfg.memoryBudgetChars) || 2500, cmd: "(note it in .memory/ — see the block below)", foot: "Record a durable fact or decision when you learn one: append `- YYYY-MM-DD | key | value` to .memory/decisions.md, or a bullet to .memory/topics/<name>.md. Do not ask the user for something listed here." });
+  if (ev === "SessionStart") { try { M.saveSeen(sid, new Set(), path.join(dataDir(), "memory-state")); } catch {} return M.loadBlock(mem, { cap: Number(cfg && cfg.memoryBudgetChars) || 2500, cmd: "(note it in .memory/ — see the block below)", foot: "Record a durable fact or decision when you learn one: append `- YYYY-MM-DD | key | value` to .memory/decisions.md, or a bullet to .memory/topics/<name>.md. Do not ask the user for something listed here." }); }
   const prompt = String(input.prompt || ""), dtv = M.extractDirective(prompt), out = [];
-  if (dtv) { const r = M.decide(mem, "note-" + dtv.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).slice(0, 4).join("-"), dtv); if (!r.error && !r.unchanged) out.push("usage-max: saved to project memory (.memory/decisions.md)."); }
+  if (dtv) { const r = M.decide(mem, M.directiveKey(dtv), dtv); if (!r.error && !r.unchanged) out.push("usage-max: saved to project memory (.memory/decisions.md)."); }
   const sd = path.join(dataDir(), "memory-state"), seen = M.loadSeen(sid, sd), r = M.recall(mem, prompt, { seen });
   if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen, sd); out.push(r.text); }
   return out.join("\n");
@@ -46,12 +46,13 @@ function main() {
     if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", updatedInput: { ...input.tool_input, command: nc } } }));
     return;
   }
+  const sid0 = input.session_id || "?";
+  if (M && (ev === "SessionStart" || ev === "UserPromptSubmit")) { try { const mt = memoryText(ev, input, sid0); if (mt) process.stdout.write(mt + "\n"); } catch {} } // first: a budget-evaluation failure must not cost you the project notes
   const sf = path.join(dataDir(), "hook-state.json"); let st = {}; try { st = JSON.parse(fs.readFileSync(sf, "utf8")); } catch {}
   const prev = (() => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), "governor.json"), "utf8")); } catch { return {}; } })();
   const before = prev.mode || "green", beforeKey = prev.appliedKey || modeKey(before, prev.surplus);
   const { mode, surplus, cfg, st: gs, e: ge } = evaluate(); const key = modeKey(mode, surplus); if (key !== beforeKey) { try { applyMode(mode, cfg, surplus); } catch {} }
   const sid = input.session_id || "?"; st.sent = st.sent || {};
-  if (M && (ev === "SessionStart" || ev === "UserPromptSubmit")) { try { const mt = memoryText(ev, input, sid); if (mt) process.stdout.write(mt + "\n"); } catch {} }
   if (ev === "SessionStart" || ev === "UserPromptSubmit") {
     const k = `${sid}:${key}`;
     if (!st.sent[k]) {

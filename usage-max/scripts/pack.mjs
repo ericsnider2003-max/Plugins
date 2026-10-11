@@ -12,7 +12,7 @@ import * as M from "./memory.mjs";
 
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "task";
 export function changedFiles(cwd) {
-  try { const r = spawnSync("git", ["status", "--short"], { cwd, encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }); return r.status === 0 ? r.stdout.split("\n").map((l) => l.slice(3).trim()).filter(Boolean).slice(0, 15) : []; } catch { return []; }
+  try { const r = spawnSync("git", ["status", "--short"], { cwd, encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }); return r.status === 0 ? r.stdout.split("\n").map((l) => l.slice(3).trim().replace(/^.* -> /, "").replace(/^"|"$/g, "")).filter(Boolean).slice(0, 15) : []; } catch { return []; }
 }
 export function detectTest(cwd) {
   const has = (f) => fs.existsSync(path.join(cwd, f));
@@ -37,16 +37,16 @@ export function setupScript(cwd) {
   return L.join("\n");
 }
 export function run(argv, cwd = process.cwd()) {
-  const a = [...argv]; const take = (n) => { const i = a.indexOf("--" + n); if (i < 0) return null; const v = a[i + 1]; a.splice(i, v && !v.startsWith("--") ? 2 : 1); return v && !v.startsWith("--") ? v : true; };
-  const setup = take("setup"), save = take("save"), filesArg = take("files"), testArg = take("test"); const goal = a.join(" ").trim();
+  const a = [...argv]; const bool = (n) => { const i = a.indexOf("--" + n); if (i < 0) return false; a.splice(i, 1); return true; }; const take = (n) => { const i = a.indexOf("--" + n); if (i < 0) return null; const v = a[i + 1]; a.splice(i, v && !v.startsWith("--") ? 2 : 1); return v && !v.startsWith("--") ? v : true; };
+  const setup = bool("setup"), save = bool("save"), filesArg = take("files"), testArg = take("test"); const goal = a.join(" ").trim();
   if (setup) return { out: setupScript(cwd) };
   if (!goal) return { out: 'usage: usage-max pack "<what Codex should do>" [--files a,b] [--test "<cmd>"] [--save]   |   usage-max pack --setup', code: 1 };
   const files = filesArg && filesArg !== true ? filesArg.split(",").map((x) => x.trim()).filter(Boolean) : changedFiles(cwd);
   const test = testArg && testArg !== true ? testArg : detectTest(cwd); const mem = M.findMemoryDir(cwd);
-  const memoryText = mem ? M.recall(mem, goal + " " + files.join(" "), { max: 3, budget: 1200, loose: true }).text : "";
+  const memoryText = mem ? M.recall(mem, goal, { max: 3, budget: 1200, loose: true }).text : "";
   const text = buildPack({ goal, files, test, memoryText });
   if (!save) return { out: text + "\n\n(Paste this into Codex. For phone use: usage-max pack ... --save, commit, then say \"Do the task in .codex-tasks/<name>.md\".)" };
-  const dir = path.join(cwd, ".codex-tasks"); fs.mkdirSync(dir, { recursive: true }); const f = path.join(dir, slug(goal) + ".md"); fs.writeFileSync(f, text + "\n");
+  const dir = path.join(cwd, ".codex-tasks"); fs.mkdirSync(dir, { recursive: true }); let f = path.join(dir, slug(goal) + ".md"); for (let i = 2; fs.existsSync(f) && fs.readFileSync(f, "utf8") !== text + "\n"; i++) f = path.join(dir, `${slug(goal).slice(0, 44)}-${i}.md`); fs.writeFileSync(f, text + "\n");
   const rel = path.relative(cwd, f).replace(/\\/g, "/"); return { out: `saved ${rel}\nCommit and push it. Then, in the Codex app (desktop or mobile), the whole prompt is:\n  Do the task in ${rel}` };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) { const r = run(process.argv.slice(2)); console.log(r.out); process.exit(r.code || 0); }

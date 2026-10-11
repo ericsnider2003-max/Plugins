@@ -24,9 +24,9 @@ if (sub === "init") {
   const m = need(); const p = M.lint(m); console.log(p.length ? p.map((x) => "- " + x).join("\n") : "memory is healthy."); process.exit(p.length ? 2 : 0);
 } else if (sub === "sync") {
   const m = need(); const check = bool("check"); const root = M.repoRootOf(m);
-  const files = (flag("files") ? String(flag("files")).split(",") : ["AGENTS.md"]).map((f) => path.join(root, f));
+  const fa = flag("files"); const files = (typeof fa === "string" ? fa.split(",").map((x) => x.trim()).filter(Boolean) : ["AGENTS.md"]).map((f) => path.join(root, f));
   if (check) { const stale = files.filter((f) => !M.syncCheck(m, f)); console.log(stale.length ? `stale: ${stale.map((f) => rel(m, f)).join(", ")} — run: usage-max memory sync` : "AGENTS.md block is current."); process.exit(stale.length ? 3 : 0); }
-  for (const f of files) { const r = M.syncFile(m, f); console.log(`${r.changed ? "updated" : "already current"}: ${rel(m, f)}`); }
+  let bad = 0; for (const f of files) { const r = M.syncFile(m, f); if (r.error) bad = 1; console.log(r.error ? `NOT updated: ${rel(m, f)} — ${r.error}` : `${r.changed ? "updated" : "already current"}: ${rel(m, f)}`); } if (bad) process.exit(1);
   console.log("Commit it: Codex cloud tasks (including from the mobile app) read AGENTS.md from the repo.");
 } else if (sub === "export") { console.log(M.loadBlock(need(), { cap: 3000, cmd: "(ask the assistant to note it)" }));
 } else if (sub === "import") {

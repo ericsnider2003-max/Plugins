@@ -110,6 +110,7 @@ export function readCheck(dir, sid, input, { reset = false } = {}) {
 export function readGate(dir, sid, input, { bytes } = {}) {
   const p = input && input.file_path; if (!p || typeof p !== "string" || input.offset != null || input.limit != null) return null;
   const c = readJson(path.join(dir, "config.json"), {}) || {}; if (c.readBlock === false) return null;
+  if (/\.(png|jpe?g|gif|webp|bmp|ico|pdf|ipynb|svg|mp4|mov|zip)$/i.test(p)) return null; // images/PDFs/notebooks are read whole by design and cannot be grepped
   const max = bytes || Number(c.readBlockBytes) || 400000; let st; try { st = fs.statSync(p); } catch { return null; }
   if (!st.isFile() || st.size <= max) return null;
   const s = loadSession(dir, sid); s.blocked = s.blocked || {};

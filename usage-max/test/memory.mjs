@@ -42,7 +42,7 @@ t("recall returns the matching section only, once per session, nothing for chatt
 });
 t("extractDirective", () => {
   assert.equal(M.extractDirective("Remember: the staging DB is read only on Fridays"), "the staging DB is read only on Fridays");
-  assert.match(M.extractDirective("ok. From now on, run lint before every commit"), /run lint before every commit/);
+  assert.match(M.extractDirective("From now on, run lint before every commit"), /run lint before every commit/); assert.equal(M.extractDirective("ok. From now on, run lint before every commit"), null, "not at the start: ignored");
   assert.equal(M.extractDirective("I remember that place"), null); assert.equal(M.extractDirective("remember: x"), null, "too short to be a rule");
 });
 t("sync writes a bounded block into AGENTS.md, keeps the user's text, is idempotent, --check detects drift", () => {
@@ -79,7 +79,7 @@ t("resume: built from transcript + git, saved at Stop, handed to the next fresh 
   assert.equal(R.buildResume({ transcript: path.join(home, "none"), cwd: proj }), null);
   hook("hooks/memory.mjs", { hook_event_name: "Stop", cwd: proj, session_id: "s2", transcript_path: tr });
   const dir = path.join(home, ".claude", "usage-max");
-  const r1 = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "clear", cwd: proj, session_id: "s3" }).stdout).hookSpecificOutput.additionalContext; assert.match(r1, /Resume point/); assert.match(r1, /Continue from here/);
+  const r1 = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "clear", cwd: proj, session_id: "s3" }).stdout).hookSpecificOutput.additionalContext; assert.match(r1, /Resume point/); assert.match(r1, /may be stale/);
   assert.doesNotMatch(JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "startup", cwd: proj, session_id: "s4" }).stdout).hookSpecificOutput.additionalContext, /Resume point/, "taken once");
   fs.utimesSync(R.resumeFile(dir, proj), new Date(Date.now() + 5000), new Date(Date.now() + 5000));
   assert.doesNotMatch(JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "resume", cwd: proj, session_id: "s5" }).stdout).hookSpecificOutput.additionalContext, /Resume point/, "resumed sessions already have their context");
@@ -131,4 +131,56 @@ t("CLI: memory + pack + resume through the one entry point", () => {
   assert.match(cli(["pack", "do the thing", "--files", "a.js"]).stdout, /# Task: do the thing/); assert.match(cli(["resume"]).stdout, /Resume point|no resume point/);
 });
 t("enable-here --lean-auto refuses without history", () => { const r = cli(["enable-here", proj, "--lean-auto"]); assert.equal(r.status, 1); assert.match(r.stdout, /needs usage history/); });
+
+// ---- regressions from the independent review
+t("never overwrites a file it could not read (EISDIR stands in for a locked file); sync --files does not write 'null'", () => {
+  const d = path.join(proj, "LOCKED.md"); fs.mkdirSync(d); const r = M.syncFile(mem, d); assert.ok(r.error); assert.equal(r.changed, false); assert.ok(fs.statSync(d).isDirectory());
+  fs.mkdirSync(path.join(mem, "topics", "stuck.md")); assert.ok(M.addFact(mem, "stuck", "a fact").error); fs.rmdirSync(path.join(mem, "topics", "stuck.md"));
+  fs.writeFileSync(path.join(proj, "CLAUDE.md"), "keep me\n"); const o = spawnSync("node", [path.join(root, "scripts/memory-cli.mjs"), "sync", "--files", "CLAUDE.md"], { cwd: proj, encoding: "utf8" });
+  assert.equal(o.status, 0, o.stdout + o.stderr); assert.ok(!fs.existsSync(path.join(proj, "null"))); assert.match(fs.readFileSync(path.join(proj, "CLAUDE.md"), "utf8"), /keep me[\s\S]*usage-max:memory begin/);
+  assert.equal(spawnSync("node", [path.join(root, "scripts/memory-cli.mjs"), "sync", "--check", "--files", "CLAUDE.md"], { cwd: proj, encoding: "utf8" }).status, 0);
+});
+t("two notes starting with the same four words are both kept", () => {
+  const a = "always use tabs in python files", b = "always use tabs in go files"; assert.notEqual(M.directiveKey(a), M.directiveKey(b));
+  M.decide(mem, M.directiveKey(a), a); M.decide(mem, M.directiveKey(b), b); const v = M.readDecisions(mem).map((d) => d.value); assert.ok(v.includes(a) && v.includes(b));
+});
+t("directive only counts at the START of the prompt; pasted text is ignored; secrets are refused everywhere", () => {
+  assert.equal(M.extractDirective("Here is the email:\nGoing forward, we will bill monthly and keep a ledger."), null);
+  assert.equal(M.extractDirective("Summary of the changelog. From now on the API is versioned per release."), null);
+  assert.ok(M.extractDirective("From now on, answer in short sentences"));
+  assert.equal(M.extractDirective("remember: the prod password is hunter2hunter2"), null, "secret-looking directive not captured");
+  for (const bad of ["use sk-live-abcdefghijklmnop1234 for billing", "password: Tr0ub4dor&3xyz", "AKIAABCDEFGHIJKLMNOP is the key", "token=ghp_abcdefghijklmnopqrstuvwxyz0123456789"]) { assert.ok(M.looksSecret(bad), bad); assert.ok(M.decide(mem, "x", bad).error, bad); assert.ok(M.addFact(mem, "x", bad).error, bad); }
+  assert.ok(!M.looksSecret("the password lives in 1Password item Billing"));
+});
+t("resume point is redacted and no longer an order", () => {
+  const tr = path.join(home, "tr2.jsonl"); fs.writeFileSync(tr, JSON.stringify({ type: "user", message: { role: "user", content: "call the API with key sk-live-abcdefghijklmnop1234 please" } }) + "\n" + JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "done" }] } }) + "\n");
+  const x = R.buildResume({ transcript: tr, cwd: proj }); assert.doesNotMatch(x, /sk-live/); assert.match(x, /\[redacted\]/);
+  R.saveResume(path.join(home, "rd"), proj, x); const out = hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "clear", cwd: proj, session_id: "rr" }, { USAGE_MAX_HOME: home });
+  assert.doesNotMatch(out.stdout, /Continue from here unless/);
+});
+t("recall: one common word does not inject; whole words only; two real hits do; explicit recall is looser", () => {
+  M.addFact(mem, "testing", "Run the suite with pnpm test; snapshots live in __snapshots__."); M.addFact(mem, "rapid-api", "Third party quota is 100 requests per minute.");
+  assert.equal(M.recall(mem, "fix the test", {}).text, "", "one generic word"); assert.equal(M.recall(mem, "what is the app doing", {}).text, "", "'app' must not match 'rapid-api'");
+  assert.equal(M.recall(mem, "ship the api", {}).text, ""); assert.match(M.recall(mem, "where do snapshots live for the test suite", {}).text, /__snapshots__/);
+  assert.match(M.recall(mem, "quota", { loose: true }).text, /100 requests/);
+});
+t("compact/clear/startup forgets what was injected, so a topic can be injected again", () => {
+  const sid = "seen1", p = "why can't I edit an invoice once it is sent?";
+  assert.match(hook("hooks/memory.mjs", { hook_event_name: "UserPromptSubmit", cwd: proj, session_id: sid, prompt: p }).stdout, /credit notes/); assert.equal(hook("hooks/memory.mjs", { hook_event_name: "UserPromptSubmit", cwd: proj, session_id: sid, prompt: p }).stdout, "");
+  hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: proj, session_id: sid }); assert.match(hook("hooks/memory.mjs", { hook_event_name: "UserPromptSubmit", cwd: proj, session_id: sid, prompt: p }).stdout, /credit notes/);
+});
+t("finder stops at the repo root: a parent folder's or ~/.memory is not picked up", () => {
+  const outer = path.join(home, "outer"); fs.mkdirSync(path.join(outer, "repo", "src"), { recursive: true }); M.init(outer); fs.mkdirSync(path.join(outer, "repo", ".git"));
+  assert.equal(M.findMemoryDir(path.join(outer, "repo", "src")), null); assert.ok(M.findMemoryDir(outer));
+});
+t("pack: --save before the goal works, never overwrites a different task, handles renames", () => {
+  assert.match(P.run(["--save", "refactor billing totals"], proj).out, /refactor-billing-totals\.md/);
+  const w = path.join(proj, ".codex-tasks"); fs.writeFileSync(path.join(w, "same-goal.md"), "an older, different task\n"); const r = P.run(["same goal"], proj); assert.match(P.run(["same goal", "--save"], proj).out, /same-goal-2\.md/); assert.equal(fs.readFileSync(path.join(w, "same-goal.md"), "utf8"), "an older, different task\n");
+  assert.match(P.run(["--setup"], proj).out, /pnpm/);
+});
+t("readGate lets PDFs/images/notebooks through; codex hook prints memory even if the budget code throws", () => {
+  const d = path.join(home, "g3"); fs.mkdirSync(d, { recursive: true }); const f = path.join(home, "scan.pdf"); fs.writeFileSync(f, "x".repeat(450000)); assert.equal(G.readGate(d, "p", { file_path: f }), null);
+  const ch = path.join(root, "codex/scripts/codex-hook.mjs"); const bad = path.join(home, "badhome"); fs.mkdirSync(bad, { recursive: true }); fs.writeFileSync(path.join(bad, ".usage-max-codex"), "a file, not a folder"); // dataDir() is unusable
+  const o = spawnSync("node", [ch, "SessionStart"], { input: JSON.stringify({ session_id: "z", cwd: proj }), encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: bad, PLUGIN_ROOT: "" } }); assert.equal(o.status, 0); assert.match(o.stdout, /Project memory/);
+});
 console.log(n, "passing");
