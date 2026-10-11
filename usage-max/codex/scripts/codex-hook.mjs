@@ -7,7 +7,9 @@
 //                      win32 only after `codex-governor.mjs selftest-trim` wrote trim-ok.json (or USAGE_MAX_TRIM=force).
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import { evaluate, applyMode, dataDir, modeKey, codexHome } from "./codex-governor.mjs";
-import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs";
+import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import * as GD from "./codex-guard.mjs";
+// project memory: ./memory.mjs next to this file (the stable bin copy) or the plugin's scripts/ (running from the plugin). Absent = feature silently off.
+let M = null; try { M = await import("./memory.mjs"); } catch { try { M = await import("../../scripts/memory.mjs"); } catch {} }
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
 const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
 export { wrap };
@@ -21,12 +23,25 @@ export function rewrite(cmd, runPath, platform = process.platform) {
 const DIRECTIVE = { amber: "usage-max AMBER: weekly budget is being burned faster than sustainable. Use low reasoning effort, keep scope tight, avoid re-reading files, no large autonomous jobs without asking.", red: "usage-max RED: weekly budget is nearly exhausted for the time left. Cheapest path only: minimal reads, no exploratory work, no fast mode, no long autonomous runs; ask before anything big." };
 function seen(ev) { try { const f = path.join(dataDir(), "hook-seen.json"); let o = {}; try { o = JSON.parse(fs.readFileSync(f, "utf8")); } catch {} o[ev] = new Date().toISOString(); fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o)); } catch {} }
 function userHooksInstalled() { try { return fs.readFileSync(path.join(codexHome(), "hooks.json"), "utf8").includes("codex-hook.mjs"); } catch { return false; } }
+function memoryText(ev, input, sid) {
+  const mem = M.findMemoryDir(input.cwd || process.cwd()); if (!mem) return "";
+  const cfg = rj("config.json"); if (cfg && cfg.memory === "off") return "";
+  if (ev === "SessionStart") return M.loadBlock(mem, { cap: Number(cfg && cfg.memoryBudgetChars) || 2500, cmd: "(note it in .memory/ — see the block below)", foot: "Record a durable fact or decision when you learn one: append `- YYYY-MM-DD | key | value` to .memory/decisions.md, or a bullet to .memory/topics/<name>.md. Do not ask the user for something listed here." });
+  const prompt = String(input.prompt || ""), dtv = M.extractDirective(prompt), out = [];
+  if (dtv) { const r = M.decide(mem, "note-" + dtv.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).slice(0, 4).join("-"), dtv); if (!r.error && !r.unchanged) out.push("usage-max: saved to project memory (.memory/decisions.md)."); }
+  const sd = path.join(dataDir(), "memory-state"), seen = M.loadSeen(sid, sd), r = M.recall(mem, prompt, { seen });
+  if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen, sd); out.push(r.text); }
+  return out.join("\n");
+}
 function main() {
   if (process.env.PLUGIN_ROOT && userHooksInstalled()) return; // loaded as a plugin AND installed user-wide: the user-wide copy handles it
   const ev = process.argv[2]; let input = {}; try { input = JSON.parse(fs.readFileSync(0, "utf8") || "{}"); } catch {}
   seen(ev);
   if (ev === "PreToolUse") {
     if (input.tool_name !== "Bash" || !input.tool_input) return;
+    const cmd0 = input.tool_input.command, cwd0 = input.cwd || process.cwd();
+    try { const held = GD.bigDump(dataDir(), input.session_id, cmd0, cwd0); if (held) { process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: held } })); return; } } catch {}
+    try { const lp = GD.loopCheck(dataDir(), input.session_id, cmd0); if (lp) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: lp } })); } catch {}
     const nc = rewrite(input.tool_input.command, path.join(path.dirname(fileURLToPath(import.meta.url)), "run-trimmed.mjs"));
     if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", updatedInput: { ...input.tool_input, command: nc } } }));
     return;
@@ -36,6 +51,7 @@ function main() {
   const before = prev.mode || "green", beforeKey = prev.appliedKey || modeKey(before, prev.surplus);
   const { mode, surplus, cfg, st: gs, e: ge } = evaluate(); const key = modeKey(mode, surplus); if (key !== beforeKey) { try { applyMode(mode, cfg, surplus); } catch {} }
   const sid = input.session_id || "?"; st.sent = st.sent || {};
+  if (M && (ev === "SessionStart" || ev === "UserPromptSubmit")) { try { const mt = memoryText(ev, input, sid); if (mt) process.stdout.write(mt + "\n"); } catch {} }
   if (ev === "SessionStart" || ev === "UserPromptSubmit") {
     const k = `${sid}:${key}`;
     if (!st.sent[k]) {

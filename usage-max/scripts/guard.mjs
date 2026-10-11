@@ -50,10 +50,10 @@ export function cacheTtlMs(home) {
 const k = (n) => `${Math.round(n / 1000)}k`;
 
 // UserPromptSubmit: returns a message for YOU (systemMessage) or null. Updates "last activity".
-export function promptCheck(dir, sid, { now = Date.now(), ctx = null, ttlMs = 300e3, compactAt = 150000 } = {}) {
+export function promptCheck(dir, sid, { now = Date.now(), ctx = null, ttlMs = 300e3, compactAt = 150000, autoResume = false } = {}) {
   const s = loadSession(dir, sid); const gap = s.last ? now - s.last : 0; let msg = null;
   if (s.last && gap > ttlMs && ctx !== null && ctx >= 40000) {
-    msg = `usage-max: this session sat idle ${Math.round(gap / 60000)} min, so its cache expired. Continuing re-bills the whole ${k(ctx)}-token context at about 10x a warm turn. Cheapest for a big context: ask me to /usage-max handoff, then /clear and continue from handoff.md. For a quick follow-up, just carry on.`;
+    msg = `usage-max: this session sat idle ${Math.round(gap / 60000)} min, so its cache expired. Continuing re-bills the whole ${k(ctx)}-token context at about 10x a warm turn. ${autoResume ? "Cheapest for a big context: /clear now. A resume point (handoff) was saved automatically and the new session starts from it." : "Cheapest for a big context: ask me to /usage-max handoff, then /clear and continue from handoff.md. For a quick follow-up, just carry on."}`;
     bump(dir, "coldWarnings");
   } else if (ctx !== null && ctx >= compactAt && ctx >= (s.ctxNudge || 0) + 40000) {
     msg = `usage-max: context is ${k(ctx)} tokens and is re-read every turn. At a natural break run /compact (or hand off and /clear) to cut the cost of every following turn.`;
@@ -105,6 +105,20 @@ export function readCheck(dir, sid, input, { reset = false } = {}) {
   saveSession(dir, sid, s); return hint;
 }
 
+// Whole-file Read of a huge file (default over 400 KB, ~100k tokens): refused ONCE with a way forward; asking again goes through.
+// Off: config.json {"readBlock": false}, or set readBlockBytes.
+export function readGate(dir, sid, input, { bytes } = {}) {
+  const p = input && input.file_path; if (!p || typeof p !== "string" || input.offset != null || input.limit != null) return null;
+  const c = readJson(path.join(dir, "config.json"), {}) || {}; if (c.readBlock === false) return null;
+  const max = bytes || Number(c.readBlockBytes) || 400000; let st; try { st = fs.statSync(p); } catch { return null; }
+  if (!st.isFile() || st.size <= max) return null;
+  const s = loadSession(dir, sid); s.blocked = s.blocked || {};
+  if (s.blocked[p]) return null; // second ask: the user/model really wants it
+  s.blocked[p] = Date.now(); const keys = Object.keys(s.blocked); if (keys.length > 100) for (const x of keys.slice(0, keys.length - 100)) delete s.blocked[x];
+  saveSession(dir, sid, s); bump(dir, "bigReadsHeld");
+  return { deny: `usage-max: ${path.basename(p)} is ${Math.round(st.size / 1000)} KB (about ${k(st.size / 4)} tokens), and a whole-file read would sit in the context for every following turn. Grep for what you need and Read a range (offset/limit). If you truly need the entire file, call Read again and it will go through.` };
+}
+
 // ---- subagent concurrency cap (each parallel subagent pays its own full startup context)
 const CAPS = { green: 4, amber: 2, red: 1 };
 const FLIGHT_TTL = 20 * 60e3;
@@ -134,6 +148,7 @@ export function digest(dir) {
   row("compactNudges", "big-context /compact reminders");
   row("rereadHints", "re-reads of an unchanged file flagged");
   row("largeReadHints", "whole-file reads of big files flagged");
+  row("bigReadsHeld", "whole-file reads of huge files (400 KB+) held once for a ranged read");
   return { since: e.since, lines: L };
 }
 
