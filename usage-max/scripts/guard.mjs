@@ -180,7 +180,7 @@ export function queueOp(dir, op, text) {
 }
 
 // ---- cross-agent gate: Claude calling Codex (codex exec / codex review, e.g. from the codex-review and codex-dispatch plugins) spends the CODEX plan.
-// Never auto-approves: it only adds a permission question ("ask") when Codex is RED, or when this session is already on its 3rd+ Codex call within an hour
+// Never auto-approves and never prompts: it only shows a note when Codex is RED, or when this session is already on its 3rd+ Codex call within an hour
 // (each round of a back-and-forth re-sends the plan/diff). Everything is counted for the digest.
 export const CODEX_CALL = /(^|[;&|(]\s*)((\w+=\S*\s+)*)(npx\s+(-y\s+)?)?(\S*[\\/])?codex(\.exe|\.cmd)?\s+(exec|review|e)\b/;
 export function crossCheck(dir, sid, cmd, codexMode, { now = Date.now(), maxPerHour = 2 } = {}) {

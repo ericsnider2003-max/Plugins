@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PreToolUse(Bash): see crossCheck in scripts/guard.mjs. Asks (never allows or denies on its own). Fail-open. Does nothing inside Codex.
+// PreToolUse(Bash): see crossCheck in scripts/guard.mjs. Informs only (never asks, allows or denies). Fail-open. Does nothing inside Codex.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,7 @@ try {
     const gov = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "codex", "scripts", "codex-governor.mjs");
     const r = spawnSync(process.execPath, [gov, "gate"], { timeout: 6000, stdio: "ignore" });
     const msg = G.crossCheck(dataDir(), input.session_id || "unknown", cmd, r.status === 20 ? "red" : r.status === 10 ? "amber" : "green");
-    if (msg) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: msg } }));
+    if (msg) process.stdout.write(JSON.stringify({ systemMessage: msg, hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: msg } })); // information only: no permission prompt
   }
 } catch {}
 process.exit(0);

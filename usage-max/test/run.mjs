@@ -110,7 +110,7 @@ check("session-start: opus 6 flagged above ceiling", ss(JSON.stringify({ model: 
   check("session-start: second run is quiet (idempotent)", again.includes("auto-applied"), false);
   const hk = (input) => runNode(path.join(root, "hooks", "budget.mjs"), ["PreToolUse"], { input: JSON.stringify(input), env: { ...process.env, USAGE_MAX_HOME: h2 } });
   check("subagents inheriting Opus run on Sonnet even in GREEN", hk({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: "general-purpose" } }).includes('"model":"sonnet"'), true);
-  check("explicit opus subagent is capped to Sonnet", hk({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: "x", model: "opus" } }).includes('"model":"sonnet"'), true);
+  check("an explicitly requested opus subagent is HONOURED (only your ceiling and the no-choice default are applied)", hk({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: "x", model: "opus" } }).includes('"model":"sonnet"'), false);
   check("haiku scout is left alone", hk({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: "usage-max:usage-max-scout", model: "haiku" } }), "");
   const trim = runNode(path.join(root, "hooks", "bash-trim.mjs"), [], { input: JSON.stringify({ tool_name: "Bash", tool_input: { command: "npm test" } }) });
   check("trim hook rewrites but never auto-approves", trim.includes("updatedInput") && !trim.includes("permissionDecision"), true); }
@@ -258,7 +258,7 @@ const ag = JSON.parse(hook("PreToolUse", { tool_name: "Agent", tool_input: { pro
 check("hook PreToolUse: red downgrades inheriting subagent to sonnet", [ag.hookSpecificOutput.updatedInput.model, ag.hookSpecificOutput.updatedInput.prompt], ["sonnet", "x"]);
 check("hook PreToolUse: leaves usage-max-scout alone", hook("PreToolUse", { tool_name: "Agent", tool_input: { prompt: "x", subagent_type: "usage-max:usage-max-scout" } }).trim(), "");
 check("hook PreModelSwitch: blocks fable", JSON.parse(hook("PreModelSwitch", { to_model: "claude-fable-5" })).hookSpecificOutput.permissionDecision, "deny");
-check("hook PreModelSwitch: asks for opus in red", JSON.parse(hook("PreModelSwitch", { to_model: "claude-opus-5-5" })).hookSpecificOutput.permissionDecision, "ask");
+{ const o = JSON.parse(hook("PreModelSwitch", { to_model: "claude-opus-5-5" })); check("hook PreModelSwitch: opus in red is a notice, never a permission prompt", [o.hookSpecificOutput, /RED/.test(o.systemMessage)], [undefined, true]); }
 check("hook: fail-open on garbage", runNode(path.join(root, "hooks", "budget.mjs"), ["Stop"], { input: "garbage", env: genv }).trim(), "");
 
 // Subagent attribution: agent_id resolves <project>/<session>/subagents/agent-<id>.jsonl.
