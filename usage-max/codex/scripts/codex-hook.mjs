@@ -9,6 +9,9 @@
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import { evaluate, applyMode, dataDir, modeKey, codexHome } from "./codex-governor.mjs";
 import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import { guard, sessionContext, nudge, nudgeAt } from "./codex-guards.mjs"; import * as TC from "./trimcheck.mjs";
+// project memory + shared resume point: ./memory.mjs and ./resume.mjs next to this file (the stable bin copy) or the plugin's scripts/ (running from the plugin). Absent = feature silently off.
+let R = null; try { R = await import("./resume.mjs"); } catch { try { R = await import("../../scripts/resume.mjs"); } catch {} }
+let M = null; try { M = await import("./memory.mjs"); } catch { try { M = await import("../../scripts/memory.mjs"); } catch {} }
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
 const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
 export { wrap };
@@ -22,6 +25,16 @@ export function rewrite(cmd, runPath, platform = process.platform) {
 const DIRECTIVE = { amber: "usage-max AMBER: weekly budget is being burned faster than sustainable. Use low reasoning effort, keep scope tight, avoid re-reading files, no large autonomous jobs without asking.", red: "usage-max RED: weekly budget is nearly exhausted for the time left. Cheapest path only: minimal reads, no exploratory work, no fast mode, no long autonomous runs; ask before anything big." };
 function seen(ev) { try { const f = path.join(dataDir(), "hook-seen.json"); let o = {}; try { o = JSON.parse(fs.readFileSync(f, "utf8")); } catch {} o[ev] = new Date().toISOString(); fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o)); } catch {} }
 function userHooksInstalled() { try { return fs.readFileSync(path.join(codexHome(), "hooks.json"), "utf8").includes("codex-hook.mjs"); } catch { return false; } }
+function memoryText(ev, input, sid) {
+  const mem = M.findMemoryDir(input.cwd || process.cwd()); if (!mem) return "";
+  const cfg = rj("config.json"); if (cfg && cfg.memory === "off") return "";
+  if (ev === "SessionStart") { try { M.saveSeen(sid, new Set(), path.join(dataDir(), "memory-state")); } catch {} return M.loadBlock(mem, { cap: Number(cfg && cfg.memoryBudgetChars) || 2500, cmd: "(note it in .memory/ — see the block below)", foot: "Record a durable fact or decision when you learn one: append `- YYYY-MM-DD | key | value` to .memory/decisions.md, or a bullet to .memory/topics/<name>.md. Do not ask the user for something listed here." }); }
+  const prompt = String(input.prompt || ""), dtv = M.extractDirective(prompt), out = [];
+  if (dtv) { const r = M.decide(mem, M.directiveKey(dtv), dtv); if (!r.error && !r.unchanged) out.push("usage-max: saved to project memory (.memory/decisions.md)."); }
+  const sd = path.join(dataDir(), "memory-state"), seen = M.loadSeen(sid, sd), r = M.recall(mem, prompt, { seen });
+  if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen, sd); out.push(r.text); }
+  return out.join("\n");
+}
 function main() {
   if (process.env.PLUGIN_ROOT && userHooksInstalled()) return; // loaded as a plugin AND installed user-wide: the user-wide copy handles it
   const ev = process.argv[2]; let input = {}; try { input = JSON.parse(fs.readFileSync(0, "utf8") || "{}"); } catch {}
@@ -34,6 +47,18 @@ function main() {
     if (gc) { process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { ...input.tool_input, command: gc } } })); return; }
     if (nc) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", updatedInput: { ...input.tool_input, command: nc } } }));
     return;
+  }
+  const sid0 = input.session_id || "?";
+  if (M && (ev === "SessionStart" || ev === "UserPromptSubmit")) { try { const mt = memoryText(ev, input, sid0); if (mt) process.stdout.write(mt + "\n"); } catch {} } // first: a budget-evaluation failure must not cost you the project notes
+  // automatic resume point (shared with Claude Code): written at Stop, offered to the next fresh chat in this folder. Before the budget code on purpose.
+  if (R && (ev === "Stop" || ev === "SessionStart")) {
+    try {
+      const cwdR = input.cwd || process.cwd(), cfgR = rj("config.json") || {}; const roll = R.findRollout({ transcript: input.transcript_path, sessionId: input.session_id, codexHome: codexHome() });
+      if (cfgR.resume !== "off") {
+        if (ev === "Stop" && roll) R.saveResume(R.sharedDir(), cwdR, R.buildResume({ transcript: roll, cwd: cwdR, tool: "codex" }));
+        if (ev === "SessionStart" && (!input.source || input.source === "startup" || input.source === "clear")) { const t = R.takeResume(R.sharedDir(), cwdR, { tool: "codex" }); if (t) process.stdout.write(t + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)\n"); }
+      }
+    } catch {}
   }
   const sf = path.join(dataDir(), "hook-state.json"); let st = {}; try { st = JSON.parse(fs.readFileSync(sf, "utf8")); } catch {}
   const prev = (() => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), "governor.json"), "utf8")); } catch { return {}; } })();

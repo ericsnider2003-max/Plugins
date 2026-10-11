@@ -19,6 +19,9 @@ Use the smallest effort that gets a correct answer; save deep reasoning for hard
 (about 30 messages) or changes topic, tell me once and offer a 10-line summary I can paste into a fresh chat.
 ```
 
+## Project memory in chats (ChatGPT / Cowork / Claude.ai)
+Chats cannot read your repo's `.memory/` by themselves. Two ways: (1) in a Project, upload `.memory/INDEX.md` (or run `usage-max memory export` and paste its output into the Project instructions); re-do it when decisions change. (2) For Codex tasks started from the ChatGPT or mobile app, commit `usage-max memory sync` output (it fills `AGENTS.md`); cloud tasks read it from the repo, so there is nothing to paste.
+
 ## What stays manual (no app lets a plugin do it)
 - Picking a smaller model for simple questions (the model picker).
 - Starting a new chat: the block above makes the assistant tell you when a thread is getting expensive, so you do not have to remember.
