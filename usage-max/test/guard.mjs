@@ -221,4 +221,36 @@ await t("loop guard ignores polling: no-input calls, notifications, PR/CI reads;
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "lp-")); for (let i = 0; i < 8; i++) { assert.equal(G.loopCheck(d, "p", "ReadNotifications", {}), null); assert.equal(G.loopCheck(d, "p", "mcp__github__pull_request_read", { method: "get_check_runs", pullNumber: 9 }), null); assert.equal(G.loopCheck(d, "p", "SomeTool", {}), null); }
   const b = { command: "npm test" }; G.loopCheck(d, "p", "Bash", b); G.loopCheck(d, "p", "Bash", b); assert.match(G.loopCheck(d, "p", "Bash", b).additionalContext, /3 times/);
 });
+await t("codex diagnose: finds the weekly window by its length (even in the primary slot), reports starting context, one dominant session/folder and a compaction limit that is not holding", async () => {
+  const D = await import(pathToFileURL(path.join(root, "codex/scripts/codex-diagnose.mjs")).href);
+  assert.deepEqual(D.splitLimits({ primary: { used_percent: 77, window_minutes: 10080 }, secondary: null }), { wk: 77, h5: null });
+  assert.deepEqual(D.splitLimits({ primary: { used_percent: 10, window_minutes: 300 }, secondary: { used_percent: 60, window_minutes: 10080 } }), { wk: 60, h5: 10 });
+  assert.deepEqual(D.splitLimits({ primary: { used_percent: 5 }, secondary: { used_percent: 9 } }), { wk: 9, h5: 5 }, "old logs without window lengths keep the old guess");
+  const ch = fs.mkdtempSync(path.join(os.tmpdir(), "cx2-")); const sd = path.join(ch, "sessions", "2026", "10", "10"); fs.mkdirSync(sd, { recursive: true }); fs.writeFileSync(path.join(ch, "config.toml"), "model_auto_compact_token_limit = 64000\n");
+  const now = Date.now(); const ev = (i, wk, inp) => JSON.stringify({ timestamp: new Date(now - 6e5 + i * 1000).toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: inp, cached_input_tokens: inp - 500, output_tokens: 100 } }, rate_limits: { primary: { used_percent: wk, window_minutes: 10080 }, secondary: null } } });
+  const meta = JSON.stringify({ type: "session_meta", payload: { cwd: "/p/atlas", source: "vscode" } }) + "\n";
+  const lines = []; for (let i = 0; i < 300; i++) lines.push(ev(i, 10 + i * 0.1, 40000 + i * 600)); fs.writeFileSync(path.join(sd, "rollout-big.jsonl"), meta + lines.join("\n") + "\n");
+  fs.writeFileSync(path.join(sd, "rollout-small.jsonl"), JSON.stringify({ type: "session_meta", payload: { cwd: "/p/other", source: "vscode" } }) + "\n" + ev(400, 41, 30000) + "\n");
+  const r = D.diagnose({ days: 1, home: ch, now: now + 1e6 }); assert.ok(r.R.wkTotal > 20, "weekly % attributed from the primary slot: " + r.R.wkTotal); assert.equal(r.compactLimit, 64000);
+  const f = r.findings.join("|"); assert.match(f, /one session made/); assert.match(f, /brand-new session already carries/); assert.match(f, /compact at 64,000 tokens/); assert.match(f, /one folder/);
+  assert.equal(D.compactLimit(path.join(ch, "nope")), undefined); fs.writeFileSync(path.join(ch, "config.toml"), "model = 'x'\n"); assert.equal(D.compactLimit(ch), null);
+});
+await t("codex long-session nudge: reads the session's real context, speaks once per level, stays quiet for small sessions (through the real hook)", async () => {
+  const CG = await import(pathToFileURL(path.join(root, "codex/scripts/codex-guards.mjs")).href); const { spawnSync } = await import("node:child_process");
+  const um = fs.mkdtempSync(path.join(os.tmpdir(), "nu-")), ch = path.join(um, ".codex"), sd = path.join(ch, "sessions", "2026", "10", "11"); fs.mkdirSync(sd, { recursive: true });
+  const call = (inp) => JSON.stringify({ timestamp: new Date().toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: inp, cached_input_tokens: inp - 100, output_tokens: 50 } } } }) + "\n";
+  fs.writeFileSync(path.join(sd, "rollout-2026-10-11T01-00-00-aaaa1111.jsonl"), call(20000) + call(150000)); fs.writeFileSync(path.join(sd, "rollout-2026-10-11T01-00-00-bbbb2222.jsonl"), call(30000));
+  assert.equal(CG.sessionContext(ch, "aaaa1111"), 150000); assert.equal(CG.sessionContext(ch, "bbbb2222"), 30000); assert.equal(CG.nudge(30000), null); assert.equal(CG.nudge(150000).level, 1); assert.equal(CG.nudge(210000).level, 2);
+  const run = (sid) => spawnSync(process.execPath, [path.join(root, "codex/scripts/codex-hook.mjs"), "UserPromptSubmit"], { input: JSON.stringify({ session_id: sid }), env: { ...process.env, USAGE_MAX_HOME: um, CODEX_HOME: ch, PLUGIN_ROOT: "", USAGE_MAX_HOST: "codex" }, encoding: "utf8" });
+  assert.match(run("aaaa1111").stdout, /now carries about 150k tokens/); assert.ok(!/carries about/.test(run("aaaa1111").stdout), "only once per level"); assert.ok(!/carries about/.test(run("bbbb2222").stdout), "small session: silent");
+});
+await t("codex diagnose: measures AGENTS.md weight and visible skills in the busiest folders and says what to trim", async () => {
+  const D = await import(pathToFileURL(path.join(root, "codex/scripts/codex-diagnose.mjs")).href); const um = fs.mkdtempSync(path.join(os.tmpdir(), "sw-")), ch = path.join(um, ".codex"), proj = path.join(um, "proj"), sd = path.join(ch, "sessions", "2026", "10", "11");
+  fs.mkdirSync(sd, { recursive: true }); fs.mkdirSync(path.join(proj, ".agents", "skills"), { recursive: true }); fs.writeFileSync(path.join(proj, "AGENTS.md"), "x".repeat(24000));
+  for (let i = 0; i < 45; i++) { fs.mkdirSync(path.join(proj, ".agents", "skills", "s" + i), { recursive: true }); fs.writeFileSync(path.join(proj, ".agents", "skills", "s" + i, "SKILL.md"), "d"); }
+  const w = D.startupWeight(proj, ch, um); assert.equal(w.agentsTokens, 6000); assert.equal(w.skillCount, 45);
+  const now = Date.now(); const ev = (i) => JSON.stringify({ timestamp: new Date(now - 6e5 + i * 1000).toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 50000, cached_input_tokens: 49000, output_tokens: 10 } } } });
+  fs.writeFileSync(path.join(sd, "rollout-a.jsonl"), JSON.stringify({ type: "session_meta", payload: { cwd: proj, source: "vscode" } }) + "\n" + [ev(1), ev(2)].join("\n") + "\n");
+  const r = D.diagnose({ days: 1, home: ch, now: now + 1e6 }); assert.match(r.text, /AGENTS\.md files about 6,000 tokens/); assert.ok(r.findings.some((f) => /proj: its AGENTS\.md files add about 6,000 tokens/.test(f)), r.findings.join("|"));
+});
 console.log(`${n} passing`);

@@ -2,6 +2,12 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.15.0 (Oct 11 2026) — fixes from the first real Codex report
+- **Fixed: `codex diagnose` read the wrong plan window.** It assumed the weekly window is the second slot; in real logs it can be the first. It now finds the weekly window by its length, exactly like the governor, so the weekly-% attribution works (and so does `codex weights`).
+- **Fixed: the Windows PowerShell trim test failed for a bad reason.** PowerShell reports exit code 1 for any failing command, trimmed or not. The test now compares against the same command run without trimming, so trim can be switched on when the shells really agree.
+- **New: long-session warning in Codex.** The Codex hook reads the real context of the current session and, past about 120k tokens (again at 200k), tells the assistant to say so: a fresh session costs several times less per step. Once per level per session.
+- **New in `codex diagnose`:** the starting context of a brand-new session, whether the configured compaction limit is actually holding, a single session or folder that dominates, and a measured list of AGENTS.md weight and visible skills in your busiest folders with what to trim.
+
 ## 0.14.2 (Oct 11 2026) — fewer false alarms
 - The runaway-loop warning no longer fires on polling (waiting for notifications, tasks, CI or PR status) or on calls that take no input; repeated identical shell or file commands are still caught.
 

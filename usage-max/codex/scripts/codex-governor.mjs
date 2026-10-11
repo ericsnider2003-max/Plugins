@@ -209,10 +209,13 @@ export async function selftestTrim(platform = process.platform) {
   const wrapped = wrap("node noisy.mjs", path.join(here, "run-trimmed.mjs")); // plain words only, run with cwd = tmpHome
   const shells = platform === "win32" ? [["powershell", "powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", wrapped], {}], ["cmd", "cmd.exe", ["/d", "/s", "/c", `"${wrapped}"`], { windowsVerbatimArguments: true }]] : [["sh", "sh", ["-c", wrapped], {}]];
   const res = [];
-  for (const [name, exe, args, opt] of shells) {
+  const rawShells = platform === "win32" ? [["powershell", "powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "node noisy.mjs"], {}], ["cmd", "cmd.exe", ["/d", "/s", "/c", '"node noisy.mjs"'], { windowsVerbatimArguments: true }]] : [["sh", "sh", ["-c", "node noisy.mjs"], {}]];
+  for (const [i, [name, exe, args, opt]] of shells.entries()) {
     const r = spawnSync(exe, args, { env, cwd: tmpHome, encoding: "utf8", timeout: 60000, ...opt }); if (r.error && r.error.code === "ENOENT") { res.push({ name, skipped: true }); continue; }
-    const out = (r.stdout || "") + (r.stderr || ""); const checks = { exit3: r.status === 3, trimmed: /trimmed/.test(out), error: /ERROR boom/.test(out), tail: /line 399/.test(out) };
-    res.push({ name, pass: Object.values(checks).every(Boolean), checks, status: r.status, bytes: out.length });
+    // PowerShell -Command reports 1 for ANY failing command, trimmed or not, so the exit code is compared with the same command run WITHOUT the wrapper in the same shell.
+    const [, rexe, rargs, ropt] = rawShells[i]; const base = spawnSync(rexe, rargs, { env, cwd: tmpHome, encoding: "utf8", timeout: 60000, ...ropt });
+    const out = (r.stdout || "") + (r.stderr || ""); const checks = { sameExitAsUntrimmed: base.status !== 0 && r.status === base.status, trimmed: /trimmed/.test(out), error: /ERROR boom/.test(out), tail: /line 399/.test(out) };
+    res.push({ name, pass: Object.values(checks).every(Boolean), checks, status: r.status, want: base.status, bytes: out.length });
   }
   fs.rmSync(tmpHome, { recursive: true, force: true });
   const ran = res.filter((x) => !x.skipped), pass = ran.length > 0 && ran.every((x) => x.pass), f = path.join(dataDir(), "trim-ok.json");
@@ -220,7 +223,7 @@ export async function selftestTrim(platform = process.platform) {
   return { pass, res };
 }
 async function extCli(cmd, a, flag) {
-  if (cmd === "selftest-trim") { const { pass, res } = await selftestTrim(); for (const x of res) console.log(x.skipped ? `SKIP ${x.name}: not found` : `${x.pass ? "PASS" : "FAIL"} ${x.name}: exit=${x.status} (want 3) ${Object.entries(x.checks).map(([k, v]) => `${k}=${v ? "ok" : "NO"}`).join(" ")} output=${x.bytes}B`);
+  if (cmd === "selftest-trim") { const { pass, res } = await selftestTrim(); for (const x of res) console.log(x.skipped ? `SKIP ${x.name}: not found` : `${x.pass ? "PASS" : "FAIL"} ${x.name}: exit=${x.status} (same command untrimmed gives ${x.want}) ${Object.entries(x.checks).map(([k, v]) => `${k}=${v ? "ok" : "NO"}`).join(" ")} output=${x.bytes}B`);
     console.log(pass ? `trim self-test PASSED: trim-ok.json written (${path.join(dataDir(), "trim-ok.json")})` : "trim self-test FAILED or no shell ran: trim-ok.json removed, rewriting stays off on Windows"); return (pass ? 0 : 1); }
   if (cmd === "savings") { const { savings, format } = await import("./savings.mjs"); const d = flag("--days"); const r = savings({ days: d ? Number(d) || 7 : 7, since: flag("--since") }); console.log(a.includes("--json") ? JSON.stringify(r, null, 2) : format(r)); return (0); }
   if (cmd === "backup") { const { backup } = await import("./backup.mjs"); try { const r = backup(flag("--out")); console.log(`backup written: ${r.dir}\n  ${r.files.length} files; skipped (missing): ${r.skipped.join(", ") || "none"}`); return (0); } catch (e) { console.error("backup failed: " + e.message); return (1); } }

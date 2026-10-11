@@ -30,3 +30,22 @@ export function guard(dir, sid, cmd, cwd, platform = process.platform, env = pro
   return null;
 }
 export const stats = (dir) => rj(path.join(dir, "guard-stats.json"), {});
+
+// ---- long-session nudge: the context a session carries is re-read on EVERY call, which is most of the plan use for long sessions.
+// sessionContext: tokens in the most recent call of this session's rollout file (found by session id; else the file written in the last 2 minutes).
+function* rollouts(root) { let es; try { es = fs.readdirSync(root, { withFileTypes: true }); } catch { return; } for (const e of es) { const f = path.join(root, e.name); if (e.isDirectory()) yield* rollouts(f); else if (e.name.endsWith(".jsonl")) yield f; } }
+export function sessionContext(codexHome, sid, now = Date.now()) {
+  let file = null, newest = null, newestM = 0;
+  for (const f of rollouts(path.join(codexHome, "sessions"))) { if (sid && sid !== "?" && path.basename(f).includes(sid)) { file = f; break; } try { const m = fs.statSync(f).mtimeMs; if (m > newestM) { newestM = m; newest = f; } } catch {} }
+  if (!file && newest && now - newestM < 120e3) file = newest; if (!file) return null;
+  let text; try { const st = fs.statSync(file), len = Math.min(st.size, 200000), fd = fs.openSync(file, "r"), buf = Buffer.alloc(len); fs.readSync(fd, buf, 0, len, st.size - len); fs.closeSync(fd); text = buf.toString("utf8"); } catch { return null; }
+  const lines = text.split("\n"); for (let i = lines.length - 1; i >= 0; i--) { if (!lines[i].includes("token_count")) continue; try { const o = JSON.parse(lines[i]); const p = o.payload || o; const u = (p.info || p).last_token_usage; if (u && u.input_tokens) return u.input_tokens; } catch {} }
+  return null;
+}
+export const NUDGE_AT = 120000;
+export function nudge(ctx, at = NUDGE_AT) {
+  if (!ctx || ctx < at) return null; const level = ctx >= at + 80000 ? 2 : 1, k = Math.round(ctx / 1000);
+  return { level, text: level === 1
+    ? `usage-max: this session now carries about ${k}k tokens and re-reads all of it on EVERY call, which is most of the plan use. When this task reaches a good stopping point, tell the user in one sentence that a fresh session (/new, with a 5-line summary of where things stand) will cost several times less per step.`
+    : `usage-max: this session carries about ${k}k tokens per call, far past the point where continuing pays. Tell the user now, in one sentence, to start a fresh session (/new) with a short summary: every further step here costs several times more than it would there.` };
+}
