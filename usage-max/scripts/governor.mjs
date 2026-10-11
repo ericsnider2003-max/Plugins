@@ -148,6 +148,8 @@ export function patchModel(s, want, applied = {}, force = false) {
 
 // Lean mode: while tightening (AMBER/RED) also cap context growth, drop always-on thinking and switch off background spend
 // (auto memory; RED also scheduled tasks). GREEN hands the user's own values back.
+// "Unused allowance" only means something near the end of the window; right after a reset everything looks unused.
+export const SURPLUS_WITHIN_H = 72;
 export const LEAN = {
   amber: { autoCompactWindow: 160000, "env.CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1" },
   red: { autoCompactWindow: 120000, alwaysThinkingEnabled: false, "env.CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "env.CLAUDE_CODE_DISABLE_CRON": "1" }
@@ -217,7 +219,7 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   const projected = est.estPct === null ? null : est.estPct + (est.ratePerHour || 0) * (est.hoursLeft || 0);
   const lastSnap = (state.snaps || [])[(state.snaps || []).length - 1];
   const haveRealRate = est.rateSource === "plan %" && lastSnap && nowMs - lastSnap.at < 2 * 3600e3; // no data / silent status line = no surplus
-  if (state.mode !== "green" || projected === null || est.hoursLeft <= 12 || !haveRealRate || est.note) state.surplus = false;
+  if (state.mode !== "green" || projected === null || est.hoursLeft <= 12 || est.hoursLeft > SURPLUS_WITHIN_H || !haveRealRate || est.note) state.surplus = false;
   else if (!state.surplus && projected < 80) state.surplus = true;
   else if (state.surplus && projected > 90) state.surplus = false;
   state.last.projected = projected;

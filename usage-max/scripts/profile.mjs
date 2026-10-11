@@ -40,7 +40,7 @@ export function computeProfile(settings, { profile, launcher, modelWant = null, 
   const next = JSON.parse(JSON.stringify(settings || {}));
   const changes = [], kept = [];
   const set = (keyPath, value) => {
-    const before = JSON.stringify(keyPath.split(".").reduce((x, k) => (x == null ? undefined : x[k]), next));
+    const before = JSON.stringify(keyPath.split(".").reduce((x, k) => (x == null ? undefined : x[k]), next)) ?? "(not set)";
     const r = ownedSet(next, keyPath, value, applied);
     if (r === "set") changes.push(`${keyPath}: ${before} -> ${JSON.stringify(value)}`);
     else if (r === "kept") kept.push(`${keyPath} (yours: ${before}; profile wants ${JSON.stringify(value)})`);
@@ -57,7 +57,7 @@ export function computeProfile(settings, { profile, launcher, modelWant = null, 
   if (Number.isFinite(autoCompactWindow) && autoCompactWindow >= 100000 && autoCompactWindow <= 1000000) set("autoCompactWindow", autoCompactWindow);
   const sl = next.statusLine;
   const ours = { type: "command", command: `node "${fwd(launcher)}"` };
-  if (!sl) { next.statusLine = ours; changes.push(`statusLine: undefined -> ${JSON.stringify(ours)}`); }
+  if (!sl) { next.statusLine = ours; changes.push(`statusLine: (not set) -> ${JSON.stringify(ours)}`); }
   else if (typeof sl.command === "string" && sl.command.includes("usage-max.") === false && /[\\/]\.claude[\\/]usage-max[\\/]statusline\.mjs/.test(sl.command)) { if (JSON.stringify(sl) !== JSON.stringify(ours)) { next.statusLine = ours; changes.push(`statusLine: ${JSON.stringify(sl)} -> ${JSON.stringify(ours)}`); } }
   else if (JSON.stringify(sl) !== JSON.stringify(ours)) kept.push("statusLine (you already have your own; the governor then needs `budget calibrate`)");
   const km = next.extraKnownMarketplaces && next.extraKnownMarketplaces[MARKETPLACE.name];
@@ -65,8 +65,8 @@ export function computeProfile(settings, { profile, launcher, modelWant = null, 
     next.extraKnownMarketplaces = { ...(next.extraKnownMarketplaces || {}), [MARKETPLACE.name]: { source: { source: "github", repo: MARKETPLACE.repo, ref: MARKETPLACE.ref }, autoUpdate: true } };
     changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}: added (pinned to ${MARKETPLACE.ref}, auto-update on)`);
   } else if (km.source && km.source.repo === MARKETPLACE.repo) { // ours (maybe added by `claude plugin marketplace add`): fill in only what is missing
-    if (km.autoUpdate === undefined) { km.autoUpdate = true; changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}.autoUpdate: undefined -> true`); }
-    if (!km.source.ref) { km.source.ref = MARKETPLACE.ref; changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}.source.ref: undefined -> "${MARKETPLACE.ref}"`); }
+    if (km.autoUpdate === undefined) { km.autoUpdate = true; changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}.autoUpdate: (not set) -> true`); }
+    if (!km.source.ref) { km.source.ref = MARKETPLACE.ref; changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}.source.ref: (not set) -> "${MARKETPLACE.ref}"`); }
   }
   return { next, changes, kept };
 }

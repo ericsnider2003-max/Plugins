@@ -44,7 +44,8 @@ function main() {
     const k = `${sid}:${key}`;
     if (!st.sent[k]) {
       const plan = ev === "SessionStart" && gs.calib && gs.calib.source === "plan" && ge ? `usage-max plan: weekly ${Math.round(ge.est)}% used, ${Math.round(ge.hoursLeft)}h to reset${gs.five ? `, 5h window ${Math.round(gs.five.pct)}%` : ""}, mode ${mode.toUpperCase()}. ` : "";
-      const text = plan + (DIRECTIVE[mode] || "") + (surplus && ev === "SessionStart" ? "usage-max: allowance is going unused this week — you may use higher reasoning effort for hard problems." : ""); if (text) { st.sent[k] = Date.now(); process.stdout.write(text); } else st.sent[k] = Date.now();
+      const ageH = gs.calib && gs.calib.at ? (Date.now() - gs.calib.at) / 36e5 : 0, stale = (mode === "amber" || mode === "red") && ageH > 6 ? ` (This plan reading is ${Math.round(ageH)}h old. If your plan has reset since, it corrects itself after the next reply.) ` : "";
+      const text = plan + (DIRECTIVE[mode] || "") + stale + (surplus && ev === "SessionStart" ? "usage-max: allowance is going unused this week — you may use higher reasoning effort for hard problems." : ""); if (text) { st.sent[k] = Date.now(); process.stdout.write(text); } else st.sent[k] = Date.now();
     }
     try { const adv = balanceAdvice({ mode }, readOther()); const ak = `${sid}:adv:${adv}`; if (adv && !st.sent[ak]) { st.sent[ak] = Date.now(); process.stdout.write((st.sent[k] ? "\n" : "") + adv); } } catch {}
     if (ev === "SessionStart") { try { const t = Date.now(), cwd = input.cwd || "?"; st.starts = [...(st.starts || []), { t, cwd, sid }].filter((x) => t - x.t < 600e3).slice(-20); const recent = st.starts.filter((x) => t - x.t < 180e3 && x.cwd === cwd), bk = `burst:${cwd}:${Math.floor(t / 600e3)}`;

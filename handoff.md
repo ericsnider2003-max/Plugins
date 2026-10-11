@@ -100,3 +100,6 @@ First real Codex report (user PC, 14 days): 10,994 calls, 98% of input tokens ca
 
 ## 0.15.1 notes (second real report, weekly % now attributed)
 143 weekly points moved in 14 days: one 5,249-call session = 67 pts (47%); three sessions launched within 30 s on Oct 8 = 61 pts; Oct 8 alone = 94 pts; 92% in the Atlas folder; gpt-6.1-sol 128 pts vs luna 7 pts (learned ~4x cost per token); starting context only 21k but median per call 105k, so growth inside long sessions (config compaction at 64k is not holding) is the driver. Atlas shows 380 skills visible. Built: stricter nudges by mode, parallel-start warning, doctor precision. Ideas left: automatic fresh-session handoff for Codex rollouts; per-folder skill trimming helper; luna-by-default for routine work (needs the user's OK).
+
+## 0.16.0 notes
+User's Codex plan reset early to 100%; requirement: must work for every user from scratch on Claude, ChatGPT (manual text only) and Codex. Added test/e2e.mjs (clean room, 85 checks, in CI), install-in-0-DO-EVERYTHING (.cmd/.sh), surplus window <=72h in both governors, stale-reading note. NOT verified anywhere: Windows PowerShell hook behaviour beyond the trim self-test, macOS, real ChatGPT figures in codex/chatgpt/CUSTOM-INSTRUCTIONS.md (written earlier from outside data), Codex honouring PreToolUse updatedInput without a permission decision.

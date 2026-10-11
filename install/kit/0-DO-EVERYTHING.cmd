@@ -19,6 +19,29 @@ echo This takes about a minute. Please do not close this window.
 echo usage-max report, made %DATE% %TIME% > "%REPORT%"
 echo. >> "%REPORT%"
 
+echo [setup] Installing anything that is missing...
+echo ===== 0. INSTALL WHAT IS MISSING ===== >> "%REPORT%"
+for %%I in ("%CHK%") do set "SD=%%~dpI"
+set "CINST=%SD%..\codex\scripts\install.mjs"
+where claude >nul 2>nul
+if errorlevel 1 goto skipclaude
+if exist "%USERPROFILE%\.claude\plugins\cache\eric-plugins\usage-max" goto skipclaude
+echo Installing usage-max into Claude Code...
+call claude plugin marketplace add "ericsnider2003-max/Plugins#main" >> "%REPORT%" 2>&1
+call claude plugin install usage-max@eric-plugins >> "%REPORT%" 2>&1
+call claude plugin disable usage-max@synced >nul 2>nul
+echo Claude Code install done. Open a NEW Claude Code session to use it. >> "%REPORT%"
+:skipclaude
+if not exist "%USERPROFILE%\.codex" goto skipcodex
+if exist "%USERPROFILE%\.usage-max-codex\bin\VERSION" goto skipcodex
+if not exist "%CINST%" goto skipcodex
+echo Installing the Codex side...
+node "%CINST%" >> "%REPORT%" 2>&1
+echo Codex install done. >> "%REPORT%"
+:skipcodex
+echo Nothing else to install. >> "%REPORT%"
+echo. >> "%REPORT%"
+
 echo [1 of 6] Checking and fixing Claude and Codex setup...
 echo ===== 1. SETUP CHECK AND SAFE FIXES ===== >> "%REPORT%"
 node "%CHK%" doctor --fix >> "%REPORT%" 2>&1

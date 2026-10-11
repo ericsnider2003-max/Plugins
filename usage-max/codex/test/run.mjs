@@ -152,7 +152,7 @@ console.log(`${n} passing (incl. rollover/throttle/install)`);
   const h = fs.mkdtempSync(path.join(os.tmpdir(), "umsp-")); const e4 = { ...process.env, USAGE_MAX_HOME: h }; delete e4.CODEX_HOME;
   const sd = path.join(h, ".usage-max-codex"), gj = path.join(sd, "governor.json"), shf = path.join(h, ".usage-max/shared.json"), ch4 = path.join(h, ".codex");
   const run = (s, ...a) => spawnSync("node", [path.join(root, `scripts/${s}.mjs`), ...a], { env: e4, encoding: "utf8" });
-  const setPct = (pct, hrs = 100, extra = {}) => { fs.mkdirSync(sd, { recursive: true }); const o = (() => { try { return JSON.parse(fs.readFileSync(gj, "utf8")); } catch { return {}; } })(); fs.writeFileSync(gj, JSON.stringify({ ...o, calib: { pct, at: Date.now(), resets: new Date(Date.now() + hrs * 36e5).toISOString() }, k: 1, ...extra })); };
+  const setPct = (pct, hrs = 60, extra = {}) => { fs.mkdirSync(sd, { recursive: true }); const o = (() => { try { return JSON.parse(fs.readFileSync(gj, "utf8")); } catch { return {}; } })(); fs.writeFileSync(gj, JSON.stringify({ ...o, calib: { pct, at: Date.now(), resets: new Date(Date.now() + hrs * 36e5).toISOString() }, k: 1, ...extra })); };
   fs.mkdirSync(path.dirname(shf), { recursive: true }); fs.writeFileSync(shf, JSON.stringify({ claude: { mode: "green", surplus: false, estPct: 30, hoursLeft: 50, fivePct: 5, updatedAt: new Date().toISOString() } }));
   setPct(10); const r1 = run("codex-governor", "gate");
   t("surplus on at projected<80% with >12h left; gate stays 0", () => { assert.equal(r1.status, 0); assert.match(r1.stdout, /mode=GREEN\+SURPLUS/); assert.match(r1.stdout, /surplus: projected ~10% at reset, ~90%/); assert.equal(JSON.parse(fs.readFileSync(gj)).surplus, true); });

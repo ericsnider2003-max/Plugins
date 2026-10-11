@@ -118,6 +118,8 @@ export function fiveFloor(f, now) {
   const projected = f.pct / elapsed; if (projected <= 100) return "green";
   return projected > 140 || f.pct >= 95 ? "red" : "amber";
 }
+// "Unused allowance" only means something near the end of the window. Right after a reset everything looks unused, which must not raise effort.
+export const SURPLUS_WITHIN_H = 72;
 export function evaluate(now = Date.now(), force = false) {
   const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json");
   const st = j(sf, { mode: "green", override: null, calib: null, k: null }); const m = meterAll(cfg, now, force);
@@ -128,7 +130,7 @@ export function evaluate(now = Date.now(), force = false) {
     const floor = fiveFloor(st.five, now); const rank = { green: 0, amber: 1, red: 2 }; if (rank[floor] > rank[mode]) mode = floor;
   }
   const fl = fiveFloor(st.five, now); let surplus = false;
-  if (mode === "green" && e && fl === "green") { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12) : proj < 80 && e.hoursLeft > 12; e.projected = proj; }
+  if (mode === "green" && e && fl === "green") { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12 || e.hoursLeft > SURPLUS_WITHIN_H) : proj < 80 && e.hoursLeft > 12 && e.hoursLeft <= SURPLUS_WITHIN_H; e.projected = proj; }
   if (mode !== st.mode) { st.history = [...(Array.isArray(st.history) ? st.history : []), { at: new Date(now).toISOString(), from: st.mode, to: mode }].slice(-200); }
   st.mode = mode; st.surplus = surplus; st.appliedKey = st.appliedKey || null; wj(sf, st);
   try { writeSelf({ mode, surplus, estPct: e?.est ?? null, hoursLeft: e?.hoursLeft ?? null, fivePct: st.five?.pct ?? null, updatedAt: new Date(now).toISOString() }); } catch {}
@@ -181,7 +183,7 @@ export function doctor(home = codexHome(), platform = process.platform) {
     const total = Object.values(src).reduce((a, b) => a + b, 0), list = Object.entries(src).map(([k, v]) => `usage-max@${k} x${v}`).join(", "), old = Object.keys(src).filter((k) => /synced|upload|local/i.test(k));
     old.length ? bad(`Codex still has hook/plugin entries for the UPLOADED copy of usage-max (${list}). That old copy (0.1.x) runs Claude-only hooks inside Codex and can disrupt turns`, "remove the old usage-max plugin in Codex's plugin list, then install the current one (it ships Codex-specific hooks)") : ok(total ? `Codex's usage-max entries come from the marketplace install only (${list})` : "no usage-max plugin entries in Codex config"); }
 
-  /codex-hook\.mjs/.test(hooks) ? ok("hooks.json has the usage-max hooks") : bad("hooks not installed", "node scripts/install.mjs");
+  /codex-hook\.mjs/.test(hooks) ? ok("hooks.json has the usage-max hooks") : bad("hooks not installed", "double-click 0-DO-EVERYTHING in the kit (it installs what is missing), or run: node <plugin>/codex/scripts/install.mjs");
   { const bin = binDir().replace(/\\/g, "/"); const paths = [...hooks.matchAll(/"?([^"\s]*)codex-hook\.mjs/g)].map((m) => m[1].replace(/\\\\/g, "/").replace(/\\/g, "/"));
     const ver = rd(path.join(binDir(), "VERSION")).trim();
     paths.length && paths.some((p) => !p.startsWith(bin + "/")) ? bad("scripts run from a stable location (" + bin + "), not from a plugin cache path: hooks.json points elsewhere", "node <plugin>/codex/scripts/install.mjs again") : ok("scripts run from a stable location (" + bin + "), not from a plugin cache path" + (ver ? ` (installed version ${ver})` : ""));
@@ -190,11 +192,11 @@ export function doctor(home = codexHome(), platform = process.platform) {
   const evs = Object.keys(seen);
   if (evs.length) ok(`hooks are running (last: ${evs.map((e) => `${e} ${seen[e].slice(11, 19)}`).join(", ")})`);
   else if (/codex-hook\.mjs/.test(hooks)) bad("hooks are installed but have NEVER run — Codex skips hooks until you trust them", "start Codex, type /hooks, select the usage-max hooks and trust them (the path never changes, so you only do this once)");
-  /^\s*notify\s*=/m.test(toml) ? ok("notify is set (fallback metering)") : bad("notify not set (optional fallback)", "node scripts/install.mjs");
+  /^\s*notify\s*=/m.test(toml) ? ok("notify is set (fallback metering)") : bad("notify not set (optional fallback)", "double-click 0-DO-EVERYTHING in the kit (it installs what is missing), or run: node <plugin>/codex/scripts/install.mjs");
   const placeholder = Object.values(cfg.modes).some((m) => m.model && /^gpt-6/.test(m.model) && !modelsSeen()[m.model]);
   placeholder ? bad("a mode uses a model name your sessions never used (placeholder?)", "node scripts/codex-governor.mjs models, then edit ~/.usage-max-codex/config.json modes") : ok("mode models are unset (your own model is kept) or match models you have used");
   gs.calib ? ok(`calibrated (${gs.calib.source === "plan" ? "automatically from Codex rate_limits" : "manually"}): ${gs.calib.pct}%`) : bad("not calibrated yet", "use Codex once (the plan % is read from its own logs) or: calibrate <pct from /status> --resets <ISO>");
-  /usage-max:start/.test(rd(path.join(home, "AGENTS.md"))) ? ok("AGENTS.md block present") : bad("AGENTS.md block missing", "node scripts/install.mjs");
+  /usage-max:start/.test(rd(path.join(home, "AGENTS.md"))) ? ok("AGENTS.md block present") : bad("AGENTS.md block missing", "double-click 0-DO-EVERYTHING in the kit (it installs what is missing), or run: node <plugin>/codex/scripts/install.mjs");
   { const o = readOther(); o ? (isFresh(o) ? ok("shared status with Claude: fresh") : ok("shared status with Claude: stale")) : ok("shared status with Claude: none"); }
   { const tok = j(path.join(dataDir(), "trim-ok.json"), null), ts = j(path.join(dataDir(), "trim-stats.json"), null), off = process.env.USAGE_MAX_TRIM === "off" || cfg.trim === "off";
     if (off) ok("output trimming is switched OFF (USAGE_MAX_TRIM=off or config.json trim:\"off\")");

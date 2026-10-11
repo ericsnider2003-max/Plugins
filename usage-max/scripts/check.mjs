@@ -156,7 +156,7 @@ if (fableViolations === 0) pass("no fable references");
 {
   const kit = path.join(root, "..", "install", "kit");
   if (fs.existsSync(kit)) {
-    const need = ["1-INSTALL-CLAUDE", "2-INSTALL-CODEX", "3-CHECK-EVERYTHING", "4-CALIBRATE-CLAUDE"].flatMap((n) => [`${n}.cmd`, `${n}.sh`]).concat("START-HERE.txt");
+    const need = ["0-DO-EVERYTHING", "1-INSTALL-CLAUDE", "2-INSTALL-CODEX", "3-CHECK-EVERYTHING", "4-CALIBRATE-CLAUDE"].flatMap((n) => [`${n}.cmd`, `${n}.sh`]).concat("START-HERE.txt");
     const missing = need.filter((f) => !fs.existsSync(path.join(kit, f)));
     missing.length ? fail("kit files", `missing ${missing.join(", ")}`) : pass("kit files");
     const blocky = fs.readdirSync(kit).filter((f) => f.endsWith(".cmd")).filter((f) => fs.readFileSync(path.join(kit, f), "utf8").split("\n").some((l) => /\(\s*$/.test(l) || /^\s*\)/.test(l)));

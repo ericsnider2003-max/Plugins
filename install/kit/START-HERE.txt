@@ -2,7 +2,8 @@ usage-max @VERSION@ - START HERE
 ================================
 It keeps your Claude and Codex plans lasting until their weekly reset, automatically.
 
-EASIEST: after extracting, double-click  0-DO-EVERYTHING  and send the report it puts on your Desktop to Claude. That is all.
+EASIEST: after extracting, double-click  0-DO-EVERYTHING  (Windows)  or run  sh 0-DO-EVERYTHING.sh  (Mac/Linux).
+It installs what is missing for Claude Code and Codex, applies the safe fixes, checks everything and saves one report on your Desktop. Send that report to Claude if anything looks wrong.
 
 FIRST: right-click this zip and choose "Extract All". Files run from inside the zip window cannot find
 their neighbours.

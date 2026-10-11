@@ -2,6 +2,13 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.16.0 (Oct 11 2026) — works from a clean start, survives an early plan reset
+- **Clean-room end-to-end test (`test/e2e.mjs`, now in CI):** runs 85 real commands and hooks as a brand-new user (empty home folder, no history, no settings) for Claude and Codex, including garbage or empty hook input, Claude hooks running inside Codex, and a Codex install that must not damage the user's own `config.toml`. It fails on any crash, stack trace or `undefined`/`NaN` in the output.
+- **`0-DO-EVERYTHING` now installs what is missing** (Claude Code if the `claude` command exists; the Codex side if Codex is on the machine) before checking, and has a Mac/Linux version (`0-DO-EVERYTHING.sh`). Doctor fixes now point at it instead of at a developer command.
+- **Early plan reset (Codex):** tested that a new window replaces the old reading, last week's RED does not stick, and nothing carries over. The directive says when its plan reading is hours old (a reset may have happened) instead of silently restricting a fresh week.
+- **Surplus (higher effort) only in the last 72 hours of a window,** in both governors. Right after a reset everything looks "unused"; it must not raise effort then.
+- The fix list says `(not set)` instead of `undefined`.
+
 ## 0.15.1 (Oct 11 2026) — brakes aimed at what the real report showed
 - **Long-session warning gets stricter as the plan runs low:** about 120k tokens when GREEN, 90k in AMBER, 60k in RED. It only ever looks at the current session's own context (never guesses another session's).
 - **Parallel-session warning (Codex):** three or more Codex sessions starting in the same folder within 3 minutes are called out once, because each carries its own full context and is billed separately.

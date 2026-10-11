@@ -267,4 +267,22 @@ await t("codex doctor: flags only the UPLOADED copy of usage-max, not the normal
   assert.match(mk('[hooks.state."usage-max@eric-plugins:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /ok\s+Codex's usage-max entries come from the marketplace install only/);
   assert.match(mk('[hooks.state."usage-max@synced:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /FIX\s+Codex still has hook\/plugin entries for the UPLOADED copy/);
 });
+await t("unexpected early plan reset (Codex): the new window replaces the old reading, nothing carries over, and a fresh week is NOT treated as surplus", async () => {
+  const CGV = await import(pathToFileURL(path.join(root, "codex/scripts/codex-governor.mjs")).href); const now = Date.now(), H = 36e5;
+  const st = { mode: "red", calib: { pct: 77, at: now - 5 * H, resets: new Date(now + 70 * H).toISOString(), source: "plan" }, k: 1 };
+  const m = { hours: {}, limits: { ts: now - 1000, primary: { used_percent: 0, window_minutes: 10080, resets_at: Math.floor((now + 168 * H) / 1000) }, secondary: null } };
+  assert.equal(CGV.absorbLimits(st, m, now), true); assert.equal(st.calib.pct, 0); assert.ok(Date.parse(st.calib.resets) > now + 160 * H, "new reset time adopted");
+  const cfg = CGV.DEFAULT_CONFIG; const e = CGV.estimate(st, m, now, cfg); assert.ok(e.est < 1 && e.hoursLeft > 160, JSON.stringify(e));
+  assert.equal(CGV.decide({ estPct: e.est, hoursLeft: e.hoursLeft, ratePerHour: 0, prevMode: "red", cfg }), "green", "RED from last week does not stick");
+  assert.ok(e.hoursLeft > CGV.SURPLUS_WITHIN_H, "a fresh week is far outside the surplus window");
+});
+await t("Claude governor: surplus only in the last 72h of the window", async () => {
+  const GV2 = await import(pathToFileURL(path.join(root, "scripts/governor.mjs")).href); assert.equal(GV2.SURPLUS_WITHIN_H, 72);
+});
+await t("codex hook says when its plan reading is old (a reset may have happened) instead of silently restricting a fresh week", async () => {
+  const { spawnSync } = await import("node:child_process"); const um = fs.mkdtempSync(path.join(os.tmpdir(), "st-")), sd = path.join(um, ".usage-max-codex"); fs.mkdirSync(sd, { recursive: true });
+  fs.writeFileSync(path.join(sd, "governor.json"), JSON.stringify({ mode: "amber", override: "amber", calib: { pct: 90, at: Date.now() - 10 * 36e5, resets: new Date(Date.now() + 50 * 36e5).toISOString(), source: "plan" }, k: 1 }));
+  const out = spawnSync(process.execPath, [path.join(root, "codex/scripts/codex-hook.mjs"), "SessionStart"], { input: JSON.stringify({ session_id: "z" }), env: { ...process.env, USAGE_MAX_HOME: um, CODEX_HOME: path.join(um, ".codex"), PLUGIN_ROOT: "", USAGE_MAX_HOST: "codex" }, encoding: "utf8" }).stdout;
+  assert.match(out, /AMBER/); assert.match(out, /plan reading is 10h old/);
+});
 console.log(`${n} passing`);
