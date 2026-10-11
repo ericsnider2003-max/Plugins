@@ -87,9 +87,9 @@ t("resume: built from transcript + git, saved at Stop, handed to the next fresh 
   fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ resume: "off" })); fs.rmSync(path.join(dir, "resume", "x"), { force: true });
   const before = fs.statSync(R.resumeFile(R.sharedDir(), proj)).mtimeMs; fs.utimesSync(R.resumeFile(R.sharedDir(), proj), new Date(1), new Date(1)); hook("hooks/memory.mjs", { hook_event_name: "Stop", cwd: proj, session_id: "s2", transcript_path: tr }); assert.equal(fs.statSync(R.resumeFile(R.sharedDir(), proj)).mtimeMs, 1, "resume:off respected"); fs.rmSync(path.join(dir, "config.json"));
 });
-t("cold-cache message offers /clear when the resume point is automatic, still mentions handoff", () => {
+t("cold-cache message is information only: nothing is lost, carry on; never says /clear", () => {
   const d = path.join(home, "g"); fs.mkdirSync(d, { recursive: true }); G.promptCheck(d, "c", { now: 1e9, ctx: 90000 });
-  assert.match(G.promptCheck(d, "c", { now: 1e9 + 400e3, ctx: 90000, autoResume: true }), /\/clear now.*handoff.*saved automatically/s);
+  const cm = G.promptCheck(d, "c", { now: 1e9 + 400e3, ctx: 90000, autoResume: true }); assert.match(cm, /handoff.*kept automatically/s); assert.match(cm, /nothing is lost.*carry on/s); assert.doesNotMatch(cm, /\/clear/, "never tells you to clear mid-work");
 });
 t("readGate: >400KB whole-file read held once, ranged and small reads pass, config can turn it off", () => {
   const d = path.join(home, "g2"); fs.mkdirSync(d, { recursive: true }); const f = path.join(home, "huge.log"); fs.writeFileSync(f, "x".repeat(450000));
@@ -233,5 +233,15 @@ t("suggest: finds instructions and grouped commands with sources, ranks orientat
   const ok = cli2(["suggest", "--accept", "1,2,99"]); assert.match(ok.stdout, /saved #1/); assert.match(ok.stdout, /NOT saved #99/);
   assert.ok(M.readDecisions(sm).some((d) => /\(source: README\.md:\d+\)$/.test(d.value)) || fs.readdirSync(path.join(sm, "topics")).length > 0, "accepted items carry their source");
   assert.equal(cli2(["suggest", "--accept"]).status, 1);
+});
+
+t("resume note points at the full word-for-word conversation; a compaction snapshot is taken before and shown again after", () => {
+  const w = path.join(home, "compact-proj"); fs.mkdirSync(w, { recursive: true }); const tr = path.join(home, "tr-compact.jsonl");
+  fs.writeFileSync(tr, JSON.stringify({ type: "user", message: { role: "user", content: "refactor the invoice rounding" } }) + "\n" + JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Rounding moved." }, { type: "tool_use", name: "Edit", input: { file_path: "src/round.js" } }] } }) + "\n");
+  assert.match(R.buildResume({ transcript: tr, cwd: w }), /Full earlier conversation, word for word: .*tr-compact\.jsonl.*grep/s);
+  hook("hooks/memory.mjs", { hook_event_name: "PreCompact", cwd: w, session_id: "pc1", transcript_path: tr });
+  const a = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: w, session_id: "pc1" }).stdout).hookSpecificOutput.additionalContext;
+  assert.match(a, /refactor the invoice rounding/); assert.match(a, /src\/round\.js/); assert.match(a, /just compacted/); assert.match(a, /tr-compact\.jsonl/);
+  const b = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: w, session_id: "pc1" }).stdout).hookSpecificOutput.additionalContext; assert.match(b, /just compacted/, "shown again, not consumed");
 });
 console.log(n, "passing");

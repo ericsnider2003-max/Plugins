@@ -80,12 +80,18 @@ export function buildResume({ transcript, cwd, now = new Date(), tool = "claude"
   if (d.last) L.push(`Where it stopped (last assistant message): ${d.last}`);
   if (d.files.length) L.push(`Files edited most recently: ${d.files.join(", ")}`);
   if (dirty.length) L.push(`Uncommitted: ${dirty.slice(0, 10).join("; ")}${dirty.length > 10 ? ` (+${dirty.length - 10} more)` : ""}`);
+  if (transcript) L.push(`Full earlier conversation, word for word: ${String(transcript).replace(/\\/g, "/")} - search it (grep) for any detail before asking the user to repeat something.`);
   return redact(L.join("\n"));
 }
 export function saveResume(dir, cwd, text, { now = Date.now(), minGapMs = 60e3 } = {}) {
   if (!text) return false; const f = resumeFile(dir, cwd);
   try { if (now - fs.statSync(f).mtimeMs < minGapMs) return false; } catch {}
   try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text + "\n"); return true; } catch { return false; }
+}
+// After a compaction the summary can drop detail: show the current note again WITHOUT consuming it (it describes this same session).
+export function peekResume(dir, cwd, { maxAgeMs = 864e5, now = Date.now(), cap = 1400 } = {}) {
+  const f = resumeFile(dir, cwd); let st; try { st = fs.statSync(f); } catch { return null; }
+  if (now - st.mtimeMs > maxAgeMs) return null; const t = fs.readFileSync(f, "utf8"); return t.length > cap ? t.slice(0, cap) + "…" : t;
 }
 // Once per saved version, and only for a fresh/cleared session (a resumed or compacted one already has its context).
 export function takeResume(dir, cwd, { maxAgeMs = 7 * 864e5, now = Date.now(), cap = 1400, tool = "claude" } = {}) {

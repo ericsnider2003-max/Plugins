@@ -55,10 +55,10 @@ const k = (n) => `${Math.round(n / 1000)}k`;
 export function promptCheck(dir, sid, { now = Date.now(), ctx = null, ttlMs = 300e3, compactAt = 150000, autoResume = false } = {}) {
   const s = loadSession(dir, sid); const gap = s.last ? now - s.last : 0; let msg = null;
   if (s.last && gap > ttlMs && ctx !== null && ctx >= 40000) {
-    msg = `usage-max: this session sat idle ${Math.round(gap / 60000)} min, so its cache expired. Continuing re-bills the whole ${k(ctx)}-token context at about 10x a warm turn. Resuming an old big session is the costliest move (--resume/--continue re-reads it cold). ${autoResume ? "Cheapest for a big context: /clear now. A resume point (handoff) was saved automatically and the new session starts from it. For a quick follow-up, just carry on." : "Cheapest for a big context: ask me to /usage-max handoff, then /clear and continue from handoff.md. For a quick follow-up, just carry on."}`;
+    msg = `usage-max: this session sat idle ${Math.round(gap / 60000)} min, so its cache expired: the next message re-reads the whole ${k(ctx)}-token context at about 10x the price of a warm turn. That is only a cost; nothing is lost, and if you are continuing this work, carry on. A fresh chat is cheaper only for unrelated work${autoResume ? "; a resume point (handoff) with a pointer to this full conversation is kept automatically either way" : " (/usage-max handoff saves one first)"}.`;
     bump(dir, "coldWarnings");
   } else if (ctx !== null && ctx >= compactAt && ctx >= (s.ctxNudge || 0) + 40000) {
-    msg = `usage-max: context is ${k(ctx)} tokens and is re-read every turn. At a natural break run /compact (or hand off and /clear) to cut the cost of every following turn.`;
+    msg = `usage-max: context is ${k(ctx)} tokens and is re-read every turn. Nothing needs doing now. At a natural break, /compact would shrink it (older detail gets summarised; the full conversation stays on disk and is searchable).`;
     s.ctxNudge = ctx; bump(dir, "compactNudges");
   }
   if (ctx !== null && ctx < (s.ctxNudge || 0) - 60000) s.ctxNudge = 0; // compacted: allow future nudges
@@ -209,5 +209,5 @@ export const loadCap = (dir) => { const c = readJson(capFile(dir), null); return
 export function capCheck(dir, sid, cost, cap) {
   if (!cap || !(cost > 0)) return null; const s = loadSession(dir, sid), lvl = cost >= cap ? 2 : cost >= cap * 0.8 ? 1 : 0; if (lvl <= (s.capLevel || 0)) return null;
   s.capLevel = lvl; saveSession(dir, sid, s); bump(dir, lvl === 2 ? "capReached" : "capNear");
-  return lvl === 2 ? `usage-max: this session has used about $${cost.toFixed(2)} at list price, over your $${cap} session cap. Finish or hand off (/usage-max handoff), then start fresh; or raise it: usage-max cap <usd>.` : `usage-max: this session is at about $${cost.toFixed(2)} of your $${cap} cap (80%).`;
+  return lvl === 2 ? `usage-max: this session has used about $${cost.toFixed(2)} at list price, over your $${cap} session cap. Your call: carry on, hand off at a natural break (/usage-max handoff), or raise it: usage-max cap <usd>.` : `usage-max: this session is at about $${cost.toFixed(2)} of your $${cap} cap (80%).`;
 }

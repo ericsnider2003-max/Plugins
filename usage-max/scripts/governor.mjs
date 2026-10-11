@@ -153,13 +153,26 @@ export const LEAN = {
   red: { autoCompactWindow: 120000, alwaysThinkingEnabled: false, "env.CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "env.CLAUDE_CODE_DISABLE_CRON": "1" }
 };
 const LEAN_KEYS = ["autoCompactWindow", "alwaysThinkingEnabled", "env.CLAUDE_CODE_DISABLE_AUTO_MEMORY", "env.CLAUDE_CODE_DISABLE_CRON"];
-export function patchLean(s, mode, applied = {}) {
-  let changed = false; const want = LEAN[mode] || {};
+// SAFE BY DEFAULT: lean mode shrinks the live session (earlier auto-compaction, no auto memory, no scheduled tasks, no thinking), which can
+// cost you context or features mid-project. It is therefore OFF unless config.json has {"lean": true}; with it off, anything usage-max wrote
+// earlier is handed back (ownership rules below), and values you set yourself are never touched.
+export function patchLean(s, mode, applied = {}, { lean = false } = {}) {
+  let changed = false; const want = lean ? (LEAN[mode] || {}) : {};
   for (const k of LEAN_KEYS) {
     if (k in want) { if (ownedSet(s, k, want[k], applied, true) === "set") changed = true; }
     else if (ownedUnset(s, k, applied)) changed = true; // still ours: remove it; a user-changed value is kept
   }
   return changed;
+}
+// SessionStart: hand back anything lean mode wrote earlier (e.g. autoCompactWindow 160000 from an AMBER week) unless you opted in with {"lean": true}.
+export function releaseLean(config = loadConfig()) {
+  try {
+    if (!config.manageSettings || config.lean === true) return false;
+    const file = files().settings, s = readJson(file, null); if (!s) return false;
+    const af = path.join(dataDir(), "applied.json"), applied = loadApplied(af);
+    const changed = patchLean(s, "green", applied, { lean: false }); if (!changed) return false;
+    saveApplied(af, applied); writeJsonAtomic(file, s); return true;
+  } catch { return false; }
 }
 // Hours until the plan hits 100% at the current burn, only from real data and only when that happens before the reset.
 export function timeToEmpty(l) {
@@ -179,7 +192,7 @@ export function applySettings(mode, config) {
   if (!s) return null;
   const af = path.join(dataDir(), "applied.json"), applied = loadApplied(af);
   const c1 = patchModel(s, want, applied, mode === "amber" || mode === "red"); // tightening may override your values; green hands back to them
-  const changed = patchLean(s, mode, applied) || c1;
+  const changed = patchLean(s, mode, applied, { lean: config.lean === true }) || c1;
   saveApplied(af, applied);
   if (!changed) return false;
   writeJsonAtomic(file, s);

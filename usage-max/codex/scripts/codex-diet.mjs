@@ -18,14 +18,12 @@ export function audit({ cwd = process.cwd(), home = codexHome() } = {}) {
   if (mm && /gpt-5\.5\b/.test(mm[1])) advice.push({ id: "config.toml", action: "migrate", why: `model ${mm[1]} retires from ChatGPT/Codex on 2026-10-14; pick a current one (codex-governor.mjs models)`, saves: null });
   if (/^\s*service_tier\s*=\s*"fast"/m.test(cfgText)) advice.push({ id: "config.toml", action: "unset", why: "service_tier=fast spends included limits at 2.5x (Ultrafast 8x)", saves: null });
   if (!read(path.join(home, "hooks.json")).includes("codex-hook.mjs")) advice.push({ id: "hooks.json", action: "install", why: "usage-max hooks not installed (node scripts/install.mjs, then trust via /hooks)", saves: null });
-  if (!/^\s*tool_output_token_limit\s*=/m.test(cfgText)) advice.push({ id: "config.toml", action: "set", why: "tool_output_token_limit unset (recommend 8000)", saves: null });
   if (!/^\s*compact_prompt\s*=/m.test(cfgText)) advice.push({ id: "config.toml", action: "set", why: "no compact_prompt — compaction keeps dead ends", saves: null });
-  if (!/^\s*model_auto_compact_token_limit\s*=/m.test(cfgText)) advice.push({ id: "config.toml", action: "set", why: "model_auto_compact_token_limit unset (recommend 64000)", saves: null });
   return { rows, advice, always: rows.reduce((a, r) => a + (r.tokens || 0), 0) };
 }
 export function apply(home = codexHome(), disable = []) {
   const f = path.join(home, "config.toml"); let t = read(f); try { fs.writeFileSync(f + ".usage-max-diet-backup", t, { flag: "wx" }); } catch {}
-  const kv = {}; if (!/^\s*tool_output_token_limit\s*=/m.test(t)) kv.tool_output_token_limit = 8000; if (!/^\s*model_auto_compact_token_limit\s*=/m.test(t)) kv.model_auto_compact_token_limit = 64000;
+  const kv = {}; // never sets tool_output_token_limit / model_auto_compact_token_limit: smaller values make Codex lose project detail
   if (!/^\s*compact_prompt\s*=/m.test(t)) kv.compact_prompt = "Summarize for continuation: keep user goal, decisions made, file paths touched, current errors and exact next step. Drop dead ends, raw tool output and repeated reasoning.";
   t = setTopLevel(t, kv);
   for (const name of disable) t = t.replace(new RegExp(`(^\\[mcp_servers\\.${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]\\s*\\n)(?![\\s\\S]*?^\\s*enabled\\s*=)`, "m"), "$1enabled = false\n");

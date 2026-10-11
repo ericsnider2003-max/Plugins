@@ -5,7 +5,7 @@
 // order, trims, prints, exits with the child's exact code.
 // Also adds AGGREGATE counters (never the command) to <dataDir>/trim-stats.json, best effort.
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { spawn } from "node:child_process"; import { fileURLToPath } from "node:url";
-import { trim } from "./trim.mjs";
+import { trim, saveFull } from "./trim.mjs";
 export const SAFE_WORD = /^[\w@+=:,./-]+$/; // identical in PowerShell, cmd and sh; deliberately excludes quotes \ * ? [ ] { } ~ % ^ ! # and whitespace
 export const words = (cmd) => (typeof cmd === "string" && cmd.trim() ? cmd.trim().split(/\s+/) : []);
 // null when the command has anything but plain words: the caller then leaves the command completely untouched.
@@ -27,7 +27,8 @@ function main() {
   let failed = false; c.on("error", (e) => { failed = true; console.error("usage-max run-trimmed: could not start command: " + e.message); process.exitCode = 127; });
   for (const s of [c.stdout, c.stderr]) s && s.on("data", (d) => chunks.push(d));
   c.on("close", (code, sig) => {
-    if (failed) return; const raw = Buffer.concat(chunks).toString("utf8"); const out = trim(raw);
+    if (failed) return; const raw = Buffer.concat(chunks).toString("utf8"); let out = trim(raw);
+    if (out !== raw) { const sf = saveFull(raw); if (sf) out += `\n[usage-max: output was trimmed; the complete output is saved at ${sf.replace(/\\/g, "/")}]`; }
     process.stdout.write(out); recordStats(Buffer.byteLength(raw), Buffer.byteLength(out));
     process.exitCode = code !== null ? code : sig ? 128 + (os.constants.signals[sig] || -127) : 1;
   });

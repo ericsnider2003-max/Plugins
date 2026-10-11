@@ -58,6 +58,7 @@ try {
   } catch {}
   if (applied && applied.wrote) notes.push(`auto-applied the usage profile (${applied.changes.filter((c) => !c.startsWith("statusLine: left")).length} settings${applied.backup ? `; backup ${applied.backup}` : ""}) — takes effect in NEW sessions`);
 
+  try { const { releaseLean } = await import("../scripts/governor.mjs"); releaseLean(); } catch {} // safe by default: give back early-compaction / no-auto-memory values an older lean mode wrote
   try { // the old claude.ai-uploaded copy running next to this one would double every hook
     const old = oldSyncedCopies(home, pluginRoot);
     if (old.length && !/[\\/]plugins[\\/]synced[\\/]/.test(pluginRoot)) notes.push(`an older uploaded copy (usage-max ${old[0].version}) is still enabled and doubles every hook: ${DISABLE_OLD}`);

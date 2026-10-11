@@ -3,6 +3,7 @@
 // (Codex has its own hook, codex/scripts/codex-hook.mjs). Every output here is free text added to the model's context, kept short and capped.
 //   SessionStart      memory block (decisions + topic list) and, for a fresh/cleared session, the last resume point of this folder
 //   UserPromptSubmit  "remember: ..." is saved without a model call; notes whose topic the prompt mentions are added (once per session each)
+//   PreCompact        save the resume point right before older detail is summarised away; SessionStart(compact) shows it again
 //   Stop              save the resume point (throttled to once a minute; no model tokens)
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +25,9 @@ try {
   if (ev === "SessionStart") {
     const parts = []; M.saveSeen(sid, new Set()); // new/cleared/compacted context: notes may be injected again
     if (mem) parts.push(M.loadBlock(mem, { cap: Number(cfg.memoryBudgetChars) || 2500, cmd }));
+    if (input.source === "compact") { // a compaction summarises older detail away: bring back the notes, the files being edited and the way to the full text
+      const p = cfg.resume === "off" ? null : R.peekResume(R.sharedDir(), cwd); if (p) parts.push(p + "\n(Context was just compacted. Anything the summary left out can be found in the full conversation file above; check it before asking the user to repeat themselves.)");
+    }
     if (!input.source || input.source === "startup" || input.source === "clear") {
       const r = cfg.resume === "off" ? null : R.takeResume(R.sharedDir(), cwd, { tool: "claude" }); if (r) parts.push(r + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)");
     }
@@ -35,6 +39,8 @@ try {
     const seen = M.loadSeen(sid); const r = M.recall(mem, prompt, { seen });
     if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen); }
     if (r.text || msg) ctx(ev, r.text, msg);
+  } else if (ev === "PreCompact" && cfg.resume !== "off") {
+    R.saveResume(R.sharedDir(), cwd, R.buildResume({ transcript: input.transcript_path, cwd, tool: "claude" }), { minGapMs: 0 }); // snapshot right before detail is summarised away
   } else if (ev === "Stop" && cfg.resume !== "off") {
     R.saveResume(R.sharedDir(), cwd, R.buildResume({ transcript: input.transcript_path, cwd, tool: "claude" }));
   }
