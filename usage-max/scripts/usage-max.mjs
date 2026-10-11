@@ -18,7 +18,10 @@
 //   digest          what the guards did (counts) + Codex measured savings
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
 //   chat-prefs      paste-once text for Claude.ai / Cowork / ChatGPT (chats have no hooks)
-//   enable-here [dir] [--lean a,b]  (--lean: turn every other installed plugin off for that repo) make every session on a repo load usage-max (writes <dir>/.claude/settings.json; commit it)
+//   enable-here [dir] [--lean a,b | --lean-auto]  (--lean: turn every other installed plugin off for that repo; --lean-auto: keep only what you used in 30 days) make every session on a repo load usage-max (writes <dir>/.claude/settings.json; commit it)
+//   memory <sub>    init|add|decide|recall|index|lint|sync|export|import: project memory in .memory/ (decisions + topic notes, recalled by keyword; sync puts it in AGENTS.md for Codex cloud/mobile)
+//   pack "<goal>" [--files a,b] [--test cmd] [--save]   one scoped Codex task prompt (+ memory notes); --save = .codex-tasks/<name>.md for phone use; pack --setup = Codex cloud setup script
+//   resume [--repo] show the resume point saved automatically for this folder by Claude Code or Codex (--repo: write a redacted .codex-tasks/RESUME.md for Codex cloud/mobile)
 //   codex <sub>     doctor|status|install|models|calibrate|mode|diet|diagnose|weights|gate (the Codex side)
 //   route|handoff   handled by the model (see commands/usage-max.md)
 import { spawnSync } from "node:child_process";
@@ -46,9 +49,15 @@ const [sub = "status", ...rest] = process.argv.slice(2);
 // the GitHub marketplace (pinned to main, auto-update). Cloud/desktop sessions, local terminals and teammates all pick it up.
 // Never overwrites: existing keys are kept, an explicit "false" for the plugin is respected, invalid JSON is left alone.
 function enableHere(args) {
-  const li = args.indexOf("--lean"); const keep = li >= 0 ? String(args[li + 1] || "").split(",").map((x) => x.trim()).filter(Boolean) : null;
+  const li = args.indexOf("--lean"); let keep = li >= 0 ? String(args[li + 1] || "").split(",").map((x) => x.trim()).filter(Boolean) : null;
   const dirArg = args.filter((a, i) => !a.startsWith("--") && !(li >= 0 && i === li + 1))[0];
   const dir = path.resolve(dirArg || process.cwd());
+  if (args.includes("--lean-auto")) { // keep exactly the plugins you actually used in the last 30 days; refuse without enough history
+    const d = diet({ home, cwd: dir });
+    if (d.sessionsScanned < 5) { console.log(`--lean-auto needs usage history: only ${d.sessionsScanned} session(s) found in the last ${d.days} days. Use --lean a,b to name the plugins to keep.`); return 1; }
+    keep = d.rows.filter((r) => /^plugin/.test(r.kind) && r.uses > 0).map((r) => r.id.split("@")[0]);
+    console.log(`lean-auto: keeping ${keep.length ? keep.join(", ") : "(none used)"} — based on ${d.sessionsScanned} sessions in the last ${d.days} days.`);
+  }
   const f = path.join(dir, ".claude", "settings.json");
   let s = {};
   if (fs.existsSync(f)) { s = rj(f, null); if (s === null || typeof s !== "object") { console.log(`${f} is not valid JSON; not touching it`); return 1; } }
@@ -153,6 +162,9 @@ const map = {
   rescue: () => rescue(rest),
   codex: () => { const s = rest[0] || "status"; const f = { diet: "codex-diet.mjs", install: "install.mjs", lean: "codex-lean.mjs", diagnose: "codex-diagnose.mjs", weights: "codex-weights.mjs" }[s]; return f ? run(C(f), rest.slice(1)) : run(C("codex-governor.mjs"), rest.length ? rest : ["status"]); },
   context: () => run(S("ctxfiles.mjs"), rest),
+  memory: () => run(S("memory-cli.mjs"), rest),
+  pack: () => run(S("pack.mjs"), rest),
+  resume: () => run(S("resume-cli.mjs"), rest),
   digest: () => { const d = digestOf(); console.log(d.lines.length ? `usage-max actions since ${String(d.since).slice(0, 10)} (counts only; what each saved depends on your work):\n${d.lines.join("\n")}` : "usage-max: nothing recorded yet (the guards count what they do as you work)."); console.log(""); return run(C("codex-governor.mjs"), ["savings"]); },
   savings: async () => {
     const { claudeSavings, formatClaude } = await import("./savings.mjs"); const i = rest.indexOf("--days"); const days = i === -1 ? 7 : Number(rest[i + 1]) || 7;
@@ -181,5 +193,5 @@ const map = {
   handoff: () => map.route()
 };
 // Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
-if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here memory pack resume context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
 process.exit(await map[sub]());

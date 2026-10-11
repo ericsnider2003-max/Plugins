@@ -1,5 +1,6 @@
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { execFileSync, spawnSync } from "node:child_process";
 import crypto from "node:crypto"; import assert from "node:assert/strict"; import { fileURLToPath, pathToFileURL } from "node:url";
+process.env.USAGE_MAX_MEMORY_DIR = "/nonexistent-usage-max-memory"; // the repo this runs in has its own .memory/; these tests are about budget output only
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "umc-")); const env = { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: "" }; delete env.CODEX_HOME;
 const g = (...a) => spawnSync("node", [path.join(root, "scripts/codex-governor.mjs"), ...a], { env, encoding: "utf8" });

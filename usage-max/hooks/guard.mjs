@@ -4,7 +4,7 @@
 //   UserPromptSubmit   stale-cache and big-context nudges (shown to you only: no model tokens)
 //   Stop               record activity
 //   PostToolUse        runaway-loop detection; subagent finished
-//   PreToolUse (Read)  hint on re-reading an unchanged file / huge whole-file reads (never blocks or changes the read)
+//   PreToolUse (Read)  hint on re-reading an unchanged file / huge whole-file reads (huge whole-file reads, 400 KB+, are held once for a ranged read; asking again goes through)
 import os from "node:os";
 import path from "node:path";
 import { dataDir, readJson, writeJsonAtomic } from "../scripts/meter.mjs";
@@ -30,10 +30,11 @@ try {
     if (c.total > 8000) parts.push(`usage-max: CLAUDE.md/AGENTS.md files plus their imports weigh about ${c.total} tokens on every turn here. See what to trim: /usage-max context`);
     if (parts.length) out({ systemMessage: parts.join("\n") });
   } else if (ev === "UserPromptSubmit") {
-    const msg = G.promptCheck(dir, sid, { ctx: G.lastContext(input.transcript_path), ttlMs: G.cacheTtlMs(home) });
+    const autoResume = (readJson(path.join(dir, "config.json"), {}) || {}).resume !== "off"; // the shared resume point (hooks/memory.mjs) already covers the cold-cache case
+    const msg = G.promptCheck(dir, sid, { ctx: G.lastContext(input.transcript_path), ttlMs: G.cacheTtlMs(home), autoResume });
     const cap = G.loadCap(dir), capMsg = cap ? G.capCheck(dir, sid, G.sessionCost(input.transcript_path), cap) : null;
     let handoffMsg = null;
-    if (msg && /sat idle/.test(msg)) { try { const { write } = await import("../scripts/autohandoff.mjs"); const hf = write(dir, sid, input.transcript_path); if (hf) { G.bump(dir, "autoHandoffs"); handoffMsg = `usage-max wrote a free handoff (no model call): ${hf}\nTo avoid re-reading the cold context: /clear, then say "Continue from the handoff file at ${hf}".`; } } catch {} }
+    if (msg && /sat idle/.test(msg) && !autoResume) { try { const { write } = await import("../scripts/autohandoff.mjs"); const hf = write(dir, sid, input.transcript_path); if (hf) { G.bump(dir, "autoHandoffs"); handoffMsg = `usage-max wrote a free handoff (no model call): ${hf}\nTo avoid re-reading the cold context: /clear, then say "Continue from the handoff file at ${hf}".`; } } catch {} }
     if (msg || capMsg || handoffMsg) out({ systemMessage: [msg, handoffMsg, capMsg].filter(Boolean).join("\n") });
   } else if (ev === "Stop") {
     G.touch(dir, sid);
@@ -43,6 +44,8 @@ try {
     const r = G.loopCheck(dir, sid, tool, input.tool_input) || (() => { const m = G.editPattern(dir, sid, tool, input.tool_input); return m ? { additionalContext: m } : null; })();
     if (r) out({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: r.additionalContext }, ...(r.systemMessage ? { systemMessage: r.systemMessage } : {}) });
   } else if (ev === "PreToolUse" && input.tool_name === "Read") {
+    const gate = G.readGate(dir, sid, input.tool_input);
+    if (gate) { out({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: gate.deny } }); process.exit(0); }
     const hint = G.readCheck(dir, sid, input.tool_input);
     if (hint) out({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: hint } });
   }
