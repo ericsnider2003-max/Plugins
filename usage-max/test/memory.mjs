@@ -87,9 +87,9 @@ t("resume: built from transcript + git, saved at Stop, handed to the next fresh 
   fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ resume: "off" })); fs.rmSync(path.join(dir, "resume", "x"), { force: true });
   const before = fs.statSync(R.resumeFile(R.sharedDir(), proj)).mtimeMs; fs.utimesSync(R.resumeFile(R.sharedDir(), proj), new Date(1), new Date(1)); hook("hooks/memory.mjs", { hook_event_name: "Stop", cwd: proj, session_id: "s2", transcript_path: tr }); assert.equal(fs.statSync(R.resumeFile(R.sharedDir(), proj)).mtimeMs, 1, "resume:off respected"); fs.rmSync(path.join(dir, "config.json"));
 });
-t("cold-cache message offers /clear when the resume point is automatic, still mentions handoff", () => {
+t("cold-cache message is information only: nothing is lost, carry on; never says /clear", () => {
   const d = path.join(home, "g"); fs.mkdirSync(d, { recursive: true }); G.promptCheck(d, "c", { now: 1e9, ctx: 90000 });
-  assert.match(G.promptCheck(d, "c", { now: 1e9 + 400e3, ctx: 90000, autoResume: true }), /\/clear now.*handoff.*saved automatically/s);
+  const cm = G.promptCheck(d, "c", { now: 1e9 + 400e3, ctx: 90000, autoResume: true }); assert.match(cm, /handoff.*kept automatically/s); assert.match(cm, /nothing is lost.*carry on/s); assert.doesNotMatch(cm, /\/clear/, "never tells you to clear mid-work");
 });
 t("readGate: >400KB whole-file read held once, ranged and small reads pass, config can turn it off", () => {
   const d = path.join(home, "g2"); fs.mkdirSync(d, { recursive: true }); const f = path.join(home, "huge.log"); fs.writeFileSync(f, "x".repeat(450000));
@@ -205,5 +205,47 @@ t("resume --repo writes a redacted .codex-tasks/RESUME.md for Codex cloud/mobile
   const w = path.join(home, "handoff3"); fs.mkdirSync(w, { recursive: true }); R.saveResume(R.sharedDir(), w, "Resume point\nLast: use key sk-live-abcdefghijklmnop1234 to call X", { minGapMs: 0 });
   const o = cli(["resume", "--repo"], w); assert.match(o.stdout, /Continue from \.codex-tasks\/RESUME\.md/); const f = fs.readFileSync(path.join(w, ".codex-tasks/RESUME.md"), "utf8"); assert.doesNotMatch(f, /sk-live/); assert.match(f, /Continue the work/);
   fs.mkdirSync(path.join(home, "none-yet"), { recursive: true }); assert.match(cli(["resume", "--repo"], path.join(home, "none-yet")).stdout, /no resume point/);
+});
+
+// ---- nothing is ever cut short silently; suggest never saves by itself
+t("a too-long decision/fact/directive is REFUSED with a clear reason, never clipped; the block never clips a line", () => {
+  const long = "x".repeat(301), r = M.decide(mem, "longkey", long); assert.match(r.error, /301 characters; the limit is 300.*never cut short/s); assert.ok(!M.readDecisions(mem).some((d) => d.key === "longkey"));
+  assert.ok(M.decide(mem, "k".repeat(61), "v").error); assert.ok(M.addFact(mem, "notes", "y".repeat(601)).error); assert.ok(!M.addFact(mem, "notes", "y".repeat(600)).error);
+  const exactly = "z".repeat(300); assert.equal(M.decide(mem, "exact", exactly).value, exactly);
+  const block = M.loadBlock(mem, { cap: 1e6 }); assert.ok(block.includes("exact: " + exactly), "whole value in the block"); assert.ok(!/…/.test(block.split("Topics")[0]), "no ellipsis inside decisions");
+  const o = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "UserPromptSubmit", cwd: proj, session_id: "long1", prompt: "remember: " + "word ".repeat(100) }).stdout); assert.match(o.systemMessage, /not saved.*limit is 300/s);
+  M.addFact(mem, "wordy", "A summary line that goes on for a really long time without any sign of stopping so that it has to be shortened for the topic list pointer");
+  const sum = M.listTopics(mem).find((x) => x.slug === "wordy").summary; assert.match(sum, /…$/); assert.ok(!/\s…/.test(sum.slice(0, -2)), "cut at a word boundary"); assert.ok(sum.length <= 104);
+});
+t("suggest: finds instructions and grouped commands with sources, ranks orientation docs above dated records, saves NOTHING until --accept", async () => {
+  const S = await imp("scripts/memory-suggest.mjs"); const r = path.join(home, "sugg"); fs.mkdirSync(path.join(r, "docs"), { recursive: true }); fs.mkdirSync(path.join(r, "node_modules/x"), { recursive: true });
+  fs.writeFileSync(path.join(r, "README.md"), "# Proj\n\nAlways run the linter before committing.\nThe password is never printed.\nIt was fast.\n\n## Testing\n```\nnpm ci\nnpm test   # 40 tests\n```\n\n## Notes\nSecret: use sk-live-abcdefghijklmnop1234 for billing, and you must not share it.\n| Never | in a table |\n");
+  fs.writeFileSync(path.join(r, "04_SESSION_2026-09-20_old.md"), "# Old\nNever trust this old record, it must be ignored.\n"); fs.writeFileSync(path.join(r, "node_modules/x/README.md"), "Always skip me please, this is vendored.\n");
+  fs.writeFileSync(path.join(r, "docs/long.md"), "Always " + "very ".repeat(60) + "long.\n");
+  const list = S.suggest(r); const texts = list.map((c) => c.text);
+  assert.ok(texts.some((t) => /Always run the linter/.test(t))); assert.ok(texts.some((t) => t === "Testing: npm ci; npm test"), JSON.stringify(texts));
+  assert.ok(!texts.some((t) => /password is never printed|It was fast|sk-live|skip me|very very|table/.test(t)), "descriptions, secrets, vendored, over-long and table rows are not offered");
+  assert.ok(list.findIndex((c) => /linter/.test(c.text)) < list.findIndex((c) => /old record/.test(c.text)) || !texts.some((t) => /old record/.test(t)), "README outranks the dated record");
+  assert.ok(list.every((c) => /^[^:]+:\d+$/.test(c.source) && c.text.length <= 200) && list.length <= 25);
+  const rp = path.join(home, "sugg-mem"); fs.mkdirSync(rp, { recursive: true }); const sm = M.init(rp); fs.cpSync(r, rp, { recursive: true }); // suggest reads the repo around .memory
+  const cli2 = (a) => spawnSync("node", [path.join(root, "scripts/memory-cli.mjs"), ...a], { cwd: rp, encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: home } });
+  const listed = cli2(["suggest"]); assert.match(listed.stdout, /Nothing has been saved/); assert.equal(M.readDecisions(sm).length, 0, "listing saves nothing");
+  const ok = cli2(["suggest", "--accept", "1,2,99"]); assert.match(ok.stdout, /saved #1/); assert.match(ok.stdout, /NOT saved #99/);
+  assert.ok(M.readDecisions(sm).some((d) => /\(source: README\.md:\d+\)$/.test(d.value)) || fs.readdirSync(path.join(sm, "topics")).length > 0, "accepted items carry their source");
+  assert.equal(cli2(["suggest", "--accept"]).status, 1);
+});
+
+t("resume note points at the full word-for-word conversation; a compaction snapshot is taken before and shown again after", () => {
+  const w = path.join(home, "compact-proj"); fs.mkdirSync(w, { recursive: true }); const tr = path.join(home, "tr-compact.jsonl");
+  fs.writeFileSync(tr, JSON.stringify({ type: "user", message: { role: "user", content: "refactor the invoice rounding" } }) + "\n" + JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Rounding moved." }, { type: "tool_use", name: "Edit", input: { file_path: "src/round.js" } }] } }) + "\n");
+  assert.match(R.buildResume({ transcript: tr, cwd: w }), /Full earlier conversation, word for word: .*tr-compact\.jsonl.*grep/s);
+  hook("hooks/memory.mjs", { hook_event_name: "PreCompact", cwd: w, session_id: "pc1", transcript_path: tr });
+  const a = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: w, session_id: "pc1", transcript_path: tr }).stdout).hookSpecificOutput.additionalContext;
+  assert.match(a, /refactor the invoice rounding/); assert.match(a, /src\/round\.js/); assert.match(a, /just compacted/); assert.match(a, /tr-compact\.jsonl/);
+  const b = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: w, session_id: "pc1", transcript_path: tr }).stdout).hookSpecificOutput.additionalContext; assert.match(b, /just compacted/, "shown again, not consumed");
+  const other = path.join(home, "other-session.jsonl"); const c = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: w, session_id: "pc9", transcript_path: other }).stdout).hookSpecificOutput.additionalContext;
+  assert.doesNotMatch(c, /refactor the invoice rounding/, "another session's note is not shown as this conversation"); assert.match(c, /other-session\.jsonl/, "but the way to the full text always is");
+  const longTr = path.join(home, "long-tr.jsonl"); fs.writeFileSync(longTr, [1, 2, 3, 4].map((i) => JSON.stringify({ type: "user", message: { role: "user", content: "p" + i + " " + "word ".repeat(60) } })).join("\n") + "\n" + JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "t ".repeat(400) }] } }) + "\n");
+  const note = R.buildResume({ transcript: longTr, cwd: w }); R.saveResume(R.sharedDir(), w, note, { minGapMs: 0 }); assert.match(R.peekResume(R.sharedDir(), w), /long-tr\.jsonl/, "pointer survives the size cap even with long prompts");
 });
 console.log(n, "passing");

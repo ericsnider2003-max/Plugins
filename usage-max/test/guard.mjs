@@ -64,14 +64,15 @@ await t("hook entry: silent + exit 0 on garbage, silent under Codex, Read hint t
 });
 const GV = await import(pathToFileURL(path.join(root, "scripts/governor.mjs")).href);
 const BG = await import(pathToFileURL(path.join(root, "scripts/background.mjs")).href);
-await t("lean mode: RED caps compaction and thinking, keeps going back to the user's values in GREEN", () => {
+const L = { lean: true }; // lean mode is opt-in (config.json {"lean": true})
+await t("lean mode (opted in): RED caps compaction and thinking, keeps going back to the user's values in GREEN", () => {
   const ap = {}; const s = { model: "x" };
-  assert.equal(GV.patchLean(s, "red", ap), true); assert.equal(s.autoCompactWindow, 120000); assert.equal(s.alwaysThinkingEnabled, false);
-  assert.equal(GV.patchLean(s, "amber", ap), true); assert.equal(s.autoCompactWindow, 160000); assert.ok(!("alwaysThinkingEnabled" in s), "amber lifts the thinking cap");
-  assert.equal(GV.patchLean(s, "green", ap), true); assert.ok(!("autoCompactWindow" in s)); assert.equal(s.model, "x");
-  const mine = { autoCompactWindow: 300000 }; GV.patchLean(mine, "green", {}); assert.equal(mine.autoCompactWindow, 300000, "a value you set in GREEN is never touched");
-  const mine2 = { alwaysThinkingEnabled: true }; GV.patchLean(mine2, "red", {}); assert.equal(mine2.alwaysThinkingEnabled, false, "RED may tighten your value");
-  GV.patchLean(mine2, "green", {}); assert.equal(mine2.alwaysThinkingEnabled, false, "...and green does not delete what it did not own");
+  assert.equal(GV.patchLean(s, "red", ap, L), true); assert.equal(s.autoCompactWindow, 120000); assert.equal(s.alwaysThinkingEnabled, false);
+  assert.equal(GV.patchLean(s, "amber", ap, L), true); assert.equal(s.autoCompactWindow, 160000); assert.ok(!("alwaysThinkingEnabled" in s), "amber lifts the thinking cap");
+  assert.equal(GV.patchLean(s, "green", ap, L), true); assert.ok(!("autoCompactWindow" in s)); assert.equal(s.model, "x");
+  const mine = { autoCompactWindow: 300000 }; GV.patchLean(mine, "green", {}, L); assert.equal(mine.autoCompactWindow, 300000, "a value you set in GREEN is never touched");
+  const mine2 = { alwaysThinkingEnabled: true }; GV.patchLean(mine2, "red", {}, L); assert.equal(mine2.alwaysThinkingEnabled, false, "RED may tighten your value");
+  GV.patchLean(mine2, "green", {}, L); assert.equal(mine2.alwaysThinkingEnabled, false, "...and green does not delete what it did not own");
 });
 await t("time to empty only from real data and only when it beats the reset", () => {
   assert.equal(GV.timeToEmpty({ estPct: 67, ratePerHour: 2, hoursLeft: 36, rateSource: "plan %" }).hours, 16.5);
@@ -115,11 +116,11 @@ await t("anomaly: needs a baseline, flags a 3x burst, names the culprit, stays q
   const r = A.detect(burst, { now }); assert.equal(r.anomalous, true); assert.equal(r.top.who, "loopy session"); assert.match(A.format("Codex", "tok", r), /BURNING FAST.*loopy session/);
   const calm = [...base, { t: now - H, v: 1, who: "x" }]; assert.equal(A.detect(calm, { now }).anomalous, false); assert.match(A.format("Claude", "$", A.detect(calm, { now })), /normal/);
 });
-await t("lean env switches: auto memory off in AMBER/RED, cron off in RED, removed in GREEN only when still ours", () => {
-  const s = {}, ap = {}; GV.patchLean(s, "red", ap); assert.equal(s.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1"); assert.equal(s.env.CLAUDE_CODE_DISABLE_CRON, "1");
-  GV.patchLean(s, "amber", ap); assert.equal(s.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1"); assert.ok(!("CLAUDE_CODE_DISABLE_CRON" in s.env), "cron comes back in AMBER");
-  s.env.KEEP = "1"; GV.patchLean(s, "green", ap); assert.ok(!("CLAUDE_CODE_DISABLE_AUTO_MEMORY" in s.env)); assert.equal(s.env.KEEP, "1", "other env keys untouched");
-  const mine = { env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "0" } }; GV.patchLean(mine, "green", {}); assert.equal(mine.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "0", "your own value is never removed");
+await t("lean env switches (opted in): auto memory off in AMBER/RED, cron off in RED, removed in GREEN only when still ours", () => {
+  const s = {}, ap = {}; GV.patchLean(s, "red", ap, L); assert.equal(s.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1"); assert.equal(s.env.CLAUDE_CODE_DISABLE_CRON, "1");
+  GV.patchLean(s, "amber", ap, L); assert.equal(s.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1"); assert.ok(!("CLAUDE_CODE_DISABLE_CRON" in s.env), "cron comes back in AMBER");
+  s.env.KEEP = "1"; GV.patchLean(s, "green", ap, L); assert.ok(!("CLAUDE_CODE_DISABLE_AUTO_MEMORY" in s.env)); assert.equal(s.env.KEEP, "1", "other env keys untouched");
+  const mine = { env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "0" } }; GV.patchLean(mine, "green", {}, L); assert.equal(mine.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "0", "your own value is never removed");
 });
 await t("context lint flags an instruction file over 200 lines", () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-")); fs.writeFileSync(path.join(d, "CLAUDE.md"), "- rule\n".repeat(250));
@@ -268,3 +269,44 @@ await t("codex doctor: flags only the UPLOADED copy of usage-max, not the normal
   assert.match(mk('[hooks.state."usage-max@synced:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /FIX\s+Codex still has hook\/plugin entries for the UPLOADED copy/);
 });
 console.log(`${n} passing`);
+
+await t("SAFE BY DEFAULT: without the opt-in, lean mode never shrinks context, and hands back what an older version wrote", () => {
+  for (const m of ["amber", "red"]) { const s0 = { model: "x" }, ap = {}; assert.equal(GV.patchLean(s0, m, ap), false); assert.deepEqual(s0, { model: "x" }, m + " writes nothing by default"); }
+  const old = { autoCompactWindow: 120000, alwaysThinkingEnabled: false, env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", CLAUDE_CODE_DISABLE_CRON: "1" } }, ap = { autoCompactWindow: 120000, alwaysThinkingEnabled: false, "env.CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "env.CLAUDE_CODE_DISABLE_CRON": "1" };
+  assert.equal(GV.patchLean(old, "red", ap), true); assert.ok(!("autoCompactWindow" in old) && !("alwaysThinkingEnabled" in old) && !old.env, "everything usage-max wrote is given back, even in RED");
+  const yours = { autoCompactWindow: 120000 }; GV.patchLean(yours, "red", {}); assert.equal(yours.autoCompactWindow, 120000, "a value you set yourself is never removed");
+});
+await t("trim keeps the complete output on disk and says where; the profile no longer halves command output", async () => {
+  const T = await import(pathToFileURL(path.join(root, "scripts/trim.mjs")).href), h = fs.mkdtempSync(path.join(os.tmpdir(), "ut-")); const raw = Array.from({ length: 400 }, (_, i) => "line " + i).join("\n");
+  const f = T.saveFull(raw, h); assert.equal(fs.readFileSync(f, "utf8"), raw);
+  const o = spawnSync("node", [path.join(root, "scripts/trim.mjs")], { input: raw, encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: h } }); assert.match(o.stdout, /lines trimmed/); const m = o.stdout.match(/complete output is saved at (\S+)\]/); assert.ok(m && fs.readFileSync(m[1], "utf8") === raw, "the full text is recoverable");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "profiles/settings.enforced.json"), "utf8")).env.BASH_MAX_OUTPUT_LENGTH, "30000");
+});
+await t("safety report names what shrinks context and who set it; --fix hands back only usage-max's own values", async () => {
+  const S = await import(pathToFileURL(path.join(root, "scripts/safety.mjs")).href), h = fs.mkdtempSync(path.join(os.tmpdir(), "us-")); fs.mkdirSync(path.join(h, ".claude/usage-max"), { recursive: true }); fs.mkdirSync(path.join(h, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(h, ".claude/settings.json"), JSON.stringify({ autoCompactWindow: 120000, env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" } })); fs.writeFileSync(path.join(h, ".claude/usage-max/applied.json"), JSON.stringify({ autoCompactWindow: 120000 }));
+  fs.mkdirSync(path.join(h, ".usage-max-codex"), { recursive: true }); fs.writeFileSync(path.join(h, ".usage-max-codex/governor.json"), JSON.stringify({ appliedKey: "green" })); fs.writeFileSync(path.join(h, ".codex/config.toml"), 'tool_output_token_limit = 8000 # old\nmodel_auto_compact_token_limit = 99000\n\n[profiles.x]\nproject_doc_max_bytes = 16384\n');
+  const r = S.report(h); assert.match(r.text, /autoCompactWindow = 120000 {2}\(set by usage-max\)/); assert.match(r.text, /CLAUDE_CODE_DISABLE_AUTO_MEMORY = 1 {2}\(set by you\)/); assert.match(r.text, /tool_output_token_limit = 8000 {2}\(set by usage-max \(older version\)\)/); assert.match(r.text, /model_auto_compact_token_limit = 99000 {2}\(set by you\)/);
+  const clean = S.report(fs.mkdtempSync(path.join(os.tmpdir(), "us2-"))); assert.match(clean.text, /Nothing to fix/);
+});
+
+await t("review fixes: a value YOU set is never claimed, so lean 'hand back' can never delete it", async () => {
+  const O = await import(pathToFileURL(path.join(root, "scripts/owned.mjs")).href);
+  const s0 = { autoCompactWindow: 160000, alwaysThinkingEnabled: false, env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" } }, ap = {};
+  GV.patchLean(s0, "amber", ap, { lean: true }); GV.patchLean(s0, "green", ap, { lean: false });
+  assert.equal(s0.autoCompactWindow, 160000, "yours, identical to lean's value"); assert.equal(s0.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1"); assert.deepEqual(ap, {}, "nothing was ever claimed");
+  const mine = {}; assert.equal(O.ownedSet(mine, "a", 1, ap), "set"); assert.equal(ap.a, 1); assert.equal(O.ownedSet(mine, "a", 1, ap), "same"); assert.equal(ap.a, 1, "ours stays ours");
+});
+await t("review fixes: loop guard counts a Bash edit as progress; a lost subagent frees its slot in 6 min; the huge-read hold is remembered across sessions", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "rv-")); const b = { command: "npm test" }, sedc = { command: "sed -i s/a/b/ src/x.js" };
+  const res = []; for (let i = 0; i < 5; i++) res.push(G.loopCheck(d, "l", "Bash", b)); res.push(G.loopCheck(d, "l", "Bash", sedc)); res.push(G.loopCheck(d, "l", "Bash", b)); res.push(G.loopCheck(d, "l", "Bash", b));
+  assert.ok(!res.some((x) => x && /Stop now/.test(x.additionalContext)), "re-running the tests while fixing by sed in between is progress, never 'Stop now'");
+  assert.equal(G.bashMutates({ command: "npm test" }), false); assert.equal(G.bashMutates({ command: "echo hi > out.txt" }), true); assert.equal(G.bashMutates({ command: "git apply p.diff" }), true);
+  fs.rmSync(path.join(d, "inflight.json"), { force: true }); G.agentStart(d, "lost", "red", false, 1000); assert.ok(G.agentStart(d, "b", "red", false, 1000 + 300e3).deny, "still held at 5 min"); assert.equal(G.agentStart(d, "c", "red", false, 1000 + 361e3), null, "free after 6 min");
+  const f = path.join(d, "huge.log"); fs.writeFileSync(f, "x".repeat(450000)); assert.ok(G.readGate(d, "s1", { file_path: f }).deny); assert.equal(G.readGate(d, "s2-new-session", { file_path: f }), null, "asked again in a NEW session: goes through");
+});
+await t("review fixes: trim copies are private, and a vanished sibling file cannot lose the pointer", async () => {
+  const T = await import(pathToFileURL(path.join(root, "scripts/trim.mjs")).href), h = fs.mkdtempSync(path.join(os.tmpdir(), "ut2-"));
+  const f = T.saveFull("secret-ish output", h); assert.ok(f); if (process.platform !== "win32") assert.equal(fs.statSync(f).mode & 0o077, 0, "owner-only");
+  const d = path.dirname(f); fs.writeFileSync(path.join(d, "ghost"), "x"); const orig = fs.statSync; assert.ok(T.saveFull("second", h), "still returns a path");
+});

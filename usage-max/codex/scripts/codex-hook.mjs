@@ -8,6 +8,7 @@
 //                      win32 only after `codex-governor.mjs selftest-trim` wrote trim-ok.json (or USAGE_MAX_TRIM=force).
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import { evaluate, applyMode, dataDir, modeKey, codexHome } from "./codex-governor.mjs";
+import * as CGOV from "./codex-governor.mjs"; // namespace import: an older copy without cleanLegacy is skipped, never a startup error
 import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import { guard, sessionContext, nudge, nudgeAt } from "./codex-guards.mjs"; import * as TC from "./trimcheck.mjs";
 // project memory + shared resume point: ./memory.mjs and ./resume.mjs next to this file (the stable bin copy) or the plugin's scripts/ (running from the plugin). Absent = feature silently off.
 let R = null; try { R = await import("./resume.mjs"); } catch { try { R = await import("../../scripts/resume.mjs"); } catch {} }
@@ -30,7 +31,7 @@ function memoryText(ev, input, sid) {
   const cfg = rj("config.json"); if (cfg && cfg.memory === "off") return "";
   if (ev === "SessionStart") { try { M.saveSeen(sid, new Set(), path.join(dataDir(), "memory-state")); } catch {} return M.loadBlock(mem, { cap: Number(cfg && cfg.memoryBudgetChars) || 2500, cmd: "(note it in .memory/ — see the block below)", foot: "Record a durable fact or decision when you learn one: append `- YYYY-MM-DD | key | value` to .memory/decisions.md, or a bullet to .memory/topics/<name>.md. Do not ask the user for something listed here." }); }
   const prompt = String(input.prompt || ""), dtv = M.extractDirective(prompt), out = [];
-  if (dtv) { const r = M.decide(mem, M.directiveKey(dtv), dtv); if (!r.error && !r.unchanged) out.push("usage-max: saved to project memory (.memory/decisions.md)."); }
+  if (dtv) { const r = M.decide(mem, M.directiveKey(dtv), dtv); if (r.error) out.push(`usage-max: not saved to project memory. ${r.error}`); else if (!r.unchanged) out.push("usage-max: saved to project memory (.memory/decisions.md)."); }
   const sd = path.join(dataDir(), "memory-state"), seen = M.loadSeen(sid, sd), r = M.recall(mem, prompt, { seen });
   if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen, sd); out.push(r.text); }
   return out.join("\n");
@@ -49,6 +50,7 @@ function main() {
     return;
   }
   const sid0 = input.session_id || "?";
+  if (ev === "SessionStart") { try { if (CGOV.cleanLegacy) CGOV.cleanLegacy(); } catch {} } // safe by default: give back compaction / output / AGENTS.md limits an older version wrote
   if (M && (ev === "SessionStart" || ev === "UserPromptSubmit")) { try { const mt = memoryText(ev, input, sid0); if (mt) process.stdout.write(mt + "\n"); } catch {} } // first: a budget-evaluation failure must not cost you the project notes
   // automatic resume point (shared with Claude Code): written at Stop, offered to the next fresh chat in this folder. Before the budget code on purpose.
   if (R && (ev === "Stop" || ev === "SessionStart")) {

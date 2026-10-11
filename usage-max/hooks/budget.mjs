@@ -75,7 +75,7 @@ try {
     const requested = String(ti.model || "").toLowerCase();
     let next = null;
     // Policy (routing skill): subagents are Haiku/Sonnet, never Opus/Fable, in every budget mode.
-    if (requested === "fable" || aboveCeiling(requested) || requested.includes("opus") || ((!requested || requested === "inherit") && INHERITING.has(String(ti.subagent_type || "")))) next = "sonnet";
+    if (requested === "fable" || aboveCeiling(requested) || ((!requested || requested === "inherit") && INHERITING.has(String(ti.subagent_type || "")))) next = "sonnet"; // an explicitly requested model (e.g. opus) is honoured; only your ceiling and the no-choice default are applied
     if (next && next !== requested) {
       bump(dataDir(), "subagentDowngrades");
       out({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecisionReason: `usage-max: ${requested || "inherited"} -> ${next} (budget ${state.mode})`, updatedInput: { ...ti, model: next }, additionalContext: `usage-max ran this subagent on ${next} instead of ${requested || "the session model"} (budget ${state.mode}).` } });
@@ -85,8 +85,8 @@ try {
     const state = loadState();
     if (aboveCeiling(to)) {
       out({ hookSpecificOutput: { hookEventName: "PreModelSwitch", permissionDecision: "deny", permissionDecisionReason: `usage-max: ${to} is above the Opus 5.5 ceiling.` } });
-    } else if (state.mode === "red" && /opus/i.test(to)) {
-      out({ hookSpecificOutput: { hookEventName: "PreModelSwitch", permissionDecision: "ask", permissionDecisionReason: `usage-max: budget RED (week ~${pct(state.last && state.last.estPct)}). Switching to ${to} costs ~2x Sonnet output and re-reads this whole conversation uncached. Continue?` } });
+    } else if (state.mode === "red" && /opus/i.test(to)) { // information only: no permission prompt
+      out({ systemMessage: `usage-max: budget RED (week ~${pct(state.last && state.last.estPct)}). Switching to ${to} costs ~2x Sonnet output and re-reads this whole conversation uncached. Going ahead as you chose.` });
     }
   }
   process.exitCode = 0;
