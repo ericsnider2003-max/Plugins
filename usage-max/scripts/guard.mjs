@@ -71,7 +71,10 @@ export function resetReads(dir, sid) { const s = loadSession(dir, sid); s.reads 
 // ---- runaway loops: the SAME tool call repeated with no edit in between
 const MUTATING = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 export const callHash = (tool, input) => { let h = 2166136261; for (const c of `${tool}\0${JSON.stringify(input || {}).slice(0, 600)}`) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
+// Calls whose answer changes over time (waiting on notifications, tasks, CI, PR state) are polling, not a loop: never count them.
+export const POLLING = /^(ReadNotifications|TaskList|TaskGet|TaskOutput|Monitor|CronList)$|^mcp__.*__(\w*_read|get_\w+|list_\w+)$/;
 export function loopCheck(dir, sid, tool, input, { now = Date.now() } = {}) {
+  if (POLLING.test(tool || "") || (input && typeof input === "object" && !Object.keys(input).length)) return null;
   const s = loadSession(dir, sid); s.last = now;
   if (MUTATING.has(tool)) s.hashes = []; // progress was made: start counting again
   else {

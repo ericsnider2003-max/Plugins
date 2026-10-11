@@ -2,6 +2,9 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.14.2 (Oct 11 2026) — fewer false alarms
+- The runaway-loop warning no longer fires on polling (waiting for notifications, tasks, CI or PR status) or on calls that take no input; repeated identical shell or file commands are still caught.
+
 ## 0.14.1 (Oct 11 2026) — doctor tells the truth about versions
 - `doctor` now says when your build is AHEAD of `main` (unmerged: auto-update could replace it with the older main) instead of "it updates itself".
 - `codex doctor` now flags Codex scripts that are older than the plugin (new Codex features are not active) instead of reporting "ok", and `doctor --fix` refreshes them immediately (scripts only; your config.toml and hooks are untouched).
