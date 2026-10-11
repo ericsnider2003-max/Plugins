@@ -8,7 +8,7 @@
 //                      win32 only after `codex-governor.mjs selftest-trim` wrote trim-ok.json (or USAGE_MAX_TRIM=force).
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import { evaluate, applyMode, dataDir, modeKey, codexHome } from "./codex-governor.mjs";
-import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import { guard } from "./codex-guards.mjs"; import * as TC from "./trimcheck.mjs";
+import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import { guard, sessionContext, nudge } from "./codex-guards.mjs"; import * as TC from "./trimcheck.mjs";
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
 const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
 export { wrap };
@@ -47,6 +47,7 @@ function main() {
       const text = plan + (DIRECTIVE[mode] || "") + (surplus && ev === "SessionStart" ? "usage-max: allowance is going unused this week — you may use higher reasoning effort for hard problems." : ""); if (text) { st.sent[k] = Date.now(); process.stdout.write(text); } else st.sent[k] = Date.now();
     }
     try { const adv = balanceAdvice({ mode }, readOther()); const ak = `${sid}:adv:${adv}`; if (adv && !st.sent[ak]) { st.sent[ak] = Date.now(); process.stdout.write((st.sent[k] ? "\n" : "") + adv); } } catch {}
+    if (ev === "UserPromptSubmit") { try { const nd = nudge(sessionContext(codexHome(), sid)); const nk = nd && `${sid}:ctx:${nd.level}`; if (nd && !st.sent[nk]) { st.sent[nk] = Date.now(); process.stdout.write("\n" + nd.text); } } catch {} }
     const keys = Object.keys(st.sent); if (keys.length > 200) for (const x of keys.slice(0, keys.length - 100)) delete st.sent[x];
     try { fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(sf, JSON.stringify(st)); } catch {}
   } else if (ev === "Stop" && key !== beforeKey) {

@@ -94,3 +94,6 @@ scripts/offload.mjs (Ollama, loopback only, tested with a stub server, never wit
 
 ## 0.14.0 notes
 Closed: Claude auto-handoff (scripts/autohandoff.mjs, wired in hooks/guard.mjs), Codex guards (codex-guards.mjs; NO permissionDecision on purpose), Codex trim self-test (trimcheck.mjs), `codex weights` (codex-weights.mjs). Known: Codex trim hook still returns permissionDecision allow (pre-existing, finding #8 in this file); live-verify updatedInput without allow in a real Codex before removing it. Still needs the user's PC: real Ollama, real Codex logs, live.mjs.
+
+## 0.15.0 notes
+First real Codex report (user PC, 14 days): 10,994 calls, 98% of input tokens cached, median context 105k (p90 186k), 85% of calls in one folder (Atlas), one session = 5,249 calls, effort already low. Cached re-reads dominate cost; compaction limit 64k in config is NOT holding in the Codex apps. Bugs found and fixed: diagnose window classification; PowerShell trim self-test. Added Codex long-session nudge + startup weight report. User is non-technical: everything goes through install/kit/0-DO-EVERYTHING.cmd and a plain-language report.
