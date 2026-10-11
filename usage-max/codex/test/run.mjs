@@ -290,6 +290,7 @@ if (process.platform !== "win32") t("backups are private (0700 dir, 0600 files) 
   fs.chmodSync(path.join(Z.ch, "config.toml"), 0o640); const a = gg(Z.e, "restore", dp, "--apply", "--out", path.join(Z.h, "bk")); assert.equal(a.status, 0, a.stdout + a.stderr); assert.equal(fs.statSync(path.join(Z.ch, "config.toml")).mode & 0o777, 0o640); });
 t("SAFE BY DEFAULT: SessionStart hands back the compaction/output/AGENTS.md limits an older version wrote, keeps yours, and a mode change never writes them", () => {
   const Z = mkHome(); fs.mkdirSync(Z.ch, { recursive: true }); fs.writeFileSync(path.join(Z.ch, "config.toml"), 'model = "m"\ntool_output_token_limit = 8000\nmodel_auto_compact_token_limit = 120000\nproject_doc_max_bytes = 16384\n\n[mcp_servers.x]\ncommand = "x"\n');
+  fs.mkdirSync(path.join(Z.h, ".usage-max-codex"), { recursive: true }); fs.writeFileSync(path.join(Z.h, ".usage-max-codex", "governor.json"), JSON.stringify({ appliedKey: "green" })); // an older usage-max applied a mode here: it is the one that wrote the old defaults
   const env = { ...Z.e, USAGE_MAX_MEMORY_DIR: "/nonexistent" }; delete env.PLUGIN_ROOT;
   const r = spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "SessionStart"], { input: JSON.stringify({ session_id: "sl1" }), env, encoding: "utf8" }); assert.equal(r.status, 0);
   const t1 = fs.readFileSync(path.join(Z.ch, "config.toml"), "utf8"); assert.doesNotMatch(t1, /tool_output_token_limit|project_doc_max_bytes/); assert.match(t1, /^model_auto_compact_token_limit = 120000$/m, "your own value stays"); assert.match(t1, /\[mcp_servers\.x\]\ncommand = "x"/);
@@ -302,5 +303,15 @@ t("Codex trimming keeps the complete output on disk and says where", () => {
   const Z = mkHome(); const big = Array.from({ length: 300 }, (_, i) => "row " + i).join("\n"); const f = path.join(Z.h, "big.txt"); fs.writeFileSync(f, big + "\n");
   const o = spawnSync("node", [path.join(root, "scripts/run-trimmed.mjs"), "run", "cat", f.replace(/\\/g, "/")], { env: Z.e, encoding: "utf8" }); assert.match(o.stdout, /lines trimmed/);
   const p = o.stdout.match(/complete output is saved at (\S+)\]/); assert.ok(p && fs.readFileSync(p[1], "utf8").includes("row 150"), "the trimmed middle is recoverable");
+});
+t("review fixes: service_tier is yours; old defaults are removed only if usage-max applied a mode here, only at top level, never twice", () => {
+  const Z = mkHome(); fs.mkdirSync(Z.ch, { recursive: true }); const cfgf = path.join(Z.ch, "config.toml");
+  fs.writeFileSync(cfgf, 'service_tier = "fast"\nmodel_auto_compact_token_limit = 64000\n\n[profiles.p]\ntool_output_token_limit = 8000\n');
+  const env = { ...Z.e, USAGE_MAX_MEMORY_DIR: "/nonexistent" }; delete env.PLUGIN_ROOT; const hook = () => spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "SessionStart"], { input: JSON.stringify({ session_id: "rv1" }), env, encoding: "utf8" });
+  hook(); assert.match(fs.readFileSync(cfgf, "utf8"), /model_auto_compact_token_limit = 64000/, "never applied by usage-max here: a user's own 64000 stays");
+  fs.mkdirSync(path.join(Z.h, ".usage-max-codex"), { recursive: true }); fs.writeFileSync(path.join(Z.h, ".usage-max-codex/governor.json"), JSON.stringify({ appliedKey: "green" }));
+  hook(); const a = fs.readFileSync(cfgf, "utf8"); assert.doesNotMatch(a, /^model_auto_compact_token_limit/m); assert.match(a, /^service_tier = "fast"$/m, "your service_tier is never deleted"); assert.match(a, /\[profiles\.p\]\ntool_output_token_limit = 8000/, "inside a table: untouched");
+  const m0 = fs.statSync(cfgf).mtimeMs; const t0 = Date.now() + 5; while (Date.now() < t0) ; hook(); assert.equal(fs.statSync(cfgf).mtimeMs, m0, "nothing left to remove: the file is not rewritten");
+  spawnSync("node", [path.join(root, "scripts/codex-governor.mjs"), "mode", "red"], { env: Z.e, encoding: "utf8" }); assert.match(fs.readFileSync(cfgf, "utf8"), /^service_tier = "fast"$/m, "a mode change keeps it too");
 });
 console.log(`${n} passing (incl. trim/savings/backup/routing)`);

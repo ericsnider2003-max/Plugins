@@ -240,8 +240,12 @@ t("resume note points at the full word-for-word conversation; a compaction snaps
   fs.writeFileSync(tr, JSON.stringify({ type: "user", message: { role: "user", content: "refactor the invoice rounding" } }) + "\n" + JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Rounding moved." }, { type: "tool_use", name: "Edit", input: { file_path: "src/round.js" } }] } }) + "\n");
   assert.match(R.buildResume({ transcript: tr, cwd: w }), /Full earlier conversation, word for word: .*tr-compact\.jsonl.*grep/s);
   hook("hooks/memory.mjs", { hook_event_name: "PreCompact", cwd: w, session_id: "pc1", transcript_path: tr });
-  const a = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: w, session_id: "pc1" }).stdout).hookSpecificOutput.additionalContext;
+  const a = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: w, session_id: "pc1", transcript_path: tr }).stdout).hookSpecificOutput.additionalContext;
   assert.match(a, /refactor the invoice rounding/); assert.match(a, /src\/round\.js/); assert.match(a, /just compacted/); assert.match(a, /tr-compact\.jsonl/);
-  const b = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: w, session_id: "pc1" }).stdout).hookSpecificOutput.additionalContext; assert.match(b, /just compacted/, "shown again, not consumed");
+  const b = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: w, session_id: "pc1", transcript_path: tr }).stdout).hookSpecificOutput.additionalContext; assert.match(b, /just compacted/, "shown again, not consumed");
+  const other = path.join(home, "other-session.jsonl"); const c = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "SessionStart", source: "compact", cwd: w, session_id: "pc9", transcript_path: other }).stdout).hookSpecificOutput.additionalContext;
+  assert.doesNotMatch(c, /refactor the invoice rounding/, "another session's note is not shown as this conversation"); assert.match(c, /other-session\.jsonl/, "but the way to the full text always is");
+  const longTr = path.join(home, "long-tr.jsonl"); fs.writeFileSync(longTr, [1, 2, 3, 4].map((i) => JSON.stringify({ type: "user", message: { role: "user", content: "p" + i + " " + "word ".repeat(60) } })).join("\n") + "\n" + JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "t ".repeat(400) }] } }) + "\n");
+  const note = R.buildResume({ transcript: longTr, cwd: w }); R.saveResume(R.sharedDir(), w, note, { minGapMs: 0 }); assert.match(R.peekResume(R.sharedDir(), w), /long-tr\.jsonl/, "pointer survives the size cap even with long prompts");
 });
 console.log(n, "passing");

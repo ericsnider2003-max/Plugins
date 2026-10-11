@@ -69,6 +69,9 @@ export function touch(dir, sid, now = Date.now()) { const s = loadSession(dir, s
 export function resetReads(dir, sid) { const s = loadSession(dir, sid); s.reads = {}; s.hashes = []; saveSession(dir, sid, s); }
 
 // ---- runaway loops: the SAME tool call repeated with no edit in between
+// a shell command that changes files or installs something counts as progress too (fixing via sed/git apply/patch, not only Edit/Write)
+const BASH_WRITE = /\bsed\s+(-[a-z]*i|--in-place)|\bgit\s+(apply|checkout|restore|stash|commit|merge|rebase|reset|cherry-pick|pull)\b|\bpatch\b|\btee\b|\b(mv|cp|rm|touch|mkdir)\b|\b(npm|pnpm|yarn)\s+(install|i|add|remove|update)\b|\bpip3?\s+install\b|(^|[^>0-9&])>{1,2}\s*[^\s&]/;
+export const bashMutates = (input) => typeof (input && input.command) === "string" && BASH_WRITE.test(input.command);
 const MUTATING = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 export const callHash = (tool, input) => { let h = 2166136261; for (const c of `${tool}\0${JSON.stringify(input || {}).slice(0, 600)}`) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
 // Calls whose answer changes over time (waiting on notifications, tasks, CI, PR state) are polling, not a loop: never count them.
@@ -76,7 +79,7 @@ export const POLLING = /^(ReadNotifications|TaskList|TaskGet|TaskOutput|Monitor|
 export function loopCheck(dir, sid, tool, input, { now = Date.now() } = {}) {
   if (POLLING.test(tool || "") || (input && typeof input === "object" && !Object.keys(input).length)) return null;
   const s = loadSession(dir, sid); s.last = now;
-  if (MUTATING.has(tool)) s.hashes = []; // progress was made: start counting again
+  if (MUTATING.has(tool) || (tool === "Bash" && bashMutates(input))) s.hashes = []; // progress was made (an edit, or a command that changes files): start counting again
   else {
     const h = callHash(tool, input); s.hashes = [...(s.hashes || []), h].slice(-30);
     const same = s.hashes.filter((x) => x === h).length; const lvl = same >= 6 ? 2 : same >= 3 ? 1 : 0;
@@ -118,16 +121,16 @@ export function readGate(dir, sid, input, { bytes } = {}) {
   if (/\.(png|jpe?g|gif|webp|bmp|ico|pdf|ipynb|svg|mp4|mov|zip)$/i.test(p)) return null; // images/PDFs/notebooks are read whole by design and cannot be grepped
   const max = bytes || Number(c.readBlockBytes) || 400000; let st; try { st = fs.statSync(p); } catch { return null; }
   if (!st.isFile() || st.size <= max) return null;
-  const s = loadSession(dir, sid); s.blocked = s.blocked || {};
-  if (s.blocked[p]) return null; // second ask: the user/model really wants it
-  s.blocked[p] = Date.now(); const keys = Object.keys(s.blocked); if (keys.length > 100) for (const x of keys.slice(0, keys.length - 100)) delete s.blocked[x];
-  saveSession(dir, sid, s); bump(dir, "bigReadsHeld");
+  const bf = path.join(dir, "readgate.json"), seenB = readJson(bf, {}) || {}, key = `${p}|${st.mtimeMs}`, now = Date.now();
+  if (seenB[key] && now - seenB[key] < 864e5) return null; // already held once (in any session): the second ask goes through
+  seenB[key] = now; const ks = Object.keys(seenB); if (ks.length > 200) for (const x of ks.slice(0, ks.length - 200)) delete seenB[x];
+  try { writeJsonAtomic(bf, seenB); } catch {} bump(dir, "bigReadsHeld");
   return { deny: `usage-max: ${path.basename(p)} is ${Math.round(st.size / 1000)} KB (about ${k(st.size / 4)} tokens), and a whole-file read would sit in the context for every following turn. Grep for what you need and Read a range (offset/limit). If you truly need the entire file, call Read again and it will go through.` };
 }
 
 // ---- subagent concurrency cap (each parallel subagent pays its own full startup context)
 const CAPS = { green: 4, amber: 2, red: 1 };
-const FLIGHT_TTL = 20 * 60e3;
+const FLIGHT_TTL = 6 * 60e3; // a subagent that was interrupted never reports back: its slot must not block later ones for long
 export function agentCap(dir, mode, surplus) {
   const c = readJson(path.join(dir, "config.json"), {}) || {}; if (Number.isInteger(c.maxSubagents) && c.maxSubagents > 0) return c.maxSubagents;
   return (CAPS[mode] || 4) + (mode === "green" && surplus ? 1 : 0);

@@ -157,7 +157,7 @@ export function setTopLevel(toml, kv) {
 }
 export const LEGACY_TUNING = { tool_output_token_limit: 8000, model_auto_compact_token_limit: 64000, project_doc_max_bytes: 16384 };
 const tuningKV = (cfg) => Object.fromEntries(Object.entries(cfg.tuning || {}).filter(([, v]) => Number.isFinite(v)));
-const modeKV = (mc, cfg) => ({ ...(mc.model ? { model: mc.model } : {}), model_reasoning_effort: mc.effort, service_tier: mc.service_tier || null, plan_mode_reasoning_effort: mc.effort === "low" ? "medium" : mc.effort, ...tuningKV(cfg) });
+const modeKV = (mc, cfg) => ({ ...(mc.model ? { model: mc.model } : {}), model_reasoning_effort: mc.effort, ...(mc.service_tier ? { service_tier: mc.service_tier } : {}), plan_mode_reasoning_effort: mc.effort === "low" ? "medium" : mc.effort, ...tuningKV(cfg) });
 export function writeProfiles(cfg = loadConfig()) {
   for (const mode of ["green", "amber", "red", "surplus"]) {
     const f = path.join(codexHome(), `usage-max-${mode}.config.toml`);
@@ -168,10 +168,13 @@ export function writeProfiles(cfg = loadConfig()) {
 export function markInstalled(now = Date.now()) { const sf = path.join(dataDir(), "governor.json"); const st = { mode: "green", override: null, calib: null, k: null, ...j(sf, {}) }; if (!st.installedAt) { st.installedAt = new Date(now).toISOString(); wj(sf, st); } }
 export const modeKey = (mode, surplus) => mode + (surplus ? "+s" : "");
 export function markApplied(key) { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.appliedKey = key; wj(sf, st); }
-// keys whose current value is exactly what an older usage-max wrote (and that the user has not chosen to manage): returned as null = remove
+// Old defaults are removed ONLY when (a) usage-max once applied a mode on this machine (governor.json has appliedKey, i.e. it is the one that wrote them),
+// (b) the line is a top-level key (above the first [table]) holding exactly the old default, and (c) you did not ask for that limit under "tuning".
+const topLevel = (t) => { const i = String(t).search(/^\s*\[/m); return i < 0 ? String(t) : String(t).slice(0, i); };
 export function legacyRemovals(text, cfg = loadConfig()) {
-  const out = {};
-  for (const [k, v] of Object.entries(LEGACY_TUNING)) { const m = String(text).match(new RegExp(`^\\s*${k}\\s*=\\s*(\\d+)\\s*$`, "m")); if (m && Number(m[1]) === v && !Number.isFinite((cfg.tuning || {})[k])) out[k] = null; }
+  const out = {}; const st = j(path.join(dataDir(), "governor.json"), {}); if (!st.appliedKey) return out;
+  const head = topLevel(text);
+  for (const [k, v] of Object.entries(LEGACY_TUNING)) { const m = head.match(new RegExp(`^\\s*${k}\\s*=\\s*(\\d+)\\s*(?:#.*)?$`, "m")); if (m && Number(m[1]) === v && !Number.isFinite((cfg.tuning || {})[k])) out[k] = null; }
   return out;
 }
 // Runs on every SessionStart: hand back the context-shrinking limits an older usage-max wrote, whatever the budget mode. Returns the keys removed.
@@ -180,7 +183,7 @@ export function cleanLegacy(cfg = loadConfig()) {
     const f = path.join(codexHome(), "config.toml"); let t = ""; try { t = fs.readFileSync(f, "utf8"); } catch { return []; }
     const rm = legacyRemovals(t, cfg); const keys = Object.keys(rm); if (!keys.length) return [];
     try { fs.writeFileSync(f + ".usage-max-backup", t, { flag: "wx" }); } catch {}
-    fs.writeFileSync(f, setTopLevel(t, rm).replace(/\n*$/, "\n")); writeProfiles(cfg); return keys;
+    const tmp = f + "." + process.pid + ".tmp"; fs.writeFileSync(tmp, setTopLevel(t, rm).replace(/\n*$/, "\n")); fs.renameSync(tmp, f); writeProfiles(cfg); return keys;
   } catch { return []; }
 }
 export function applyMode(mode, cfg = loadConfig(), surplus = false) {

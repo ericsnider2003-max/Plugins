@@ -26,7 +26,7 @@ export const saveApplied = (file, applied) => writeJsonAtomic(file, applied);
 // force=true: the governor is tightening the budget (AMBER/RED), so it may override a user value to save usage.
 export function ownedSet(obj, keyPath, value, applied, force = false) {
   const cur = get(obj, keyPath);
-  if (J(cur) === J(value)) { applied[keyPath] = value; return "same"; }
+  if (J(cur) === J(value)) { if (keyPath in applied) applied[keyPath] = value; return "same"; } // already that value: only ours if we wrote it before; a user's own identical value is never claimed (so it can never be "handed back" = deleted)
   if (force || cur === undefined || (keyPath in applied && J(applied[keyPath]) === J(cur))) { put(obj, keyPath, value); applied[keyPath] = value; return "set"; }
   return "kept";
 }

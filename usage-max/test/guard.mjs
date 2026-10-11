@@ -285,7 +285,28 @@ await t("trim keeps the complete output on disk and says where; the profile no l
 await t("safety report names what shrinks context and who set it; --fix hands back only usage-max's own values", async () => {
   const S = await import(pathToFileURL(path.join(root, "scripts/safety.mjs")).href), h = fs.mkdtempSync(path.join(os.tmpdir(), "us-")); fs.mkdirSync(path.join(h, ".claude/usage-max"), { recursive: true }); fs.mkdirSync(path.join(h, ".codex"), { recursive: true });
   fs.writeFileSync(path.join(h, ".claude/settings.json"), JSON.stringify({ autoCompactWindow: 120000, env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" } })); fs.writeFileSync(path.join(h, ".claude/usage-max/applied.json"), JSON.stringify({ autoCompactWindow: 120000 }));
-  fs.writeFileSync(path.join(h, ".codex/config.toml"), 'tool_output_token_limit = 8000\nmodel_auto_compact_token_limit = 99000\n');
+  fs.mkdirSync(path.join(h, ".usage-max-codex"), { recursive: true }); fs.writeFileSync(path.join(h, ".usage-max-codex/governor.json"), JSON.stringify({ appliedKey: "green" })); fs.writeFileSync(path.join(h, ".codex/config.toml"), 'tool_output_token_limit = 8000 # old\nmodel_auto_compact_token_limit = 99000\n\n[profiles.x]\nproject_doc_max_bytes = 16384\n');
   const r = S.report(h); assert.match(r.text, /autoCompactWindow = 120000 {2}\(set by usage-max\)/); assert.match(r.text, /CLAUDE_CODE_DISABLE_AUTO_MEMORY = 1 {2}\(set by you\)/); assert.match(r.text, /tool_output_token_limit = 8000 {2}\(set by usage-max \(older version\)\)/); assert.match(r.text, /model_auto_compact_token_limit = 99000 {2}\(set by you\)/);
   const clean = S.report(fs.mkdtempSync(path.join(os.tmpdir(), "us2-"))); assert.match(clean.text, /Nothing to fix/);
+});
+
+await t("review fixes: a value YOU set is never claimed, so lean 'hand back' can never delete it", async () => {
+  const O = await import(pathToFileURL(path.join(root, "scripts/owned.mjs")).href);
+  const s0 = { autoCompactWindow: 160000, alwaysThinkingEnabled: false, env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" } }, ap = {};
+  GV.patchLean(s0, "amber", ap, { lean: true }); GV.patchLean(s0, "green", ap, { lean: false });
+  assert.equal(s0.autoCompactWindow, 160000, "yours, identical to lean's value"); assert.equal(s0.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1"); assert.deepEqual(ap, {}, "nothing was ever claimed");
+  const mine = {}; assert.equal(O.ownedSet(mine, "a", 1, ap), "set"); assert.equal(ap.a, 1); assert.equal(O.ownedSet(mine, "a", 1, ap), "same"); assert.equal(ap.a, 1, "ours stays ours");
+});
+await t("review fixes: loop guard counts a Bash edit as progress; a lost subagent frees its slot in 6 min; the huge-read hold is remembered across sessions", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "rv-")); const b = { command: "npm test" }, sedc = { command: "sed -i s/a/b/ src/x.js" };
+  const res = []; for (let i = 0; i < 5; i++) res.push(G.loopCheck(d, "l", "Bash", b)); res.push(G.loopCheck(d, "l", "Bash", sedc)); res.push(G.loopCheck(d, "l", "Bash", b)); res.push(G.loopCheck(d, "l", "Bash", b));
+  assert.ok(!res.some((x) => x && /Stop now/.test(x.additionalContext)), "re-running the tests while fixing by sed in between is progress, never 'Stop now'");
+  assert.equal(G.bashMutates({ command: "npm test" }), false); assert.equal(G.bashMutates({ command: "echo hi > out.txt" }), true); assert.equal(G.bashMutates({ command: "git apply p.diff" }), true);
+  fs.rmSync(path.join(d, "inflight.json"), { force: true }); G.agentStart(d, "lost", "red", false, 1000); assert.ok(G.agentStart(d, "b", "red", false, 1000 + 300e3).deny, "still held at 5 min"); assert.equal(G.agentStart(d, "c", "red", false, 1000 + 361e3), null, "free after 6 min");
+  const f = path.join(d, "huge.log"); fs.writeFileSync(f, "x".repeat(450000)); assert.ok(G.readGate(d, "s1", { file_path: f }).deny); assert.equal(G.readGate(d, "s2-new-session", { file_path: f }), null, "asked again in a NEW session: goes through");
+});
+await t("review fixes: trim copies are private, and a vanished sibling file cannot lose the pointer", async () => {
+  const T = await import(pathToFileURL(path.join(root, "scripts/trim.mjs")).href), h = fs.mkdtempSync(path.join(os.tmpdir(), "ut2-"));
+  const f = T.saveFull("secret-ish output", h); assert.ok(f); if (process.platform !== "win32") assert.equal(fs.statSync(f).mode & 0o077, 0, "owner-only");
+  const d = path.dirname(f); fs.writeFileSync(path.join(d, "ghost"), "x"); const orig = fs.statSync; assert.ok(T.saveFull("second", h), "still returns a path");
 });

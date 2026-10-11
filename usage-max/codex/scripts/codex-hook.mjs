@@ -7,7 +7,8 @@
 //  PreToolUse Bash  -> trim noisy simple commands via updatedInput -> `node run-trimmed.mjs run <plain words>` (readable, any shell). Off: USAGE_MAX_TRIM=off or config.json trim:"off".
 //                      win32 only after `codex-governor.mjs selftest-trim` wrote trim-ok.json (or USAGE_MAX_TRIM=force).
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
-import { evaluate, applyMode, dataDir, modeKey, codexHome, cleanLegacy } from "./codex-governor.mjs";
+import { evaluate, applyMode, dataDir, modeKey, codexHome } from "./codex-governor.mjs";
+import * as CGOV from "./codex-governor.mjs"; // namespace import: an older copy without cleanLegacy is skipped, never a startup error
 import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import { guard, sessionContext, nudge, nudgeAt } from "./codex-guards.mjs"; import * as TC from "./trimcheck.mjs";
 // project memory + shared resume point: ./memory.mjs and ./resume.mjs next to this file (the stable bin copy) or the plugin's scripts/ (running from the plugin). Absent = feature silently off.
 let R = null; try { R = await import("./resume.mjs"); } catch { try { R = await import("../../scripts/resume.mjs"); } catch {} }
@@ -49,7 +50,7 @@ function main() {
     return;
   }
   const sid0 = input.session_id || "?";
-  if (ev === "SessionStart") { try { cleanLegacy(); } catch {} } // safe by default: give back compaction / output / AGENTS.md limits an older version wrote
+  if (ev === "SessionStart") { try { if (CGOV.cleanLegacy) CGOV.cleanLegacy(); } catch {} } // safe by default: give back compaction / output / AGENTS.md limits an older version wrote
   if (M && (ev === "SessionStart" || ev === "UserPromptSubmit")) { try { const mt = memoryText(ev, input, sid0); if (mt) process.stdout.write(mt + "\n"); } catch {} } // first: a budget-evaluation failure must not cost you the project notes
   // automatic resume point (shared with Claude Code): written at Stop, offered to the next fresh chat in this folder. Before the budget code on purpose.
   if (R && (ev === "Stop" || ev === "SessionStart")) {

@@ -26,7 +26,10 @@ try {
     const parts = []; M.saveSeen(sid, new Set()); // new/cleared/compacted context: notes may be injected again
     if (mem) parts.push(M.loadBlock(mem, { cap: Number(cfg.memoryBudgetChars) || 2500, cmd }));
     if (input.source === "compact") { // a compaction summarises older detail away: bring back the notes, the files being edited and the way to the full text
-      const p = cfg.resume === "off" ? null : R.peekResume(R.sharedDir(), cwd); if (p) parts.push(p + "\n(Context was just compacted. Anything the summary left out can be found in the full conversation file above; check it before asking the user to repeat themselves.)");
+      const tp = input.transcript_path ? String(input.transcript_path).replace(/\\/g, "/") : null;
+      const p = cfg.resume === "off" ? null : R.peekResume(R.sharedDir(), cwd, { mustInclude: tp });
+      const tail = "\n(Context was just compacted. Anything the summary left out can be found in the full conversation file named above; check it before asking the user to repeat themselves.)";
+      if (p) parts.push(p + tail); else if (tp) parts.push(`Full earlier conversation, word for word: ${tp} - search it (grep) for any detail before asking the user to repeat something.` + tail);
     }
     if (!input.source || input.source === "startup" || input.source === "clear") {
       const r = cfg.resume === "off" ? null : R.takeResume(R.sharedDir(), cwd, { tool: "claude" }); if (r) parts.push(r + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)");

@@ -10,14 +10,14 @@ import { fileURLToPath } from "node:url";
 const home = process.env.USAGE_MAX_HOME || os.homedir();
 const jr = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return d; } };
 const get = (o, p) => p.split(".").reduce((x, k) => (x == null ? undefined : x[k]), o);
-const toml = (t, k) => { const m = String(t).match(new RegExp(`^\\s*${k}\\s*=\\s*(.+?)\\s*$`, "m")); return m ? m[1] : undefined; };
+const toml = (t, k) => { const s = String(t), i = s.search(/^\s*\[/m), head = i < 0 ? s : s.slice(0, i); const m = head.match(new RegExp(`^\\s*${k}\\s*=\\s*([^#\\n]+?)\\s*(?:#.*)?$`, "m")); return m ? m[1].trim() : undefined; }; // top-level keys only, trailing comments ignored
 
 export function claudeRows(h = home) {
   const s = jr(path.join(h, ".claude", "settings.json"), {}), applied = jr(path.join(h, ".claude", "usage-max", "applied.json"), {}), cfg = jr(path.join(h, ".claude", "usage-max", "config.json"), {});
   const who = (k) => (k in applied && JSON.stringify(applied[k]) === JSON.stringify(get(s, k)) ? "usage-max" : "you");
   const rows = [];
   const add = (key, bad, what) => { const v = get(s, key); if (v !== undefined && bad(v)) rows.push({ tool: "Claude", key, value: v, who: who(key), what }); };
-  add("autoCompactWindow", () => true, "compacts (summarises away older detail) earlier than the default");
+  add("autoCompactWindow", (v) => Number(v) < 200000, "compacts (summarises away older detail) earlier than the default");
   add("env.CLAUDE_CODE_DISABLE_AUTO_MEMORY", (v) => v === "1", "turns off Claude's own auto memory");
   add("env.CLAUDE_CODE_DISABLE_CRON", (v) => v === "1", "turns off scheduled tasks and loops");
   add("env.BASH_MAX_OUTPUT_LENGTH", (v) => Number(v) < 30000, "cuts long command output shorter than the default 30000");
@@ -29,7 +29,7 @@ export function codexRows(h = home) {
   const legacy = { tool_output_token_limit: 8000, model_auto_compact_token_limit: 64000, project_doc_max_bytes: 16384 };
   const what = { tool_output_token_limit: "cuts every tool result to this many tokens", model_auto_compact_token_limit: "compacts (summarises away detail) once a chat reaches this many tokens", project_doc_max_bytes: "cuts AGENTS.md off after this many bytes" };
   const rows = [];
-  for (const [k, w] of Object.entries(what)) { const v = toml(t, k); if (v !== undefined) rows.push({ tool: "Codex", key: k, value: Number(v), who: Number(v) === legacy[k] ? "usage-max (older version)" : "you", what: w }); }
+  for (const [k, w] of Object.entries(what)) { const v = toml(t, k); if (v !== undefined) rows.push({ tool: "Codex", key: k, value: Number(v), who: Number(v) === legacy[k] && jr(path.join(h, ".usage-max-codex", "governor.json"), {}).appliedKey ? "usage-max (older version)" : "you", what: w }); }
   return { rows };
 }
 export function report(h = home) {

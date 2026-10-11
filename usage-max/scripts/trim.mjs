@@ -7,11 +7,13 @@ import crypto from "node:crypto";
 // The trimmed middle is never gone: the whole output is kept here (newest 40 files, 2 days) and the model is told where.
 export function saveFull(raw, home = process.env.USAGE_MAX_HOME || os.homedir()) {
   try {
-    const d = path.join(home, ".usage-max", "full-output"); fs.mkdirSync(d, { recursive: true });
-    const f = path.join(d, `${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.createHash("sha1").update(raw).digest("hex").slice(0, 6)}.txt`); fs.writeFileSync(f, raw);
-    const all = fs.readdirSync(d).map((n) => ({ n, t: fs.statSync(path.join(d, n)).mtimeMs })).sort((a, b) => b.t - a.t);
-    for (const x of all.slice(40)) try { fs.unlinkSync(path.join(d, x.n)); } catch {}
-    for (const x of all) if (Date.now() - x.t > 2 * 864e5) try { fs.unlinkSync(path.join(d, x.n)); } catch {}
+    const d = path.join(home, ".usage-max", "full-output"); fs.mkdirSync(d, { recursive: true, mode: 0o700 });
+    const f = path.join(d, `${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.createHash("sha1").update(raw).digest("hex").slice(0, 6)}.txt`); fs.writeFileSync(f, raw, { mode: 0o600 }); // private: command output can contain tokens
+    try { // housekeeping must never lose the pointer to the file just written
+      const all = fs.readdirSync(d).map((n) => { try { return { n, t: fs.statSync(path.join(d, n)).mtimeMs }; } catch { return null; } }).filter(Boolean).sort((a, b) => b.t - a.t);
+      for (const x of all.slice(40)) try { fs.unlinkSync(path.join(d, x.n)); } catch {}
+      for (const x of all) if (Date.now() - x.t > 2 * 864e5) try { fs.unlinkSync(path.join(d, x.n)); } catch {}
+    } catch {}
     return f;
   } catch { return null; }
 }
