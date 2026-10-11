@@ -92,7 +92,9 @@ function balance() {
 }
 
 async function doctor(fix = false) {
-  if (fix) { console.log("usage-max doctor --fix: applying the usage profile first (your own settings are never overwritten)"); run(S("profile.mjs"), ["--write"]); console.log(""); }
+  if (fix) { console.log("usage-max doctor --fix: applying the usage profile first (your own settings are never overwritten)"); run(S("profile.mjs"), ["--write"]); console.log("");
+    try { if (fs.existsSync(path.join(home, ".usage-max-codex", "bin"))) { const { syncBin } = await import("../codex/scripts/sync.mjs"); const r = syncBin({ root, home }); if (r.changed) console.log(`refreshed the Codex scripts in ~/.usage-max-codex/bin to ${r.version} (config.toml and your hooks are untouched)\n`); } } catch {}
+  }
   const out = []; const ok = (m) => out.push(`  ok   ${m}`); const bad = (m, fix) => out.push(`  FIX  ${m}${fix ? `\n       -> ${fix}` : ""}`);
   const st = json(path.join(home, ".claude", "settings.json")); const gov = json(path.join(home, ".claude", "usage-max", "governor.json")) || {}; const lim = json(path.join(home, ".claude", "usage-max", "limits.json"));
   cloudNote();
@@ -110,7 +112,8 @@ async function doctor(fix = false) {
   const mine = (json(path.join(root, ".claude-plugin", "plugin.json")) || {}).version || "?";
   let latest = null;
   try { const r = await fetch("https://raw.githubusercontent.com/ericsnider2003-max/Plugins/main/usage-max/.claude-plugin/plugin.json", { signal: AbortSignal.timeout(4000) }); if (r.ok) latest = (await r.json()).version; } catch {}
-  latest === null ? ok(`version ${mine} (could not reach GitHub to compare)`) : latest === mine ? ok(`version ${mine} is the latest on main`) : bad(`version ${mine}, latest on main is ${latest}`, "it updates itself at the next Claude Code start (auto-update); or: claude plugin marketplace update eric-plugins");
+  const cmpV = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1; } return 0; };
+  latest === null ? ok(`version ${mine} (could not reach GitHub to compare)`) : latest === mine ? ok(`version ${mine} is the latest on main`) : cmpV(mine, latest) > 0 ? bad(`version ${mine} is AHEAD of main (${latest}): this build is not merged yet`, "merge the pull request, otherwise auto-update can replace this build with the older main. Until then you can turn auto-update off for eric-plugins") : bad(`version ${mine}, latest on main is ${latest}`, "it updates itself at the next Claude Code start (auto-update); or: claude plugin marketplace update eric-plugins");
   const old = oldSyncedCopies(home, root);
   old.length ? bad(`older uploaded copy usage-max ${old[0].version} is enabled next to this one (every hook runs twice)`, DISABLE_OLD) : ok("no duplicate uploaded copy");
   for (const h of ["session-start", "budget", "bash-trim", "ledger", "guard", "cross-gate"]) fs.existsSync(path.join(root, "hooks", `${h}.mjs`)) ? 0 : bad(`hook ${h}.mjs missing`);

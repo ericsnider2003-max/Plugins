@@ -2,6 +2,10 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.14.1 (Oct 11 2026) — doctor tells the truth about versions
+- `doctor` now says when your build is AHEAD of `main` (unmerged: auto-update could replace it with the older main) instead of "it updates itself".
+- `codex doctor` now flags Codex scripts that are older than the plugin (new Codex features are not active) instead of reporting "ok", and `doctor --fix` refreshes them immediately (scripts only; your config.toml and hooks are untouched).
+
 ## 0.14.0 (Oct 10 2026) — closing the open items
 - **Automatic handoff (Claude).** When the idle-cache warning fires on a big context, usage-max now also writes a handoff file straight from the transcript, with no model call: your recent requests, files changed, open todos, git status and recent commits. `/clear`, then point the new session at the file. Files live in `~/.claude/usage-max/handoffs` and are deleted after 14 days.
 - **Codex guards.** The 3rd identical shell command in a row gets a note appended to its output (exit code preserved); a bare `cat <big file>` shows the first 200 lines plus how to read ranges. They never change approval (no permission decision is sent), do nothing on Windows (shell quoting unverified there), and switch off with `USAGE_MAX_GUARDS=off` or `config.json` `"guards":"off"`. Whether your Codex version honours the rewrite is unverified: if it does not, they are harmless no-ops.
