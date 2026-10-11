@@ -2,6 +2,47 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.14.1 (Oct 11 2026) — doctor tells the truth about versions
+- `doctor` now says when your build is AHEAD of `main` (unmerged: auto-update could replace it with the older main) instead of "it updates itself".
+- `codex doctor` now flags Codex scripts that are older than the plugin (new Codex features are not active) instead of reporting "ok", and `doctor --fix` refreshes them immediately (scripts only; your config.toml and hooks are untouched).
+
+## 0.14.0 (Oct 10 2026) — closing the open items
+- **Automatic handoff (Claude).** When the idle-cache warning fires on a big context, usage-max now also writes a handoff file straight from the transcript, with no model call: your recent requests, files changed, open todos, git status and recent commits. `/clear`, then point the new session at the file. Files live in `~/.claude/usage-max/handoffs` and are deleted after 14 days.
+- **Codex guards.** The 3rd identical shell command in a row gets a note appended to its output (exit code preserved); a bare `cat <big file>` shows the first 200 lines plus how to read ranges. They never change approval (no permission decision is sent), do nothing on Windows (shell quoting unverified there), and switch off with `USAGE_MAX_GUARDS=off` or `config.json` `"guards":"off"`. Whether your Codex version honours the rewrite is unverified: if it does not, they are harmless no-ops.
+- **Codex trim self-test.** Same rule as Claude: a trimmed command re-run within 3 minutes counts against trim, and above 30% after 10 samples trim switches itself off.
+- **`/usage-max codex weights`**: learns each model's relative plan cost from your own logs (plan points moved per token), so you do not need the rate card; `--apply` writes them into the Codex governor config. An estimate, needing real movement per model before it reports.
+
+## 0.13.0 (Oct 10 2026) — local-model offload
+- **`/usage-max offload`**: bounded text jobs (`summarize`, `commit`, `explain`, `docstrings`, `convert:<format>`) run on a model on YOUR machine (Ollama), so they cost no Claude or Codex usage and the code never leaves the PC. Example: `git diff --staged | usage-max offload commit`.
+- Built-in safety: loopback addresses only (refuses anything not 127.0.0.1/localhost), refuses secrets files and text containing private keys or tokens, input capped at 60k characters, output labelled "unverified". It never installs or downloads a model: `offload status` tells you what to install (Ollama, then e.g. `ollama pull qwen2.5-coder:7b`).
+- The Claude routing skill and the Codex AGENTS block tell the agent to use it when it reports ready. `savings` shows jobs run and the input tokens kept off your plan (an estimate: characters/4).
+- Tested against a stub Ollama server only; not yet tried with a real model.
+
+## 0.12.0 (Oct 10 2026) — where Codex usage really goes, and four new brakes
+- **`/usage-max codex diagnose`** (also summarised in `savings`): Codex logs the plan's real rate-limit percentages on every call, so the weekly % that moved between two calls is attributed to the session, model/effort, folder, day and start type (interactive vs `codex exec`/automation) that made it. Measured, not estimated; resets are ignored. Plus token mix (fresh vs cached input, output, reasoning), context size per call, and plain "what stands out" findings.
+- **Cross-agent gate.** Claude calling Codex (`codex exec` / `codex review`, which is what the codex-review and codex-dispatch plugins run) spends your Codex plan. A new Claude hook counts those calls and ASKS first (never auto-approves) when Codex is RED or when a session is on its 3rd+ Codex call in an hour (each review round re-sends the plan/diff).
+- **Script-first hint.** The same edit made in 4 different files triggers one nudge: write one script/codemod for the rest instead of one model turn per file.
+- **Session cap (`/usage-max cap <usd>|off`).** Optional per-session spend cap at list price; warns at 80% and 100% so one runaway session cannot eat the week. Off by default; nothing is blocked.
+- Digest counts for all of these.
+
+## 0.11.0 (Oct 10 2026) — the open research items
+- **Trim self-test (`/usage-max trim`).** The Claude shell-output trim now measures itself: bytes removed, and how often the same command was re-run within 3 minutes of a trim (a re-run means the model needed what was cut). Above 30% re-runs, after 10 samples, trim switches itself off; `usage-max trim on` re-enables. Shown in `savings`. Independent tests of output trimming disagree with vendor claims, so this decides on your own data.
+- **Description budgets, opt-in (`/usage-max budgets on|off`).** Smaller skill-list and MCP description budgets (`SLASH_COMMAND_TOOL_CHAR_BUDGET` 4000, `CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH` 1000) to shrink the first turn. Off by default because rarely used skills may trigger less; only keys it wrote are ever removed.
+- **Cheap-first cascade.** The routing skill and the Codex block now say: start mechanical work on the cheapest tier, let tests/linter judge, retry once with the error, then escalate one step; hard or unverifiable work starts higher.
+
+## 0.10.0 (Oct 10 2026) — burn alarm, background-spend switches, instruction lint
+- **`/usage-max anomaly`** (also shown in `savings`): compares the last 3 hours with your own hourly median (needs about a day of history) and, when it is 3x higher, names the biggest contributor (session, model, effort). Claude in list-price dollars, Codex in tokens (Codex logs carry no price). Catches loops, stuck tasks, Fast mode or a plugin that started spending, on either plan.
+- **Lean mode now also switches off background spend while tightening:** auto memory in AMBER and RED, scheduled tasks in RED (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_DISABLE_CRON`). GREEN removes them again, and a value you set yourself is never touched.
+- **`context`** also flags instruction files over about 200 lines (Anthropic's guidance) and warns against unpruned `/init` output.
+- **`/usage-max crosscheck <ccusage.json>`**: optional, offline comparison with a ccusage export you made yourself. usage-max never runs ccusage.
+- **Subagent cache lifetime** set to 5m in both profiles (`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`), the cold-cache warning now says resuming a big old session is the costliest move, and `context` explains that memory plugins can spend tokens in the background.
+- Research and build plan: `docs/RESEARCH-usage-reduction.md`.
+
+## 0.9.1 (Oct 10 2026) — one savings report for both plans
+- **`/usage-max savings [--days N]`** shows Claude and Codex side by side with the same labels: `measured` (read from your logs), `estimate` (a stated counterfactual, e.g. what subagent work would have cost on the main model) and `what-if` (a lever, not a saving). Neither plan is favoured.
+- Each side ends with "more:" hints computed from your own numbers: Claude delegation share and main-model spend; Codex high/xhigh effort share and tool-output bytes per turn.
+- Honest limit: there is no "without usage-max" run to compare against, so totals are workload-dependent; only the labelled counterfactuals are estimates.
+
 ## 0.9.0 (Oct 10 2026) — lean mode and burn visibility
 - **Lean RED/AMBER.** Besides model and effort, tightening now caps context growth (`autoCompactWindow` 160k AMBER / 120k RED) and turns off always-on thinking in RED. Back in GREEN your own values are left alone and anything usage-max wrote is removed.
 - **Time to empty.** `/usage-max status` and the budget directive say "at this pace the plan runs out in ~Xh, before the reset in Yh" (only from real plan-% data, only when it beats the reset).

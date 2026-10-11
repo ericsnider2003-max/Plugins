@@ -31,13 +31,16 @@ try {
     if (parts.length) out({ systemMessage: parts.join("\n") });
   } else if (ev === "UserPromptSubmit") {
     const msg = G.promptCheck(dir, sid, { ctx: G.lastContext(input.transcript_path), ttlMs: G.cacheTtlMs(home) });
-    if (msg) out({ systemMessage: msg });
+    const cap = G.loadCap(dir), capMsg = cap ? G.capCheck(dir, sid, G.sessionCost(input.transcript_path), cap) : null;
+    let handoffMsg = null;
+    if (msg && /sat idle/.test(msg)) { try { const { write } = await import("../scripts/autohandoff.mjs"); const hf = write(dir, sid, input.transcript_path); if (hf) { G.bump(dir, "autoHandoffs"); handoffMsg = `usage-max wrote a free handoff (no model call): ${hf}\nTo avoid re-reading the cold context: /clear, then say "Continue from the handoff file at ${hf}".`; } } catch {} }
+    if (msg || capMsg || handoffMsg) out({ systemMessage: [msg, handoffMsg, capMsg].filter(Boolean).join("\n") });
   } else if (ev === "Stop") {
     G.touch(dir, sid);
   } else if (ev === "PostToolUse") {
     const tool = input.tool_name || "";
     if (tool === "Agent" || tool === "Task") G.agentEnd(dir, input.tool_use_id);
-    const r = G.loopCheck(dir, sid, tool, input.tool_input);
+    const r = G.loopCheck(dir, sid, tool, input.tool_input) || (() => { const m = G.editPattern(dir, sid, tool, input.tool_input); return m ? { additionalContext: m } : null; })();
     if (r) out({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: r.additionalContext }, ...(r.systemMessage ? { systemMessage: r.systemMessage } : {}) });
   } else if (ev === "PreToolUse" && input.tool_name === "Read") {
     const hint = G.readCheck(dir, sid, input.tool_input);

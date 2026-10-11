@@ -1,6 +1,6 @@
 {
   "name": "usage-max",
-  "version": "0.9.0",
+  "version": "0.14.1",
   "description": "Route every task to the smallest capable model tier and verify the savings from local transcripts.",
   "author": {
     "name": "usage-max"

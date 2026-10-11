@@ -13,8 +13,9 @@ export function scan({ home = process.env.USAGE_MAX_HOME || os.homedir(), cwd = 
   const seen = new Map();
   const visit = (f, via, depth) => {
     f = path.resolve(f); if (seen.has(f) || depth > 4) return; let st; try { st = fs.statSync(f); } catch { return; } if (!st.isFile()) return;
-    seen.set(f, { file: f, via, bytes: st.size, tokens: tok(st.size), ageDays: Math.round((Date.now() - st.mtimeMs) / DAY) });
+    seen.set(f, { file: f, via, bytes: st.size, lines: 0, tokens: tok(st.size), ageDays: Math.round((Date.now() - st.mtimeMs) / DAY) });
     if (st.size > 400000) return; let text = ""; try { text = fs.readFileSync(f, "utf8"); } catch { return; }
+    seen.get(f).lines = text.split("\n").length;
     for (const m of text.matchAll(/(?:^|\s)@((?:~|\.{1,2})?[\w./\\ -]*[\w.-]+\.(?:md|txt|mdx))/g)) {
       const p = m[1].startsWith("~") ? path.join(home, m[1].slice(1)) : path.resolve(path.dirname(f), m[1]); visit(p, f, depth + 1);
     }
@@ -24,6 +25,7 @@ export function scan({ home = process.env.USAGE_MAX_HOME || os.homedir(), cwd = 
   const advice = [];
   for (const r of rows) {
     if (r.tokens > 2500) advice.push({ file: r.file, why: `${r.tokens} tokens loaded on every turn: trim it to the rules that change behaviour, move reference material to a file read on demand` });
+    if (!r.via && r.lines > 200) advice.push({ file: r.file, why: `${r.lines} lines (Anthropic suggests under about 200): move workflow-specific parts into skills, which load only when used. Long, auto-generated instruction files (/init) raised cost without helping in one study, so prune them` });
     if (r.via && r.ageDays > 90 && r.tokens > 300) advice.push({ file: r.file, why: `imported file untouched for ${r.ageDays} days (${r.tokens} tokens per turn): archive it if it is no longer needed` });
   }
   let memory = []; try { const ip = JSON.parse(fs.readFileSync(path.join(home, ".claude", "plugins", "installed_plugins.json"), "utf8")); memory = Object.keys(ip.plugins || ip).filter((n) => /mem|obsidian|memory/i.test(n)); } catch {}
@@ -43,7 +45,7 @@ function main() {
   for (const x of r.rows.sort((p, q) => q.tokens - p.tokens)) console.log(`  ${String(x.tokens).padStart(6)} tok  ${x.ageDays}d old  ${x.file}${x.via ? "  (imported by " + path.basename(x.via) + ")" : ""}`);
   if (r.advice.length) { console.log("\nsuggestions (nothing is changed automatically):"); for (const x of r.advice) console.log(`  - ${x.file}\n    ${x.why}`); }
   else console.log("\nnothing oversized or stale.");
-  console.log(r.memory.length ? `\nmemory plugins installed: ${r.memory.join(", ")} (check what they add per session with: /usage-max diet)` : "");
+  console.log(r.memory.length ? `\nmemory plugins installed: ${r.memory.join(", ")} (they can spend tokens in the background to summarise your work, and they inject context at session start: check with /usage-max diet and /usage; turn one off if you do not use its recall)` : "");
   console.log("\narchive one (reversible): usage-max context --archive <file>");
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

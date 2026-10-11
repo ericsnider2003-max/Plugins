@@ -1,6 +1,6 @@
 ---
-description: Keep every AI plan lasting to reset — status, doctor, budget, gate, check, diagnose, audit, diet, rescue, balance, context, digest, queue, chat-prefs, enable-here, route, handoff, codex.
-argument-hint: "[status|doctor|budget|gate|check|diagnose|audit|diet|rescue|balance|context|digest|queue|chat-prefs|enable-here|route <task>|handoff|codex <sub>]"
+description: Keep every AI plan lasting to reset — status, doctor, budget, gate, check, diagnose, audit, diet, rescue, balance, context, digest, savings, anomaly, offload, cap, trim, budgets, crosscheck, queue, chat-prefs, enable-here, route, handoff, codex.
+argument-hint: "[status|doctor|budget|gate|check|diagnose|audit|diet|rescue|balance|context|digest|savings|anomaly|offload|cap|trim|budgets|crosscheck|queue|chat-prefs|enable-here|route <task>|handoff|codex <sub>]"
 allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/usage-max.mjs":*)
 ---
 

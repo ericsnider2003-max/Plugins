@@ -12,4 +12,7 @@ export function trim(text, { head = 30, tail = 60, max = 160 } = {}) {
   if (last < lines.length - 1) out.push(`[usage-max: ${lines.length - 1 - last} lines trimmed]`);
   return out.join("\n");
 }
-if (process.argv[1] && process.argv[1].endsWith("trim.mjs")) process.stdout.write(trim(fs.readFileSync(0, "utf8")));
+if (process.argv[1] && process.argv[1].endsWith("trim.mjs")) {
+  const raw = fs.readFileSync(0, "utf8"), out = trim(raw); process.stdout.write(out);
+  try { if (!process.env.CODEX_HOME && out !== raw) { const [{ dataDir }, { recordBytes }] = await Promise.all([import("./meter.mjs"), import("./trimtest.mjs")]); recordBytes(dataDir(), Buffer.byteLength(raw), Buffer.byteLength(out)); } } catch {}
+}

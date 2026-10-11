@@ -79,3 +79,18 @@ Guards in usage-max/scripts/guard.mjs + hooks/guard.mjs (cold cache, compact nud
 
 ## NEXT: see docs/PLAN-0.9.0.md
 Open plan for 0.9.0 (lean RED mode, time-to-empty, lean plugin sets, cheaper first pass, background-burn check). A new session should start there.
+
+## 0.10.0 notes
+Built from docs/RESEARCH-usage-reduction.md items 1,3,5,6,8,9,10 (anomaly alarm, lean env switches, subagent cache TTL, 200-line lint, resume advice, memory note, crosscheck). Not built: #2 trim A/B self-test, #4 skill/MCP description budgets (opt-in only, can reduce skill triggering), #7 cheap-first cascade. User: Claude runs out first; Codex drains faster per hour but has under a week of history, so run `/usage-max anomaly` after a day of use.
+
+## 0.11.0 notes
+Built the open research items: scripts/trimtest.mjs (+hook/trim wiring, `usage-max trim`), scripts/budgets.mjs (`usage-max budgets`), cascade text in skills/routing/SKILL.md and codex/AGENTS.usage-max.md. Remaining ideas: Codex-side loop/Read guards; auto-handoff at cold cache; Codex trim self-test equivalent (Codex already has trim-stats.json but no retry measure).
+
+## 0.12.0 notes
+codex-diagnose.mjs (real rate-limit % attribution), hooks/cross-gate.mjs (PreToolUse Bash, asks only), guard.mjs editPattern/capCheck/crossCheck. Ideas left: local-model offload (Ollama) for bulk jobs (needs the user's PC), Codex rate-card routing (needs the rate card), Codex-side loop/Read guards, auto-handoff at cold cache.
+
+## 0.13.0 notes
+scripts/offload.mjs (Ollama, loopback only, tested with a stub server, never with a real model). User wants local-model offload. First real-world check: install Ollama, pull a small coder model, run `usage-max offload status` then `git diff --staged | usage-max offload commit`.
+
+## 0.14.0 notes
+Closed: Claude auto-handoff (scripts/autohandoff.mjs, wired in hooks/guard.mjs), Codex guards (codex-guards.mjs; NO permissionDecision on purpose), Codex trim self-test (trimcheck.mjs), `codex weights` (codex-weights.mjs). Known: Codex trim hook still returns permissionDecision allow (pre-existing, finding #8 in this file); live-verify updatedInput without allow in a real Codex before removing it. Still needs the user's PC: real Ollama, real Codex logs, live.mjs.
