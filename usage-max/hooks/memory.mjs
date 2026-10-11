@@ -31,7 +31,7 @@ try {
   } else if (ev === "UserPromptSubmit" && mem) {
     const prompt = String(input.prompt || ""); let msg = null;
     const dir0 = M.extractDirective(prompt);
-    if (dir0) { const r = M.decide(mem, M.directiveKey(dir0), dir0); if (!r.error && !r.unchanged) msg = "usage-max: saved to project memory (.memory/decisions.md)."; }
+    if (dir0) { const r = M.decide(mem, M.directiveKey(dir0), dir0); if (r.error) msg = `usage-max: not saved to project memory. ${r.error}`; else if (!r.unchanged) msg = "usage-max: saved to project memory (.memory/decisions.md)."; }
     const seen = M.loadSeen(sid); const r = M.recall(mem, prompt, { seen });
     if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen); }
     if (r.text || msg) ctx(ev, r.text, msg);

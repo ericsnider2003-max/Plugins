@@ -28,6 +28,15 @@ if (sub === "init") {
   if (check) { const stale = files.filter((f) => !M.syncCheck(m, f)); console.log(stale.length ? `stale: ${stale.map((f) => rel(m, f)).join(", ")} — run: usage-max memory sync` : "AGENTS.md block is current."); process.exit(stale.length ? 3 : 0); }
   let bad = 0; for (const f of files) { const r = M.syncFile(m, f); if (r.error) bad = 1; console.log(r.error ? `NOT updated: ${rel(m, f)} — ${r.error}` : `${r.changed ? "updated" : "already current"}: ${rel(m, f)}`); } if (bad) process.exit(1);
   console.log("Commit it: Codex cloud tasks (including from the mobile app) read AGENTS.md from the repo.");
+} else if (sub === "suggest") {
+  const S = await import("./memory-suggest.mjs"); const m = need(); const root = M.repoRootOf(m); const acc = flag("accept");
+  if (acc) {
+    const list = S.loadCandidates(root); if (!list) { console.log("no suggestion list yet. Run: usage-max memory suggest"); process.exit(1); }
+    const ids = String(acc === true ? "" : acc).split(",").map((x) => parseInt(x, 10)).filter(Number.isFinite);
+    if (!ids.length) { console.log("usage: usage-max memory suggest --accept 1,3,5"); process.exit(1); }
+    const r = S.accept(m, list, ids); for (const x of r.saved) console.log("saved " + x); for (const x of r.skipped) console.log("NOT saved " + x); process.exit(r.skipped.length && !r.saved.length ? 1 : 0);
+  }
+  const list = S.suggest(root); S.saveCandidates(root, list); console.log(S.render(list));
 } else if (sub === "export") { console.log(M.loadBlock(need(), { cap: 3000, cmd: "(ask the assistant to note it)" }));
 } else if (sub === "import") {
   const m = need(); if (!a[0] || !fs.existsSync(a[0])) { console.log("usage: usage-max memory import <folder-with-.md-notes>   (an Obsidian vault works; files are copied, never changed)"); process.exit(1); }
@@ -36,5 +45,5 @@ if (sub === "init") {
   const m = M.findMemoryDir(cwd);
   if (!m) { console.log("project memory: not set up here. usage-max memory init"); process.exit(0); }
   const d = M.readDecisions(m), t = M.listTopics(m); const b = M.loadBlock(m, { cap: 1e9 }).length;
-  console.log(`project memory: ${m}\n  ${d.length} decision(s), ${t.length} topic(s), always-loaded block ${b} chars (~${Math.round(b / 3.6)} tokens)\n  commands: init add decide recall index lint sync export import`);
+  console.log(`project memory: ${m}\n  ${d.length} decision(s), ${t.length} topic(s), always-loaded block ${b} chars (~${Math.round(b / 3.6)} tokens)\n  commands: init add decide recall suggest index lint sync export import`);
 }

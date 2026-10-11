@@ -30,7 +30,7 @@ function memoryText(ev, input, sid) {
   const cfg = rj("config.json"); if (cfg && cfg.memory === "off") return "";
   if (ev === "SessionStart") { try { M.saveSeen(sid, new Set(), path.join(dataDir(), "memory-state")); } catch {} return M.loadBlock(mem, { cap: Number(cfg && cfg.memoryBudgetChars) || 2500, cmd: "(note it in .memory/ — see the block below)", foot: "Record a durable fact or decision when you learn one: append `- YYYY-MM-DD | key | value` to .memory/decisions.md, or a bullet to .memory/topics/<name>.md. Do not ask the user for something listed here." }); }
   const prompt = String(input.prompt || ""), dtv = M.extractDirective(prompt), out = [];
-  if (dtv) { const r = M.decide(mem, M.directiveKey(dtv), dtv); if (!r.error && !r.unchanged) out.push("usage-max: saved to project memory (.memory/decisions.md)."); }
+  if (dtv) { const r = M.decide(mem, M.directiveKey(dtv), dtv); if (r.error) out.push(`usage-max: not saved to project memory. ${r.error}`); else if (!r.unchanged) out.push("usage-max: saved to project memory (.memory/decisions.md)."); }
   const sd = path.join(dataDir(), "memory-state"), seen = M.loadSeen(sid, sd), r = M.recall(mem, prompt, { seen });
   if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen, sd); out.push(r.text); }
   return out.join("\n");

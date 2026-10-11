@@ -206,4 +206,32 @@ t("resume --repo writes a redacted .codex-tasks/RESUME.md for Codex cloud/mobile
   const o = cli(["resume", "--repo"], w); assert.match(o.stdout, /Continue from \.codex-tasks\/RESUME\.md/); const f = fs.readFileSync(path.join(w, ".codex-tasks/RESUME.md"), "utf8"); assert.doesNotMatch(f, /sk-live/); assert.match(f, /Continue the work/);
   fs.mkdirSync(path.join(home, "none-yet"), { recursive: true }); assert.match(cli(["resume", "--repo"], path.join(home, "none-yet")).stdout, /no resume point/);
 });
+
+// ---- nothing is ever cut short silently; suggest never saves by itself
+t("a too-long decision/fact/directive is REFUSED with a clear reason, never clipped; the block never clips a line", () => {
+  const long = "x".repeat(301), r = M.decide(mem, "longkey", long); assert.match(r.error, /301 characters; the limit is 300.*never cut short/s); assert.ok(!M.readDecisions(mem).some((d) => d.key === "longkey"));
+  assert.ok(M.decide(mem, "k".repeat(61), "v").error); assert.ok(M.addFact(mem, "notes", "y".repeat(601)).error); assert.ok(!M.addFact(mem, "notes", "y".repeat(600)).error);
+  const exactly = "z".repeat(300); assert.equal(M.decide(mem, "exact", exactly).value, exactly);
+  const block = M.loadBlock(mem, { cap: 1e6 }); assert.ok(block.includes("exact: " + exactly), "whole value in the block"); assert.ok(!/…/.test(block.split("Topics")[0]), "no ellipsis inside decisions");
+  const o = JSON.parse(hook("hooks/memory.mjs", { hook_event_name: "UserPromptSubmit", cwd: proj, session_id: "long1", prompt: "remember: " + "word ".repeat(100) }).stdout); assert.match(o.systemMessage, /not saved.*limit is 300/s);
+  M.addFact(mem, "wordy", "A summary line that goes on for a really long time without any sign of stopping so that it has to be shortened for the topic list pointer");
+  const sum = M.listTopics(mem).find((x) => x.slug === "wordy").summary; assert.match(sum, /…$/); assert.ok(!/\s…/.test(sum.slice(0, -2)), "cut at a word boundary"); assert.ok(sum.length <= 104);
+});
+t("suggest: finds instructions and grouped commands with sources, ranks orientation docs above dated records, saves NOTHING until --accept", async () => {
+  const S = await imp("scripts/memory-suggest.mjs"); const r = path.join(home, "sugg"); fs.mkdirSync(path.join(r, "docs"), { recursive: true }); fs.mkdirSync(path.join(r, "node_modules/x"), { recursive: true });
+  fs.writeFileSync(path.join(r, "README.md"), "# Proj\n\nAlways run the linter before committing.\nThe password is never printed.\nIt was fast.\n\n## Testing\n```\nnpm ci\nnpm test   # 40 tests\n```\n\n## Notes\nSecret: use sk-live-abcdefghijklmnop1234 for billing, and you must not share it.\n| Never | in a table |\n");
+  fs.writeFileSync(path.join(r, "04_SESSION_2026-09-20_old.md"), "# Old\nNever trust this old record, it must be ignored.\n"); fs.writeFileSync(path.join(r, "node_modules/x/README.md"), "Always skip me please, this is vendored.\n");
+  fs.writeFileSync(path.join(r, "docs/long.md"), "Always " + "very ".repeat(60) + "long.\n");
+  const list = S.suggest(r); const texts = list.map((c) => c.text);
+  assert.ok(texts.some((t) => /Always run the linter/.test(t))); assert.ok(texts.some((t) => t === "Testing: npm ci; npm test"), JSON.stringify(texts));
+  assert.ok(!texts.some((t) => /password is never printed|It was fast|sk-live|skip me|very very|table/.test(t)), "descriptions, secrets, vendored, over-long and table rows are not offered");
+  assert.ok(list.findIndex((c) => /linter/.test(c.text)) < list.findIndex((c) => /old record/.test(c.text)) || !texts.some((t) => /old record/.test(t)), "README outranks the dated record");
+  assert.ok(list.every((c) => /^[^:]+:\d+$/.test(c.source) && c.text.length <= 200) && list.length <= 25);
+  const rp = path.join(home, "sugg-mem"); fs.mkdirSync(rp, { recursive: true }); const sm = M.init(rp); fs.cpSync(r, rp, { recursive: true }); // suggest reads the repo around .memory
+  const cli2 = (a) => spawnSync("node", [path.join(root, "scripts/memory-cli.mjs"), ...a], { cwd: rp, encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: home } });
+  const listed = cli2(["suggest"]); assert.match(listed.stdout, /Nothing has been saved/); assert.equal(M.readDecisions(sm).length, 0, "listing saves nothing");
+  const ok = cli2(["suggest", "--accept", "1,2,99"]); assert.match(ok.stdout, /saved #1/); assert.match(ok.stdout, /NOT saved #99/);
+  assert.ok(M.readDecisions(sm).some((d) => /\(source: README\.md:\d+\)$/.test(d.value)) || fs.readdirSync(path.join(sm, "topics")).length > 0, "accepted items carry their source");
+  assert.equal(cli2(["suggest", "--accept"]).status, 1);
+});
 console.log(n, "passing");

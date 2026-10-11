@@ -7,11 +7,11 @@ Decisions already made (do not re-ask):
 - [pinned] automation: Everything must be automatic: no manual reminding, no permission prompts
 - [pinned] user machine: Windows PC (scripts must work on Windows; no bash-only tricks)
 - big-project problem: Claude and Codex forget parts of big projects, causing rework; project memory (.memory/) is the fix, built in 0.16.0
-- proof: Every change is proven by the offline suites (node usage-max/scripts/check.mjs, usage-max/test/*.mjs, usage-max/codex/test/run.mjs) plus usage-max/test/live.mj…
+- proof: Every change is proven by the offline suites (node usage-max/scripts/check.mjs, usage-max/test/*.mjs, usage-max/codex/test/run.mjs) plus usage-max/test/live.mjs before merge
 
 Topics (mention one in a prompt and its notes are added; or read .memory/topics/<name>.md):
-- codex-limits — Codex hooks only see the Bash tool, not apply_patch; Codex cloud/mobile run no hooks at al
-- usage-max-architecture — Claude hooks live in usage-max/hooks, shared logic in usage-max/scripts; Codex hooks in us
+- codex-limits — Codex hooks only see the Bash tool, not apply_patch; Codex cloud/mobile run no hooks at all and …
+- usage-max-architecture — Claude hooks live in usage-max/hooks, shared logic in usage-max/scripts; Codex hooks in …
 
 Record a durable fact or decision when you learn one: append `- YYYY-MM-DD | key | value` to .memory/decisions.md, or a bullet to .memory/topics/<name>.md. Do not ask the user for something listed here.
 <!-- usage-max:memory end -->

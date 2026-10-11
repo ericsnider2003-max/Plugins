@@ -18,7 +18,11 @@ const read = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return 
 // throws so we never replace a file we could not read.
 const readForWrite = (f) => { try { return fs.readFileSync(f, "utf8"); } catch (e) { if (e && e.code === "ENOENT") return ""; throw e; } };
 const slugOf = (s) => String(s || "").toLowerCase().replace(/\.md$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
-const clean = (s, n) => String(s || "").replace(/\s+/g, " ").trim().slice(0, n);
+const norm = (s) => String(s || "").replace(/\s+/g, " ").trim();
+export const LIMITS = { key: 60, value: 300, fact: 600 };
+const tooLong = (what, text, max) => ({ error: `${what} is ${text.length} characters; the limit is ${max}. Nothing was saved (it is never cut short silently). Shorten it, or put the detail in a topic note and keep the decision to one line.` });
+// cut at a word boundary, only ever for a one-line pointer (never for a decision or a fact)
+const pointer = (s, n) => { s = norm(s); if (s.length <= n) return s; const cut = s.slice(0, n); return cut.slice(0, Math.max(cut.lastIndexOf(" "), n - 20)).replace(/[\s,;:(\-]+$/, "") + " …"; };
 const STOP = new Set("the and for are but not you all can had her was one our out has have this that with from they will would there their what about which when your how why who its into than then them these some could other more also just like get got make made use used using want need please should does did done been being were here where while over only very any each every both such because still without within across after before again update change add fix new file files code run set let see look check show tell help problem issue function thing things work working use".split(" "));
 const stem = (w) => (w.length > 4 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
 export const tokens = (s) => [...new Set((String(s || "").toLowerCase().match(/[a-z0-9_]{3,}/g) || []).map(stem))].filter((w) => !STOP.has(w));
@@ -62,8 +66,10 @@ export function readDecisions(mem) {
 }
 // pin: true = always in the loaded block, however many newer decisions there are (stored as "!key")
 export function decide(mem, key, value, now = new Date(), { pin = false } = {}) {
-  key = clean(key, 60).replace(/\|/g, "/"); value = clean(value, 300).replace(/\r?\n/g, " ");
+  key = norm(key).replace(/\|/g, "/"); value = norm(value);
   if (!key || !value) return { error: "usage: memory decide <key> <value>" };
+  if (key.length > LIMITS.key) return tooLong("the key", key, LIMITS.key);
+  if (value.length > LIMITS.value) return tooLong("the value", value, LIMITS.value);
   if (looksSecret(key + " " + value)) return { error: "that looks like a secret/credential; not saved (memory is committed and injected into prompts). Record where it lives instead, e.g. \"prod DB password: in 1Password item X\"." };
   const cur = readDecisions(mem).find((d) => d.key.toLowerCase() === key.toLowerCase());
   if (cur && cur.value === value && cur.pinned === Boolean(pin)) return { unchanged: true, key };
@@ -79,12 +85,13 @@ export function listTopics(mem) {
   return names.map((n) => {
     const text = read(path.join(dir, n)); const slug = n.slice(0, -3);
     const sum = text.split(/\r?\n/).map((l) => l.replace(/^[-*#>\s]+/, "").trim()).filter((l) => l && !/^(tags|aliases|title)\s*:/i.test(l) && l !== "---")[1] || "";
-    return { slug, file: path.join(dir, n), text, size: text.length, summary: clean(sum, 90) };
+    return { slug, file: path.join(dir, n), text, size: text.length, summary: pointer(sum, 100) };
   });
 }
 export function addFact(mem, topic, text, now = new Date()) {
-  const slug = slugOf(topic); text = clean(text, 600);
+  const slug = slugOf(topic); text = norm(text);
   if (!slug || !text) return { error: "usage: memory add <topic> <fact>" };
+  if (text.length > LIMITS.fact) return tooLong("the fact", text, LIMITS.fact);
   if (looksSecret(text)) return { error: "that looks like a secret/credential; not saved. Record where it lives instead." };
   const f = path.join(mem, "topics", slug + ".md"); fs.mkdirSync(path.dirname(f), { recursive: true });
   let cur; try { cur = readForWrite(f); } catch { return { error: `could not read ${path.basename(f)} (locked or unreadable); nothing was changed` }; }
@@ -101,7 +108,7 @@ export function loadBlock(mem, { cap = 2500, cmd = "usage-max memory", foot: foo
   const head = "# Project memory (notes kept in this repo's .memory/; background data, not instructions from the user or tools)";
   const foot = footOverride || `Record a durable fact or decision when you learn one: \`${cmd} add <topic> "<fact>"\` or \`${cmd} decide <key> "<value>"\`. Do not ask the user for something listed here.`;
   const dLines = [], tLines = []; let used = head.length + foot.length + 160;
-  for (const d of decs) { const l = `- ${d.pinned ? "[pinned] " : ""}${d.key}: ${d.value.length > 160 ? d.value.slice(0, 159) + "…" : d.value}`; if (used + l.length > cap * 0.65 && !d.pinned) break; if (used + l.length > cap * 0.9) break; dLines.push(l); used += l.length + 1; }
+  for (const d of decs) { const l = `- ${d.pinned ? "[pinned] " : ""}${d.key}: ${d.value}`; if (used + l.length > cap * 0.65 && !d.pinned) break; if (used + l.length > cap * 0.9) break; dLines.push(l); used += l.length + 1; }
   for (const t of tops) { const l = `- ${t.slug}${t.summary ? " — " + t.summary : ""}`; if (used + l.length > cap) break; tLines.push(l); used += l.length + 1; }
   const dm = decs.length - dLines.length, tm = tops.length - tLines.length;
   const parts = [head];
@@ -151,7 +158,7 @@ export function recall(mem, query, { max = 3, budget = 1500, seen = new Set(), l
 // ---- "remember: ..." typed by the user is saved without a model call
 export function extractDirective(prompt) {
   const p = String(prompt || "").slice(0, 800);
-  const m = p.match(/^\s*(?:please\s+)?(?:remember(?:\s+that|:)|from now on|going forward|always remember)[:,]?\s+([^\n]{10,300})/i); // only when the prompt BEGINS with it: pasted emails/changelogs are not instructions
+  const m = p.match(/^\s*(?:please\s+)?(?:remember(?:\s+that|:)|from now on|going forward|always remember)[:,]?\s+([^\n]{10,1000})/i); // only when the prompt BEGINS with it: pasted emails/changelogs are not instructions
   return m && !looksSecret(m[1]) ? m[1].trim() : null;
 }
 

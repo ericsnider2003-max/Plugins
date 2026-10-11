@@ -19,7 +19,7 @@
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
 //   chat-prefs      paste-once text for Claude.ai / Cowork / ChatGPT (chats have no hooks)
 //   enable-here [dir] [--lean a,b | --lean-auto]  (--lean: turn every other installed plugin off for that repo; --lean-auto: keep only what you used in 30 days) make every session on a repo load usage-max (writes <dir>/.claude/settings.json; commit it)
-//   memory <sub>    init|add|decide|recall|index|lint|sync|export|import: project memory in .memory/ (decisions + topic notes, recalled by keyword; sync puts it in AGENTS.md for Codex cloud/mobile)
+//   memory <sub>    init|add|decide|recall|suggest|index|lint|sync|export|import: project memory (suggest lists candidate notes from the repo's docs; --accept N saves only those) in .memory/ (decisions + topic notes, recalled by keyword; sync puts it in AGENTS.md for Codex cloud/mobile)
 //   pack "<goal>" [--files a,b] [--test cmd] [--save]   one scoped Codex task prompt (+ memory notes); --save = .codex-tasks/<name>.md for phone use; pack --setup = Codex cloud setup script
 //   resume [--repo] show the resume point saved automatically for this folder by Claude Code or Codex (--repo: write a redacted .codex-tasks/RESUME.md for Codex cloud/mobile)
 //   codex <sub>     doctor|status|install|models|calibrate|mode|diet|diagnose|weights|gate (the Codex side)
