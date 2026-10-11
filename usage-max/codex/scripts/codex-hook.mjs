@@ -8,7 +8,7 @@
 //                      win32 only after `codex-governor.mjs selftest-trim` wrote trim-ok.json (or USAGE_MAX_TRIM=force).
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import { evaluate, applyMode, dataDir, modeKey, codexHome } from "./codex-governor.mjs";
-import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import { guard, sessionContext, nudge } from "./codex-guards.mjs"; import * as TC from "./trimcheck.mjs";
+import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import { guard, sessionContext, nudge, nudgeAt } from "./codex-guards.mjs"; import * as TC from "./trimcheck.mjs";
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
 const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
 export { wrap };
@@ -47,7 +47,9 @@ function main() {
       const text = plan + (DIRECTIVE[mode] || "") + (surplus && ev === "SessionStart" ? "usage-max: allowance is going unused this week — you may use higher reasoning effort for hard problems." : ""); if (text) { st.sent[k] = Date.now(); process.stdout.write(text); } else st.sent[k] = Date.now();
     }
     try { const adv = balanceAdvice({ mode }, readOther()); const ak = `${sid}:adv:${adv}`; if (adv && !st.sent[ak]) { st.sent[ak] = Date.now(); process.stdout.write((st.sent[k] ? "\n" : "") + adv); } } catch {}
-    if (ev === "UserPromptSubmit") { try { const nd = nudge(sessionContext(codexHome(), sid)); const nk = nd && `${sid}:ctx:${nd.level}`; if (nd && !st.sent[nk]) { st.sent[nk] = Date.now(); process.stdout.write("\n" + nd.text); } } catch {} }
+    if (ev === "SessionStart") { try { const t = Date.now(), cwd = input.cwd || "?"; st.starts = [...(st.starts || []), { t, cwd, sid }].filter((x) => t - x.t < 600e3).slice(-20); const recent = st.starts.filter((x) => t - x.t < 180e3 && x.cwd === cwd), bk = `burst:${cwd}:${Math.floor(t / 600e3)}`;
+      if (recent.length >= 3 && !st.sent[bk]) { st.sent[bk] = t; process.stdout.write(`\nusage-max: ${recent.length} Codex sessions started in this folder within 3 minutes. Each carries its own full context and is billed separately, so running them in parallel multiplies usage. If they are copies of one job, tell the user in one sentence that one session at a time costs far less.`); } } catch {} }
+    if (ev === "UserPromptSubmit") { try { const nd = nudge(sessionContext(codexHome(), sid), nudgeAt(mode)); const nk = nd && `${sid}:ctx:${nd.level}`; if (nd && !st.sent[nk]) { st.sent[nk] = Date.now(); process.stdout.write("\n" + nd.text); } } catch {} }
     const keys = Object.keys(st.sent); if (keys.length > 200) for (const x of keys.slice(0, keys.length - 100)) delete st.sent[x];
     try { fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(sf, JSON.stringify(st)); } catch {}
   } else if (ev === "Stop" && key !== beforeKey) {

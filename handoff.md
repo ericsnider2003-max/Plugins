@@ -97,3 +97,6 @@ Closed: Claude auto-handoff (scripts/autohandoff.mjs, wired in hooks/guard.mjs),
 
 ## 0.15.0 notes
 First real Codex report (user PC, 14 days): 10,994 calls, 98% of input tokens cached, median context 105k (p90 186k), 85% of calls in one folder (Atlas), one session = 5,249 calls, effort already low. Cached re-reads dominate cost; compaction limit 64k in config is NOT holding in the Codex apps. Bugs found and fixed: diagnose window classification; PowerShell trim self-test. Added Codex long-session nudge + startup weight report. User is non-technical: everything goes through install/kit/0-DO-EVERYTHING.cmd and a plain-language report.
+
+## 0.15.1 notes (second real report, weekly % now attributed)
+143 weekly points moved in 14 days: one 5,249-call session = 67 pts (47%); three sessions launched within 30 s on Oct 8 = 61 pts; Oct 8 alone = 94 pts; 92% in the Atlas folder; gpt-6.1-sol 128 pts vs luna 7 pts (learned ~4x cost per token); starting context only 21k but median per call 105k, so growth inside long sessions (config compaction at 64k is not holding) is the driver. Atlas shows 380 skills visible. Built: stricter nudges by mode, parallel-start warning, doctor precision. Ideas left: automatic fresh-session handoff for Codex rollouts; per-folder skill trimming helper; luna-by-default for routine work (needs the user's OK).

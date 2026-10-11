@@ -144,7 +144,7 @@ const cgMod = await import(pathToFileURL(path.join(root, "scripts/codex-governor
   spawnSync("node", [path.join(root, "scripts/install.mjs")], { env: { ...e4, PLUGIN_ROOT: "" } });
   t("...and defer (print nothing) once the user-wide hooks are installed, so nothing runs twice", () => { assert.equal(hookP().stdout, ""); assert.match(spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "SessionStart"], { input: JSON.stringify({ session_id: "p2" }), env: { ...e4, PLUGIN_ROOT: "" }, encoding: "utf8" }).stdout, /usage-max RED/); });
   const cf = path.join(h, ".codex/config.toml"); fs.appendFileSync(cf, '\n[hooks.state."usage-max@synced:hooks/hooks.json:session_start:0:0"]\ntrusted_hash = "abc"\n');
-  t("doctor flags stale usage-max plugin entries (the old Claude copy running inside Codex)", () => assert.match(spawnSync("node", [path.join(root, "scripts/codex-governor.mjs"), "doctor"], { env: { ...e4, PLUGIN_ROOT: "" }, encoding: "utf8" }).stdout, /FIX\s+Codex has 1 saved entries for usage-max loaded as a PLUGIN/));
+  t("doctor flags stale usage-max plugin entries (the old Claude copy running inside Codex)", () => assert.match(spawnSync("node", [path.join(root, "scripts/codex-governor.mjs"), "doctor"], { env: { ...e4, PLUGIN_ROOT: "" }, encoding: "utf8" }).stdout, /FIX\s+Codex still has hook\/plugin entries for the UPLOADED copy of usage-max \(usage-max@synced x1\)/));
 }
 console.log(`${n} passing (incl. rollover/throttle/install)`);
 // surplus + shared balance

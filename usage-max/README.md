@@ -2,6 +2,11 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.15.1 (Oct 11 2026) — brakes aimed at what the real report showed
+- **Long-session warning gets stricter as the plan runs low:** about 120k tokens when GREEN, 90k in AMBER, 60k in RED. It only ever looks at the current session's own context (never guesses another session's).
+- **Parallel-session warning (Codex):** three or more Codex sessions starting in the same folder within 3 minutes are called out once, because each carries its own full context and is billed separately.
+- **Doctor accuracy:** the Codex check now names where each usage-max entry in the Codex config comes from and flags only the old UPLOADED copy, not the normal marketplace install; the Claude calibrate hint no longer shows example numbers as if they were yours.
+
 ## 0.15.0 (Oct 11 2026) — fixes from the first real Codex report
 - **Fixed: `codex diagnose` read the wrong plan window.** It assumed the weekly window is the second slot; in real logs it can be the first. It now finds the weekly window by its length, exactly like the governor, so the weekly-% attribution works (and so does `codex weights`).
 - **Fixed: the Windows PowerShell trim test failed for a bad reason.** PowerShell reports exit code 1 for any failing command, trimmed or not. The test now compares against the same command run without trimming, so trim can be switched on when the shells really agree.

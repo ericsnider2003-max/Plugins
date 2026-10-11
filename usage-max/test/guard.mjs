@@ -253,4 +253,18 @@ await t("codex diagnose: measures AGENTS.md weight and visible skills in the bus
   fs.writeFileSync(path.join(sd, "rollout-a.jsonl"), JSON.stringify({ type: "session_meta", payload: { cwd: proj, source: "vscode" } }) + "\n" + [ev(1), ev(2)].join("\n") + "\n");
   const r = D.diagnose({ days: 1, home: ch, now: now + 1e6 }); assert.match(r.text, /AGENTS\.md files about 6,000 tokens/); assert.ok(r.findings.some((f) => /proj: its AGENTS\.md files add about 6,000 tokens/.test(f)), r.findings.join("|"));
 });
+await t("codex: warnings tighten as the plan runs low, never blame another session, and a burst of parallel sessions is called out once", async () => {
+  const CG = await import(pathToFileURL(path.join(root, "codex/scripts/codex-guards.mjs")).href); const { spawnSync } = await import("node:child_process");
+  assert.deepEqual([CG.nudgeAt("green"), CG.nudgeAt("amber"), CG.nudgeAt("red")], [120000, 90000, 60000]); assert.equal(CG.nudge(95000, CG.nudgeAt("green")), null); assert.equal(CG.nudge(95000, CG.nudgeAt("amber")).level, 1);
+  const um = fs.mkdtempSync(path.join(os.tmpdir(), "bu-")), ch = path.join(um, ".codex"), sd = path.join(ch, "sessions", "2026", "10", "11"); fs.mkdirSync(sd, { recursive: true });
+  fs.writeFileSync(path.join(sd, "rollout-x-other1111.jsonl"), JSON.stringify({ timestamp: new Date().toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 300000, cached_input_tokens: 1, output_tokens: 1 } } } }) + "\n");
+  assert.equal(CG.sessionContext(ch, "mine2222"), null, "an unmatched session id never inherits another session's context"); assert.equal(CG.sessionContext(ch, "?"), 300000, "no id at all: the file just written");
+  const run = (sid, ev = "SessionStart") => spawnSync(process.execPath, [path.join(root, "codex/scripts/codex-hook.mjs"), ev], { input: JSON.stringify({ session_id: sid, cwd: "/p/atlas" }), env: { ...process.env, USAGE_MAX_HOME: um, CODEX_HOME: ch, PLUGIN_ROOT: "", USAGE_MAX_HOST: "codex" }, encoding: "utf8" }).stdout;
+  assert.ok(!/started in this folder/.test(run("a1"))); assert.ok(!/started in this folder/.test(run("a2"))); assert.match(run("a3"), /3 Codex sessions started in this folder within 3 minutes/); assert.ok(!/started in this folder/.test(run("a4")), "once per burst");
+});
+await t("codex doctor: flags only the UPLOADED copy of usage-max, not the normal marketplace install", async () => {
+  const { spawnSync } = await import("node:child_process"); const mk = (toml) => { const h = fs.mkdtempSync(path.join(os.tmpdir(), "dd-")); fs.mkdirSync(path.join(h, ".codex"), { recursive: true }); fs.writeFileSync(path.join(h, ".codex", "config.toml"), toml); return spawnSync(process.execPath, [path.join(root, "codex/scripts/codex-governor.mjs"), "doctor"], { env: { ...process.env, USAGE_MAX_HOME: h, PLUGIN_ROOT: "" }, encoding: "utf8" }).stdout; };
+  assert.match(mk('[hooks.state."usage-max@eric-plugins:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /ok\s+Codex's usage-max entries come from the marketplace install only/);
+  assert.match(mk('[hooks.state."usage-max@synced:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /FIX\s+Codex still has hook\/plugin entries for the UPLOADED copy/);
+});
 console.log(`${n} passing`);

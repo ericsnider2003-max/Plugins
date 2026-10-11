@@ -177,8 +177,10 @@ export function doctor(home = codexHome(), platform = process.platform) {
   const out = []; const ok = (m) => out.push(`  ok   ${m}`); const bad = (m, fix) => out.push(`  FIX  ${m}${fix ? `\n       -> ${fix}` : ""}`);
   const rd = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return ""; } };
   const cfg = loadConfig(); const toml = rd(path.join(home, "config.toml")); const hooks = rd(path.join(home, "hooks.json")); const gs = j(path.join(dataDir(), "governor.json"), {}); const seen = j(path.join(dataDir(), "hook-seen.json"), {});
-  { const left = [...toml.matchAll(/^\s*\[(?:hooks\.state|plugins)\.[^\]\n]*usage-max[^\]\n]*\]/gm)].length;
-    left ? bad(`Codex has ${left} saved entries for usage-max loaded as a PLUGIN (hook trust / plugin list). If that is the OLD uploaded copy (0.1.x) it runs Claude-only hooks inside Codex and can disrupt turns`, "remove the old usage-max plugin in Codex's plugin list, then install the current one (it ships Codex-specific hooks)") : ok("no stale usage-max plugin entries in Codex config"); }
+  { const src = {}; for (const m of toml.matchAll(/^\s*\[(?:hooks\.state|plugins)\.[^\]\n]*?usage-max@([\w.-]+)[^\]\n]*\]/gm)) src[m[1]] = (src[m[1]] || 0) + 1;
+    const total = Object.values(src).reduce((a, b) => a + b, 0), list = Object.entries(src).map(([k, v]) => `usage-max@${k} x${v}`).join(", "), old = Object.keys(src).filter((k) => /synced|upload|local/i.test(k));
+    old.length ? bad(`Codex still has hook/plugin entries for the UPLOADED copy of usage-max (${list}). That old copy (0.1.x) runs Claude-only hooks inside Codex and can disrupt turns`, "remove the old usage-max plugin in Codex's plugin list, then install the current one (it ships Codex-specific hooks)") : ok(total ? `Codex's usage-max entries come from the marketplace install only (${list})` : "no usage-max plugin entries in Codex config"); }
+
   /codex-hook\.mjs/.test(hooks) ? ok("hooks.json has the usage-max hooks") : bad("hooks not installed", "node scripts/install.mjs");
   { const bin = binDir().replace(/\\/g, "/"); const paths = [...hooks.matchAll(/"?([^"\s]*)codex-hook\.mjs/g)].map((m) => m[1].replace(/\\\\/g, "/").replace(/\\/g, "/"));
     const ver = rd(path.join(binDir(), "VERSION")).trim();
