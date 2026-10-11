@@ -217,4 +217,8 @@ await t("codex weights: learned only with real plan movement; relative to the ch
   const r = W.learn(ev); assert.equal(r.rows.length, 2); assert.equal(r.rows.find((x) => x.model === "cheap").weight, 1); assert.ok(r.rows.find((x) => x.model === "pricey").weight >= 3);
   assert.equal(W.learn(ev.slice(0, 5)).rows.length, 0); assert.match(W.format(W.learn([])), /not enough/);
 });
+await t("loop guard ignores polling: no-input calls, notifications, PR/CI reads; still catches a repeated Bash command", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "lp-")); for (let i = 0; i < 8; i++) { assert.equal(G.loopCheck(d, "p", "ReadNotifications", {}), null); assert.equal(G.loopCheck(d, "p", "mcp__github__pull_request_read", { method: "get_check_runs", pullNumber: 9 }), null); assert.equal(G.loopCheck(d, "p", "SomeTool", {}), null); }
+  const b = { command: "npm test" }; G.loopCheck(d, "p", "Bash", b); G.loopCheck(d, "p", "Bash", b); assert.match(G.loopCheck(d, "p", "Bash", b).additionalContext, /3 times/);
+});
 console.log(`${n} passing`);
