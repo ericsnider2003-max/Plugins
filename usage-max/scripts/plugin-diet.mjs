@@ -3,6 +3,7 @@
 // MCP servers) and how often each source was actually used in the last N days. Proposes cuts; --disable applies plugin cuts.
 // Usage: node plugin-diet.mjs [--days 30] [--cwd <dir>] [--json] [--disable plugin@market,...]
 import fs from "node:fs";
+import { editText } from "./safefile.mjs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -149,11 +150,16 @@ export function diet({ home = os.homedir(), cwd = process.cwd(), days = 30, nowM
 }
 
 export function disablePlugins(home, ids) {
-  const f = path.join(home, ".claude", "settings.json"); const s = jread(f, {});
-  if (!s.enabledPlugins) return [];
-  try { fs.writeFileSync(f + ".usage-max-diet-backup", fs.readFileSync(f), { flag: "wx" }); } catch {}
-  const done = []; for (const id of ids) if (id in s.enabledPlugins && s.enabledPlugins[id]) { s.enabledPlugins[id] = false; done.push(id); }
-  fs.writeFileSync(f, JSON.stringify(s, null, 2)); return done;
+  const f = path.join(home, ".claude", "settings.json"); const done = [];
+  const r = editText(f, (txt) => {
+    if (!txt.trim()) return null;
+    let s; try { s = JSON.parse(txt); } catch (e) { throw new Error("settings.json is not valid JSON, so it was not touched"); } // never overwrite what we cannot read
+    if (!s.enabledPlugins) return null;
+    for (const id of ids) if (id in s.enabledPlugins && s.enabledPlugins[id]) { s.enabledPlugins[id] = false; done.push(id); }
+    return done.length ? JSON.stringify(s, null, 2) : null;
+  });
+  if (r.error) throw new Error(r.error);
+  return done;
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -162,7 +168,7 @@ if (isMain) {
   const home = process.env.USAGE_MAX_HOME || os.homedir();
   const r = diet({ home, cwd: flag("cwd", process.cwd()), days: Number(flag("days", 30)), official: !a.includes("--no-official") });
   const dis = flag("disable", null);
-  if (dis) { const done = disablePlugins(home, dis.split(",").map((s) => s.trim()).filter(Boolean)); console.log(done.length ? `disabled: ${done.join(", ")} (backup: settings.json.usage-max-diet-backup). Takes effect in NEW sessions.` : "nothing disabled (ids not enabled)"); process.exit(0); }
+  if (dis) { const done = disablePlugins(home, dis.split(",").map((s) => s.trim()).filter(Boolean)); console.log(done.length ? `disabled: ${done.join(", ")} (previous version kept as settings.json.usage-max-backup-<time>). Takes effect in NEW sessions.` : "nothing disabled (ids not enabled)"); process.exit(0); }
   if (a.includes("--json")) { console.log(JSON.stringify(r, null, 2)); process.exit(0); }
   console.log(`usage-max plugin-diet — always-loaded context (descriptions + CLAUDE.md) ≈ ${r.alwaysLoadedTokens} tokens (${r.sessionsScanned} sessions scanned, ${r.days}d); measured session start (median first turn, includes system prompt + tool definitions): ${r.measuredStartupTokens === null ? "n/a" : r.measuredStartupTokens + " tokens"}`);
   for (const x of r.rows.sort((p, q) => (q.tokens || 0) - (p.tokens || 0))) console.log(`  ${String(x.tokens ?? "?").padStart(6)} tok  ${x.kind.padEnd(14)} ${x.id}${x.official ? " (official)" : ""}${x.uses !== null && x.uses !== undefined ? `  (uses ${x.uses})` : ""}`);

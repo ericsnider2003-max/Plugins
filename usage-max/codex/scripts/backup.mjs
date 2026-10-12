@@ -7,7 +7,7 @@ function sources() {
   const out = []; const ver = path.join(binDir(), "VERSION"); out.push(["bin/VERSION", ver]);
   let names = []; try { names = fs.readdirSync(codexHome()); } catch {}
   for (const f of ["hooks.json", "config.toml", "AGENTS.md"]) out.push([`codex/${f}`, path.join(codexHome(), f)]);
-  for (const f of names.sort()) if (/^usage-max-.*\.config\.toml$/.test(f) || f.endsWith(".usage-max-backup") || f.endsWith(".usage-max-diet-backup")) out.push([`codex/${f}`, path.join(codexHome(), f)]);
+  for (const f of names.sort()) if (/^usage-max-.*\.config\.toml$/.test(f) || f.endsWith(".usage-max-backup") || /\.usage-max-backup-\d{8}T/.test(f) || f.endsWith(".usage-max-diet-backup")) out.push([`codex/${f}`, path.join(codexHome(), f)]);
   for (const f of ["config.json", "governor.json", "trim-stats.json"]) out.push([`data/${f}`, path.join(dataDir(), f)]);
   return out;
 }

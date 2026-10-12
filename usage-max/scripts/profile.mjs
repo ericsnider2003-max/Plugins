@@ -6,6 +6,7 @@
 // The SessionStart hook calls apply({ write: true }) so usage-max configures itself; opt out with
 // USAGE_MAX_AUTOAPPLY=off or {"autoApply": false} in ~/.claude/usage-max/config.json.
 import fs from "node:fs";
+import { withLock, backupFile } from "./safefile.mjs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -93,8 +94,9 @@ export async function apply({ write = false, home = homeDir(), root = pluginRoot
   const modelWant = config.manageSettings ? config.modes[gst.mode === "green" && gst.surplus ? "surplus" : gst.mode] || null : null;
   const appliedFile = path.join(dataDir(home), "applied.json"), applied = loadApplied(appliedFile);
   const acw = Number(readJson(path.join(dataDir(home), "config.json"), {}).autoCompactWindow);
-  const { next, changes, kept } = computeProfile(settings, { profile, launcher, modelWant, autoCompactWindow: Number.isFinite(acw) && acw > 0 ? acw : null, applied, tighten: gst.mode === "amber" || gst.mode === "red" });
-  const real = changes;
+  const cpArgs = { profile, launcher, modelWant, autoCompactWindow: Number.isFinite(acw) && acw > 0 ? acw : null, applied, tighten: gst.mode === "amber" || gst.mode === "red" };
+  let { next, changes, kept } = computeProfile(settings, cpArgs);
+  let real = changes;
   let wrote = false;
   let backup = null;
   if (write) {
@@ -102,12 +104,17 @@ export async function apply({ write = false, home = homeDir(), root = pluginRoot
     fs.writeFileSync(launcher, LAUNCHER); // keep the stable launcher + root pointer fresh on every run
     writeJsonAtomic(path.join(dataDir(home), "root.json"), { root, version: readJson(path.join(root, ".claude-plugin", "plugin.json"), {}).version || null, at: new Date().toISOString() });
     if (real.length) {
-      if (existed) {
-        backup = `${file}.usage-max-backup`;
-        try { fs.writeFileSync(backup, fs.readFileSync(file), { flag: "wx" }); } catch {}
-      }
-      writeJsonAtomic(file, next);
-      wrote = true;
+      // read -> change -> write as one locked step with a fresh read: Claude Code and other tools edit this file too, and our earlier copy may be stale
+      const r = withLock(file, () => {
+        const fresh = existed ? readJson(file, null) : {};
+        if (fresh === null) return { error: `${file} is not valid JSON; not touching it` };
+        if (JSON.stringify(fresh) !== JSON.stringify(settings)) { ({ next, changes, kept } = computeProfile(fresh, cpArgs)); real = changes; if (!real.length) return { none: true }; }
+        if (existed) { try { backup = backupFile(file); } catch (e) { return { error: `could not back up ${file} (${e.code || e.message}); left untouched` }; } } // no backup, no write
+        writeJsonAtomic(file, next); return { ok: true };
+      });
+      if (!r.ok) return { error: "settings.json is being changed by another process; nothing was written, it will be tried again at the next session start", changes: [], wrote: false };
+      if (r.value.error) return { error: r.value.error, changes: [], wrote: false };
+      wrote = Boolean(r.value.ok);
     }
     saveApplied(appliedFile, applied);
   }

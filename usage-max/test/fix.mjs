@@ -98,6 +98,12 @@ await t("IMP-001", "shared safe file-edit helper: unreadable is not empty, atomi
   for (let i = 0; i < 8; i++) S.editText(f, (c) => c + "c" + i + " = 1\n"); assert.ok(fs.readdirSync(d).filter((x) => x.includes("backup-")).length <= 5, "timestamped backups pruned");
   assert.equal(S.editText(f, (c) => c).changed, false, "no change, no write");
   assert.deepEqual(fs.readdirSync(d).filter((x) => x.endsWith(".tmp")), [], "no temp files left");
+  // the Claude side uses the same helper: settings.json edits are atomic, backed up every time, and an unreadable file is never overwritten
+  const home = tmp(); const cdir = path.join(home, ".claude"); fs.mkdirSync(cdir, { recursive: true }); const sj = path.join(cdir, "settings.json"); const PD = await imp("scripts/plugin-diet.mjs");
+  fs.writeFileSync(sj, '{"enabledPlugins": {"a@m": true, "b@m": true}'); assert.throws(() => PD.disablePlugins(home, ["a@m"]), /not valid JSON/); assert.equal(fs.readFileSync(sj, "utf8"), '{"enabledPlugins": {"a@m": true, "b@m": true}', "invalid JSON left exactly as it was");
+  fs.writeFileSync(sj, JSON.stringify({ enabledPlugins: { "a@m": true, "b@m": true } })); assert.deepEqual(PD.disablePlugins(home, ["a@m"]), ["a@m"]); fs.writeFileSync(sj, JSON.stringify({ enabledPlugins: { "a@m": false, "b@m": true }, mine: 1 })); assert.deepEqual(PD.disablePlugins(home, ["b@m"]), ["b@m"]);
+  assert.ok(fs.readdirSync(cdir).filter((x) => x.startsWith("settings.json.usage-max-backup-")).some((x) => fs.readFileSync(path.join(cdir, x), "utf8").includes('"mine":1')), "the second change kept the state before it, not only the first");
+  assert.equal(JSON.parse(fs.readFileSync(sj, "utf8")).enabledPlugins["b@m"], false);
 });
 
 await t("BUG-002", "Codex install/apply never overwrite a file they could not read or parse", async () => {
