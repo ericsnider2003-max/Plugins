@@ -143,7 +143,7 @@ export function evaluate(now = Date.now(), force = false) {
   if (mode === "green" && e && fl === "green") { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12) : proj < 80 && e.hoursLeft > 12; e.projected = proj; }
   if (mode !== st.mode) { st.history = [...(Array.isArray(st.history) ? st.history : []), { at: new Date(now).toISOString(), from: st.mode, to: mode }].slice(-200); }
   st.mode = mode; st.surplus = surplus; st.appliedKey = st.appliedKey || null; wj(sf, st);
-  try { writeSelf({ mode, surplus, estPct: e?.est ?? null, hoursLeft: e?.hoursLeft ?? null, fivePct: st.five?.pct ?? null, updatedAt: new Date(now).toISOString() }); } catch {}
+  try { writeSelf({ dataAt: st.calib && st.calib.at ? new Date(st.calib.at).toISOString() : null, mode, surplus, estPct: e?.est ?? null, hoursLeft: e?.hoursLeft ?? null, fivePct: st.five?.pct ?? null, updatedAt: new Date(now).toISOString() }); } catch (e) { writeFailures.push("shared.json: " + (e.code || e.message)); }
   return { mode, surplus, e, st, cfg };
 }
 export function calibrate(pct, resets, now = Date.now()) {

@@ -95,7 +95,7 @@ await t("IMP-001", "shared safe file-edit helper: unreadable is not empty, atomi
   const bad = S.editText(d, () => "x"); assert.ok(bad.error && !bad.changed, "unreadable: refused, no overwrite");
   assert.equal(S.editText(f, (c) => c + "a = 1\n").changed, true); assert.equal(fs.readdirSync(d).filter((x) => x.includes("backup")).length, 0, "nothing to back up for a new file");
   let r = S.editText(f, (c) => c + "b = 2\n"); assert.ok(r.backup && /usage-max-backup-\d{8}T/.test(r.backup) && fs.readFileSync(r.backup, "utf8") === "a = 1\n", "backup holds the previous content");
-  for (let i = 0; i < 8; i++) S.editText(f, (c) => c + "c" + i + " = 1\n"); assert.ok(fs.readdirSync(d).filter((x) => x.includes("backup")).length <= 5, "backups pruned");
+  for (let i = 0; i < 8; i++) S.editText(f, (c) => c + "c" + i + " = 1\n"); assert.ok(fs.readdirSync(d).filter((x) => x.includes("backup-")).length <= 5, "timestamped backups pruned");
   assert.equal(S.editText(f, (c) => c).changed, false, "no change, no write");
   assert.deepEqual(fs.readdirSync(d).filter((x) => x.endsWith(".tmp")), [], "no temp files left");
 });
@@ -245,6 +245,17 @@ await t("BUG-013", "kit scripts pick the newest installed plugin folder, and the
   for (const f of fs.readdirSync(path.join(copy, "install/kit"))) if (f.endsWith(".sh")) fs.writeFileSync(path.join(copy, "install/kit", f), fs.readFileSync(path.join(copy, "install/kit", f), "utf8").replace(/\n/g, "\r\n"));
   const out = tmp("umout-"); const b = spawnSync("python3", [path.join(copy, "install/build-kit.py"), "--out", out], { encoding: "utf8" }); assert.equal(b.status, 0, b.stderr);
   const zl = spawnSync("unzip", ["-p", path.join(out, "usage-max-desktop.zip"), "usage-max-desktop/2-INSTALL-CODEX.sh"], { encoding: "buffer" }); assert.ok(zl.stdout.length > 50 && !zl.stdout.includes(13), "no carriage returns in the .sh inside the kit");
+});
+
+await t("BUG-017", "an old or missing plan reading is shown as old/unknown, never as current", async () => {
+  const home = tmp(); const dd = path.join(home, ".claude", "usage-max"); fs.mkdirSync(dd, { recursive: true }); const now = Date.now(), old = new Date(now - 3 * 864e5).toISOString();
+  const S = await imp("scripts/shared.mjs"); assert.equal(S.isFresh({ updatedAt: new Date(now).toISOString(), dataAt: old }, now), false, "re-written entry built on a 3-day-old reading is not fresh"); assert.equal(S.isFresh({ updatedAt: new Date(now).toISOString() }, now), true);
+  const CS = await imp("codex/scripts/shared.mjs"); assert.equal(CS.isFresh({ updatedAt: new Date(now).toISOString(), dataAt: old }, now), false);
+  fs.writeFileSync(path.join(dd, "governor.json"), JSON.stringify({ mode: "green", last: { at: old, estPct: 12 } }));
+  const sl = spawnSync("node", [path.join(root, "scripts/statusline.mjs")], { input: JSON.stringify({ model: { id: "claude-opus-5-5", display_name: "Opus" } }), env: { ...process.env, USAGE_MAX_HOME: home }, encoding: "utf8" }); assert.match(sl.stdout, /budget GREEN \(as of 3d ago\)/, sl.stdout);
+  const lim = path.join(home, "limits.json"); fs.writeFileSync(lim, JSON.stringify({ capturedAt: old, seven_day: { used_percentage: 30, resets_at: Math.floor((now + 3 * 864e5) / 1000) }, five_hour: null }));
+  const uc = spawnSync("node", [path.join(root, "scripts/usage-check.mjs"), "--limits", lim, "--projects-dir", path.join(home, "none"), "--json"], { env: { ...process.env, USAGE_MAX_HOME: home }, encoding: "utf8" }); const j = JSON.parse(uc.stdout.slice(uc.stdout.indexOf("{"))); assert.equal(j.projection.stale, true); assert.match(j.projection.source, /STALE/);
+  const G = await imp("scripts/governor.mjs"); const e = G.estimate({ calib: { pct: 0, at: now, cumAt: 0, resetsAt: Math.floor((now + 864e5) / 1000), source: "rolled" }, snaps: [] }, { cum: 0 }, now); assert.ok(e.note, "a rolled window says it has no reading yet");
 });
 
 console.log(`${n} passing`);

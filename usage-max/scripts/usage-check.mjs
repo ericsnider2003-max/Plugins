@@ -75,10 +75,11 @@ async function main() {
   };
   if (expectOpus !== null && Number(expectOpus) !== opusTurns) compliance.status = "fail";
   let projection = { weeklyUsedPercent: weeklyUsed === null ? null : Number(weeklyUsed), dailyPercent: null, projectedDaysLeft: null, projectedCapDate: null, source: weeklyUsed === null ? null : "arg" };
+  const readingAgeHours = limits && Number.isFinite(Date.parse(limits.capturedAt)) ? Math.max(0, (now.getTime() - Date.parse(limits.capturedAt)) / 3600000) : Infinity; // no capture time = treated as stale
   const livePace = limits ? pace(limits.seven_day, 7 * 86400, now.getTime()) : null;
   if (weeklyUsed === null && livePace) {
     projection = {
-      weeklyUsedPercent: livePace.used, source: `plan, captured ${limits.capturedAt}`,
+      weeklyUsedPercent: livePace.used, source: `plan, captured ${limits.capturedAt}${readingAgeHours > 6 ? ` (${readingAgeHours >= 48 ? Math.round(readingAgeHours / 24) + " days" : Math.round(readingAgeHours) + " hours"} old: STALE, open Claude Code for a fresh reading)` : ""}`, stale: readingAgeHours > 6, readingAgeHours: Number(readingAgeHours.toFixed(1)),
       dailyPercent: livePace.elapsed > 0 ? livePace.used / (livePace.elapsed * 7) : null,
       projectedAtReset: livePace.projected, state: livePace.state, hoursToReset: livePace.hoursLeft,
       projectedDaysLeft: livePace.capInHours === null ? null : livePace.capInHours / 24,

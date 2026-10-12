@@ -131,7 +131,7 @@ export function estimate(state, meter, nowMs = Date.now(), config = DEFAULT_CONF
     ratePerHour = c.pct / elapsedH;
     rateSource = "average so far";
   }
-  return { estPct, hoursLeft, ratePerHour: ratePerHour === null ? 0 : ratePerHour, rateSource: rateSource || "none yet" };
+  return { estPct, hoursLeft, ratePerHour: ratePerHour === null ? 0 : ratePerHour, rateSource: rateSource || "none yet", ...(c.source === "rolled" ? { note: "new window, no plan reading yet" } : {}) };
 }
 
 
@@ -253,7 +253,7 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
     try { if (applySettings(key, config) !== null) { state.appliedKey = key; state.appliedMode = state.mode; } } catch {}
   }
   const fp5 = (readJson(files().limits, null) || {}).five_hour;
-  writeSelf("claude", { mode: state.mode, surplus: Boolean(state.surplus), estPct: est.estPct, hoursLeft: est.hoursLeft, fivePct: fp5 && typeof fp5.used_percentage === "number" ? fp5.used_percentage : null });
+  writeSelf("claude", { dataAt: state.calib && state.calib.at ? new Date(state.calib.at).toISOString() : null, mode: state.mode, surplus: Boolean(state.surplus), estPct: est.estPct, hoursLeft: est.hoursLeft, fivePct: fp5 && typeof fp5.used_percentage === "number" ? fp5.used_percentage : null });
   saveState(state);
   return state;
 }

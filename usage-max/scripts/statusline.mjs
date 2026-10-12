@@ -42,7 +42,9 @@ if (!modelId) {
 const parts = [`${label}${aboveCeiling(modelId) ? " ⚠ ABOVE OPUS 5.5 CEILING" : ""}`];
 let gov = null;
 try { gov = JSON.parse(fs.readFileSync(path.join(dataDir, "governor.json"), "utf8")); } catch {}
-if (gov && gov.mode) parts.push(`budget ${gov.mode.toUpperCase()}${gov.override ? " (pinned)" : ""}`);
+const govAgeH = gov && gov.last && gov.last.at && Number.isFinite(Date.parse(gov.last.at)) ? (Date.now() - Date.parse(gov.last.at)) / 3600000 : null;
+const govOld = govAgeH !== null && govAgeH > 6 && !(gov && gov.override) ? ` (as of ${govAgeH >= 48 ? Math.round(govAgeH / 24) + "d" : Math.round(govAgeH) + "h"} ago)` : "";
+if (gov && gov.mode) parts.push(`budget ${gov.mode.toUpperCase()}${gov.override ? " (pinned)" : ""}${govOld}${gov.last && gov.last.note ? " (plan % unknown until your next reply)" : ""}`);
 
 const rl = input.rate_limits || null;
 if (rl && (rl.seven_day || rl.five_hour)) {
