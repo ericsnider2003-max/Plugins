@@ -266,7 +266,8 @@ await t("codex: warnings tighten as the plan runs low, never blame another sessi
 await t("codex doctor: flags only the UPLOADED copy of usage-max, not the normal marketplace install", async () => {
   const { spawnSync } = await import("node:child_process"); const mk = (toml) => { const h = fs.mkdtempSync(path.join(os.tmpdir(), "dd-")); fs.mkdirSync(path.join(h, ".codex"), { recursive: true }); fs.writeFileSync(path.join(h, ".codex", "config.toml"), toml); return spawnSync(process.execPath, [path.join(root, "codex/scripts/codex-governor.mjs"), "doctor"], { env: { ...process.env, USAGE_MAX_HOME: h, PLUGIN_ROOT: "" }, encoding: "utf8" }).stdout; };
   assert.match(mk('[hooks.state."usage-max@eric-plugins:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /ok\s+Codex's usage-max entries come from the marketplace install only/);
-  assert.match(mk('[hooks.state."usage-max@synced:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /FIX\s+Codex still has hook\/plugin entries for the UPLOADED copy/);
+  assert.match(mk('[hooks.state."usage-max@synced:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /FIX\s+Codex still trusts Claude-only hooks from an uploaded\/local copy/);
+  assert.match(mk('[plugins."usage-max@local-desktop-app-uploads"]\n[hooks.state."usage-max@local-desktop-app-uploads:codex/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /ok\s+Codex's usage-max entries come from the marketplace install only/, "the current desktop upload (Codex hooks only) is not an old copy");
 });
 console.log(`${n} passing`);
 

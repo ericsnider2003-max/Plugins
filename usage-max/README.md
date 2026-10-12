@@ -2,6 +2,11 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.18.1 (Oct 12 2026) — estimates say what they are built on
+- **The weekly percentage now says where it comes from.** In the desktop app there is no live reading from Claude, so the plugin estimates: your last real reading plus a conversion rate times new spend. The estimate could drift (one report: 15% shown when the real figure was 4%) and chats repeated it as a fact. `status`/`budget` and the shared Claude/Codex status now show "(estimate: last real reading 4% 9h ago)", so a chat can see how stale it is. Re-run `4-CALIBRATE-CLAUDE` whenever you look at Settings > Usage to re-anchor it.
+- **Codex no longer invents "0% used, with surplus" after a weekly reset.** When the last Codex reading belongs to a window that has ended, the week is reported as unknown (not 0%), the surplus/high-effort allowance is not granted from that guess, and the session note does not print a made-up percentage.
+- **The Codex doctor no longer cries wolf about your current upload.** The desktop app names the current upload `...uploads`, so name alone is not proof of an old copy. It now warns only when Codex trusts Claude's own hook file (`hooks/hooks.json`) from an uploaded/local copy, which is the case that actually disrupts Codex turns.
+
 ## 0.18.0 (Oct 12 2026) — roundtrip audit: 34 problems found and fixed, each with a test that fails without the fix
 An independent audit of the whole plugin found 30 problems (and 4 more while fixing). All are fixed in separate commits, each proven by a test that fails on the old code and passes on the new. The ones that matter day to day:
 - **Your files are never overwritten when they cannot be read.** Codex `config.toml`, `hooks.json`, `AGENTS.md` and Claude `settings.json` were treated as empty if they were locked or half-edited, then rewritten. Now they are left alone and the reason is shown. Every change keeps a timestamped backup (`<file>.usage-max-backup-<time>`, newest 5) next to the one-time original (`<file>.usage-max-backup`). All edits are atomic and locked against a second session writing at the same moment.
