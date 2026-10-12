@@ -119,7 +119,7 @@ const cgMod = await import(pathToFileURL(path.join(root, "scripts/codex-governor
   t("doctor: installed-but-never-run hooks are called out as needing /hooks trust", () => assert.match(doc(), /NEVER run[\s\S]*\/hooks/));
   spawnSync("node", [path.join(root, "scripts/codex-hook.mjs"), "SessionStart"], { input: "{}", env: e3 });
   t("doctor: stable location ok with version", () => assert.match(doc(), /ok\s+scripts run from a stable location[^\n]*installed version/));
-  t("doctor flags hooks.json pointing outside bin", () => { const hf = path.join(h, ".codex/hooks.json"); const s0 = fs.readFileSync(hf, "utf8"); fs.writeFileSync(hf, s0.split(path.join(h, ".usage-max-codex/bin")).join("/cache/old/codex")); assert.match(doc(), /FIX\s+scripts run from a stable location/); fs.writeFileSync(hf, s0); });
+  t("doctor flags hooks.json pointing outside bin", () => { const hf = path.join(h, ".codex/hooks.json"); const s0 = fs.readFileSync(hf, "utf8"); fs.writeFileSync(hf, s0.split(path.join(h, ".usage-max-codex/bin").replace(/\\/g, "/")).join("/cache/old/codex")); /* hooks.json holds forward slashes on every OS */ assert.match(doc(), /FIX\s+scripts run from a stable location/); fs.writeFileSync(hf, s0); });
   t("doctor: after a hook fires it reports hooks are running", () => assert.match(doc(), /ok\s+hooks are running/));
 }
 {

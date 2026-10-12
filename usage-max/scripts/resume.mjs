@@ -87,7 +87,7 @@ export function buildResume({ transcript, cwd, now = new Date(), tool = "claude"
 export function saveResume(dir, cwd, text, { now = Date.now(), minGapMs = 60e3 } = {}) {
   const f = resumeFile(dir, cwd); // `text` may be a function: it is called only AFTER the throttle check, so a Stop inside the gap costs no transcript read or git call
   let last = 0; try { last = fs.statSync(f).mtimeMs; } catch (e) { last = 0; } // no earlier note: nothing to throttle against
-  if (last && now - last > -60e3 && now - last < minGapMs) return false; // a note stamped well in the FUTURE (clock change) must not block saving until then; a few seconds of skew still throttles
+  if (minGapMs > 0 && last && now - last > -60e3 && now - last < minGapMs) return false; // a note stamped well in the FUTURE (clock change) must not block saving until then; a few seconds of skew still throttles
   if (typeof text === "function") text = text(); if (!text) return false;
   try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text + "\n"); return true; } catch { return false; }
 }
