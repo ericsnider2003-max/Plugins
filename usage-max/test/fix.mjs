@@ -173,10 +173,10 @@ await t("BUG-003", "a value the user set is remembered when tightening overrides
 
 await t("SEC-004", "Codex output trimming (which needs an auto-approve) is opt-in, never silent", async () => {
   const home = tmp(); const env = { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: path.join(home, ".codex") }; delete env.PLUGIN_ROOT; delete env.USAGE_MAX_TRIM;
-  const run = () => spawnSync("node", [path.join(root, "codex/scripts/codex-hook.mjs"), "PreToolUse"], { input: JSON.stringify({ tool_name: "Bash", tool_input: { command: "npm test" }, session_id: "s", cwd: home }), env, encoding: "utf8" }).stdout;
+  const run = (extra = {}) => spawnSync("node", [path.join(root, "codex/scripts/codex-hook.mjs"), "PreToolUse"], { input: JSON.stringify({ tool_name: "Bash", tool_input: { command: "npm test" }, session_id: "s", cwd: home }), env: { ...env, ...extra }, encoding: "utf8" }).stdout;
   assert.equal(run().trim(), "", "by default the command is left exactly as the user's approval rules saw it");
   fs.mkdirSync(path.join(home, ".usage-max-codex"), { recursive: true }); fs.writeFileSync(path.join(home, ".usage-max-codex/config.json"), JSON.stringify({ trimApprove: true }));
-  const o = JSON.parse(run()); assert.equal(o.hookSpecificOutput.permissionDecision, "allow"); assert.ok(o.hookSpecificOutput.updatedInput.command.includes("run-trimmed.mjs"), "opted in: trimmed");
+  fs.writeFileSync(path.join(home, ".usage-max-codex/trim-ok.json"), JSON.stringify({ ok: true })); /* Windows also needs its self-test to have passed */ const o = JSON.parse(run()); assert.equal(o.hookSpecificOutput.permissionDecision, "allow"); assert.ok(o.hookSpecificOutput.updatedInput.command.includes("run-trimmed.mjs"), "opted in: trimmed");
 });
 
 await t("SEC-002", "saved handoffs, full command output and the tool ledger are secret-filtered", async () => {
