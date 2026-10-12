@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { recordCost } from "./pricing.mjs";
+import { recordCost, takeUnknownModels } from "./pricing.mjs";
 import { listJsonlFiles } from "./lib.mjs";
 import { withLock } from "./safefile.mjs";
 
@@ -102,6 +102,7 @@ export function meterFiles(m, files) {
     for (const [h, c] of Object.entries(r.byHour)) m.buckets[h] = (m.buckets[h] || 0) + c;
   }
   m.recentIds = [...seen].slice(-3000);
+  const unk = takeUnknownModels(); if (unk.length) m.unknownModels = [...new Set([...(m.unknownModels || []), ...unk])].slice(-20); // priced like the nearest family; doctor lists them
   return added;
 }
 

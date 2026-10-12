@@ -276,4 +276,13 @@ await t("BUG-019", "12 hours into the week with 20% used reads 40% a day", async
   const j = JSON.parse(uc.stdout.slice(uc.stdout.indexOf("{"))); assert.ok(Math.abs(j.projection.dailyPercent - 40) < 1, "daily % " + j.projection.dailyPercent); assert.match(j.projection.confidence, /^low/);
 });
 
+await t("BUG-020", "a model missing from the price table is priced like its family, not free, and is listed", async () => {
+  const P = await imp("scripts/pricing.mjs"); const msg = (model) => ({ model, usage: { input_tokens: 1000, output_tokens: 1000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } });
+  assert.ok(P.recordCost(msg("claude-opus-5-1")) > 0, "an unlisted opus name is not free"); assert.ok(P.recordCost(msg("claude-sonnet-9")) > 0); assert.ok(P.recordCost(msg("totally-new-model")) > 0);
+  assert.equal(P.recordCost(msg("<synthetic>")), 0, "synthetic messages stay free"); assert.deepEqual(P.takeUnknownModels().sort(), ["claude-opus-5-1", "totally-new-model"].sort());
+  const home = tmp(); const proj = path.join(home, ".claude/projects/x"); fs.mkdirSync(proj, { recursive: true }); const tr = path.join(proj, "s.jsonl");
+  fs.writeFileSync(tr, JSON.stringify({ type: "assistant", timestamp: new Date().toISOString(), message: { id: "m1", model: "claude-opus-5-1", usage: { input_tokens: 10, output_tokens: 10 } } }) + "\n");
+  process.env.USAGE_MAX_HOME = home; const M = await imp("scripts/meter.mjs"); const m = { cum: 0, offsets: {}, buckets: {} }; M.meterFiles(m, [tr]); assert.ok(m.cum > 0, "metered"); assert.deepEqual(m.unknownModels, ["claude-opus-5-1"], "remembered for doctor");
+});
+
 console.log(`${n} passing`);
