@@ -380,4 +380,12 @@ await t("BUG-028", "calibration prices a message once even when two transcript f
   assert.ok(Math.abs(total - 4) < 1e-6, "one 1M-token opus message = $4, not $8: " + total); assert.ok(Math.abs(windowSpend - 4) < 1e-6);
 });
 
+await t("BUG-029", "spend recorded after a plan reading is counted after it, not folded into its baseline", async () => {
+  const G = await imp("scripts/governor.mjs"); const H = 36e5, h0 = Math.floor(Date.now() / H) * H, now = h0 + 40 * 6e4, at = now - 20 * 6e4;
+  const meter = { cum: 100, buckets: { [new Date(h0).toISOString()]: 10 } }, st = {};
+  const limits = { capturedAt: new Date(at).toISOString(), seven_day: { used_percentage: 20, resets_at: Math.floor((now + 3 * 864e5) / 1000) } };
+  assert.equal(G.absorbSnapshot(st, limits, meter.cum, { meter, nowMs: now }), true); assert.ok(Math.abs(st.calib.cumAt - (100 - 10 * (40 / 60))) < 1e-6, "baseline = meter total minus the spend since the reading: " + st.calib.cumAt);
+  const st2 = {}; G.absorbSnapshot(st2, limits, meter.cum); assert.equal(st2.calib.cumAt, 100, "without the extra information the old behaviour is unchanged");
+});
+
 console.log(`${n} passing`);

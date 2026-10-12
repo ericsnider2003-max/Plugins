@@ -80,13 +80,16 @@ export function decide({ estPct, hoursLeft, ratePerHour, prevMode, config }) {
 // Fold a newer real snapshot (from the status line) into the calibration. Keeps a small (time, pct) history so the
 // burn rate can come from the plan's own percentages (which include Cowork/chat), and learns k (plan % per $ of
 // local spend) from real deltas instead of needing a manual `calibrate`.
-export function absorbSnapshot(state, limits, meterCum) {
+// meterCum is the meter total NOW; the reading was taken earlier, so the spend recorded since then belongs AFTER the reading and is taken off the
+// baseline (opts.meter + opts.nowMs); otherwise the next estimate would leave out the turns between the reading and this call.
+export function absorbSnapshot(state, limits, meterCum, opts = {}) {
   const sd = limits && limits.seven_day;
   if (!sd || typeof sd.used_percentage !== "number" || !sd.resets_at) return false;
   const at = Date.parse(limits.capturedAt);
   if (!Number.isFinite(at)) return false; // no timestamp = cannot tell how old it is: never treat as fresh
   const c = state.calib;
   if (c && c.at >= at) return false;
+  if (opts.meter && Number.isFinite(opts.nowMs)) meterCum = Math.max(0, meterCum - spendInLast(opts.meter, Math.max(0, (opts.nowMs - at) / 3600000), opts.nowMs));
   state.snaps = (state.snaps || []).filter((x) => x.resetsAt === sd.resets_at).slice(-199);
   const last = state.snaps[state.snaps.length - 1];
   if (!last || at - last.at >= 5 * 60000 || sd.used_percentage !== last.pct) state.snaps.push({ at, pct: sd.used_percentage, resetsAt: sd.resets_at });
@@ -219,7 +222,7 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   const config = loadConfig();
   const state = loadState();
   meter = meter || loadMeter();
-  absorbSnapshot(state, readJson(files().limits, null), meter.cum);
+  absorbSnapshot(state, readJson(files().limits, null), meter.cum, { meter, nowMs });
   if (rollWindow(state, meter, nowMs)) state.mode = "green"; // new week: no hysteresis from last week's mode
   const est = estimate(state, meter, nowMs, config);
   let d = state.override ? { mode: state.override, ratio: null, allowedPerHour: null } : decide({ ...est, prevMode: state.mode, config });
