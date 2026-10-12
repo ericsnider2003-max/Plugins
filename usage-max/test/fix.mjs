@@ -296,4 +296,11 @@ await t("BUG-021", "two spellings of one folder map to one resume note and one m
   assert.equal(m.cum, first, "the same transcript through a link is not counted twice"); assert.equal(Object.keys(m.offsets).length, 1);
 });
 
+await t("BUG-022", "a half-updated Codex install makes the hook do nothing instead of failing at startup", async () => {
+  const d = tmp("umstale-"); fs.cpSync(path.join(root, "codex/scripts"), d, { recursive: true });
+  const g = path.join(d, "codex-guards.mjs"); fs.writeFileSync(g, fs.readFileSync(g, "utf8").replace(/export (const|function) nudgeAt/, "$1 nudgeAt")); // an older copy without that export
+  const home = tmp(); const r = spawnSync("node", [path.join(d, "codex-hook.mjs"), "SessionStart"], { input: JSON.stringify({ session_id: "s" }), env: { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: path.join(home, ".codex") }, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.stderr.trim(), "", "no startup error"); assert.equal(r.stdout.trim(), "", "and no half-working output");
+});
+
 console.log(`${n} passing`);

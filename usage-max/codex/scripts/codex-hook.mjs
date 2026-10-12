@@ -7,16 +7,19 @@
 //  PreToolUse Bash  -> trim noisy simple commands via updatedInput -> `node run-trimmed.mjs run <plain words>` (readable, any shell). Off: USAGE_MAX_TRIM=off or config.json trim:"off".
 //                      win32 only after `codex-governor.mjs selftest-trim` wrote trim-ok.json (or USAGE_MAX_TRIM=force).
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
-import { evaluate, applyMode, dataDir, modeKey, codexHome } from "./codex-governor.mjs";
-import * as CGOV from "./codex-governor.mjs"; // namespace import: an older copy without cleanLegacy is skipped, never a startup error
-import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from "./run-trimmed.mjs"; import { guard, sessionContext, nudge, nudgeAt } from "./codex-guards.mjs"; import * as TC from "./trimcheck.mjs";
+// Helpers are loaded with guarded dynamic imports: a half-updated install (a copy that lacks a function, or a file) must make this hook do nothing,
+// never fail at startup in the middle of a Codex turn.
+const load = async (f) => { try { return await import(f); } catch { return null; } };
+const CGOV = await load("./codex-governor.mjs"), SH = await load("./shared.mjs"), RTR = await load("./run-trimmed.mjs"), GU = await load("./codex-guards.mjs"), TC = await load("./trimcheck.mjs");
+const { evaluate, applyMode, dataDir, modeKey, codexHome } = CGOV || {}; const { readOther, balanceAdvice } = SH || {}; const { guard, sessionContext, nudge, nudgeAt } = GU || {};
+export const wrap = RTR ? RTR.wrap : undefined;
+const READY = Boolean(CGOV && SH && RTR && GU && TC && evaluate && applyMode && dataDir && modeKey && codexHome && readOther && balanceAdvice && wrap && guard && sessionContext && nudge && nudgeAt && TC.isDisabled && TC.record);
 // project memory + shared resume point: ./memory.mjs and ./resume.mjs next to this file (the stable bin copy) or the plugin's scripts/ (running from the plugin). Absent = feature silently off.
 let R = null; try { R = await import("./resume.mjs"); } catch { try { R = await import("../../scripts/resume.mjs"); } catch {} }
 let M = null; try { M = await import("./memory.mjs"); } catch { try { M = await import("../../scripts/memory.mjs"); } catch {} }
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
 const LONG = /(^|\s)(-w|--watch\w*(=\S+)?|--serve|--dev)(\s|$)|:watch\b|\b(watch|serve|dev|start)\b/i; // never ends: the trimmer would show nothing until it does
 const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
-export { wrap };
 export function rewrite(cmd, runPath, platform = process.platform) {
   if (typeof cmd !== "string" || process.env.USAGE_MAX_TRIM === "off") return null;
   // Codex only honours a rewritten command together with permissionDecision "allow", which also skips Codex's own approval prompt for that command.
@@ -88,4 +91,4 @@ function main() {
     process.stdout.write(JSON.stringify({ systemMessage: `usage-max: budget mode ${beforeKey.toUpperCase()} -> ${key.toUpperCase()}. New sessions use ${cfg.modes[surplus ? "surplus" : mode].model || "your model"} @ ${cfg.modes[surplus ? "surplus" : mode].effort}; use /model to change this one.` }));
   }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) { try { main(); } catch {} process.exit(0); }
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) { try { if (READY) main(); } catch (e) { process.exitCode = 0; } /* a hook must never break a turn */ process.exit(0); }
