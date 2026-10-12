@@ -313,4 +313,29 @@ await t("BUG-023", "remember: never fails silently, keeps a second line, refuses
   assert.match(say("remember: deploys go through the release branch only"), /not saved/i, "a write failure is reported, not swallowed");
 });
 
+await t("BUG-024", "small edge cases: suggest keys, topic creation race, resume marker race, clock, long notes, local dates, CRLF/BOM/UTF-16", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const M = await imp("scripts/memory.mjs"), R = await imp("scripts/resume.mjs"), SG = await imp("scripts/memory-suggest.mjs");
+  // 1. two suggested sentences that share their first five words get different keys
+  const proj0 = path.join(home, "s"); fs.mkdirSync(proj0); fs.writeFileSync(path.join(proj0, "README.md"), "# Rules\n\nAlways run the full test suite before you merge anything to main today.\n\nAlways run the full test suite before you tag a release for customers.\n");
+  const cands = SG.suggest ? SG.suggest(proj0) : SG.collect(proj0); const keys = cands.filter((c) => c.kind === "decision").map((c) => c.key); assert.equal(new Set(keys).size, keys.length, "unique keys: " + keys.join(","));
+  // 2. creating the same new topic twice never overwrites (exclusive create)
+  const proj = path.join(home, "p"); fs.mkdirSync(proj); const mem = M.init(proj); fs.mkdirSync(path.join(mem, "topics"), { recursive: true }); fs.writeFileSync(path.join(mem, "topics", "race.md"), "# race\n\n- first writer's fact _(2026-01-01)_\n");
+  assert.ok(M.addFact(mem, "race", "second writer's fact").topic); const body = fs.readFileSync(path.join(mem, "topics", "race.md"), "utf8"); assert.ok(body.includes("first writer") && body.includes("second writer"));
+  // 3. only one of two simultaneous sessions is handed the note
+  const dd = path.join(home, "rd"); R.saveResume(dd, proj, "Resume point\nFolder: x\nreal detail", { minGapMs: 0 }); assert.ok(R.takeResume(dd, proj, { tool: "claude" })); assert.equal(R.takeResume(dd, proj, { tool: "claude" }), null, "second taker gets nothing"); assert.ok(R.takeResume(dd, proj, { tool: "codex" }), "the other tool still gets it");
+  // 4. a note stamped in the future (clock change) does not block saving
+  const f = R.resumeFile(dd, proj); const fut = new Date(Date.now() + 3 * 3600e3); fs.utimesSync(f, fut, fut); assert.equal(R.saveResume(dd, proj, "newer note"), true, "future mtime is not a throttle");
+  // 5. a long note drops whole low-priority lines, never the key lines
+  const long = ["Resume point from Claude Code (x)", "Folder: /p  branch: main", "Full earlier conversation, word for word: /t.jsonl - search it", "Last things the user asked:", "- do A", "- do B", "Where it stopped (last assistant message): " + "w".repeat(600), "Files edited most recently: " + "a.js, ".repeat(80), "Uncommitted: " + "M f; ".repeat(80)].join("\n");
+  const capped = R.capNote(long, 700); assert.ok(capped.length <= 700 && capped.includes("Full earlier conversation") && capped.includes("- do B") && !capped.includes("Uncommitted"), capped);
+  // 6. dates are the user's local calendar day
+  fs.mkdirSync(path.join(home, "tz"), { recursive: true }); const tz2 = spawnSync("node", ["--input-type=module", "-e", `const M = await import(${JSON.stringify(pathToFileURL(path.join(root, "scripts/memory.mjs")).href)}); const fs = await import("node:fs"); const mem = M.init(${JSON.stringify(path.join(home, "tz"))}); M.decide(mem, "k", "v", new Date("2026-10-13T03:30:00Z")); process.stdout.write(fs.readFileSync(mem + "/decisions.md", "utf8"));`], { env: { ...process.env, TZ: "America/Los_Angeles" }, encoding: "utf8" });
+  assert.match(tz2.stdout, /- 2026-10-12 \| k \| v/, "20:30 on the 12th in Los Angeles is the 12th, not the UTC 13th: " + tz2.stdout + tz2.stderr);
+  // 7. CRLF, BOM and UTF-16 files are read, and appending to them keeps one encoding
+  const p2 = path.join(home, "w"); fs.mkdirSync(p2); const m2 = M.init(p2); const dec = path.join(m2, "decisions.md");
+  fs.writeFileSync(dec, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("# Decisions\r\n- 2026-01-01 | db | postgres\r\n", "utf16le")]));
+  assert.deepEqual(M.readDecisions(m2).map((d) => [d.key, d.value]), [["db", "postgres"]], "UTF-16 with BOM read"); M.decide(m2, "pm", "pnpm"); assert.deepEqual(M.readDecisions(m2).map((d) => d.key).sort(), ["db", "pm"], "append keeps both"); assert.ok(!fs.readFileSync(dec).includes(0), "converted to one encoding (no NUL bytes)");
+  fs.writeFileSync(dec, "\uFEFF- 2026-02-02 | ci | github\r\n"); assert.deepEqual(M.readDecisions(m2).map((d) => [d.key, d.value]), [["ci", "github"]], "BOM + CRLF: no stray CR in the value");
+});
+
 console.log(`${n} passing`);

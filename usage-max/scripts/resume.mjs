@@ -87,7 +87,7 @@ export function buildResume({ transcript, cwd, now = new Date(), tool = "claude"
 export function saveResume(dir, cwd, text, { now = Date.now(), minGapMs = 60e3 } = {}) {
   const f = resumeFile(dir, cwd); // `text` may be a function: it is called only AFTER the throttle check, so a Stop inside the gap costs no transcript read or git call
   let last = 0; try { last = fs.statSync(f).mtimeMs; } catch (e) { last = 0; } // no earlier note: nothing to throttle against
-  if (last && now - last < minGapMs) return false;
+  if (last && now - last > -60e3 && now - last < minGapMs) return false; // a note stamped well in the FUTURE (clock change) must not block saving until then; a few seconds of skew still throttles
   if (typeof text === "function") text = text(); if (!text) return false;
   try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text + "\n"); return true; } catch { return false; }
 }
@@ -96,13 +96,28 @@ export function peekResume(dir, cwd, { maxAgeMs = 864e5, now = Date.now(), cap =
   const f = resumeFile(dir, cwd); let st; try { st = fs.statSync(f); } catch { return null; }
   if (now - st.mtimeMs > maxAgeMs) return null; const t = fs.readFileSync(f, "utf8");
   if (mustInclude && !t.includes(String(mustInclude).replace(/\\/g, "/"))) return null; // a note from another session in this folder is not this conversation
-  return t.length > cap ? t.slice(0, cap) + "…" : t;
+  return capNote(t, cap);
+}
+// A note longer than the cap loses whole low-priority lines first (uncommitted list, file list, the last message is shortened), never the
+// middle of the key lines: the folder/pointer lines and "last things asked" always survive.
+export function capNote(t, cap) {
+  if (t.length <= cap) return t;
+  const L = t.split("\n"), drop = (re) => { const i = L.findIndex((x, k) => k >= 2 && re.test(x)); if (i >= 0) L.splice(i, 1); return i >= 0; };
+  const len = () => L.join("\n").length;
+  if (len() > cap) drop(/^Uncommitted:/);
+  if (len() > cap) drop(/^Files edited most recently:/);
+  if (len() > cap) { const i = L.findIndex((x) => /^Where it stopped/.test(x)); if (i >= 0) L[i] = L[i].slice(0, 160) + "…"; }
+  while (len() > cap && L.length > 3) L.splice(L.length - 1, 1);
+  const out = L.join("\n"); return out.length > cap ? out.slice(0, cap - 1) + "…" : out;
 }
 // Once per saved version, and only for a fresh/cleared session (a resumed or compacted one already has its context).
 export function takeResume(dir, cwd, { maxAgeMs = 7 * 864e5, now = Date.now(), cap = 1400, tool = "claude" } = {}) {
   const f = resumeFile(dir, cwd); let st; try { st = fs.statSync(f); } catch { return null; }
   if (now - st.mtimeMs > maxAgeMs) return null;
-  const mark = f + ".taken-" + tool; try { if (Number(fs.readFileSync(mark, "utf8")) >= Math.floor(st.mtimeMs)) return null; } catch {}
-  try { fs.writeFileSync(mark, String(Math.floor(st.mtimeMs))); } catch {}
-  const t = fs.readFileSync(f, "utf8"); return t.length > cap ? t.slice(0, cap) + "…" : t;
+  // The marker is created EXCLUSIVELY (one per saved version), so two sessions starting at the same instant cannot both show the note.
+  const mark = `${f}.taken-${tool}-${Math.floor(st.mtimeMs)}`;
+  try { fs.writeFileSync(mark, "1", { flag: "wx" }); } catch (e) { if (e && e.code === "EEXIST") return null; } // EEXIST = another session already showed this version; any other failure: showing it is harmless, hiding it is not
+  try { for (const n of fs.readdirSync(path.dirname(f))) if (n.startsWith(path.basename(f) + ".taken-" + tool + "-") && n !== path.basename(mark)) fs.unlinkSync(path.join(path.dirname(f), n)); } catch (e) { return capNote(read0(f), cap); }
+  return capNote(read0(f), cap);
 }
+const read0 = (f) => fs.readFileSync(f, "utf8");
