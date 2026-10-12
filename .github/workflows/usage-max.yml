@@ -2,7 +2,7 @@ name: usage-max tests
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "roundtrip/**"]  # fix branches get their CI run (incl. Windows) before a pull request exists
 jobs:
   offline:
     runs-on: ubuntu-latest
