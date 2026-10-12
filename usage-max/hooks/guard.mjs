@@ -38,6 +38,8 @@ try {
     if (msg || capMsg || handoffMsg) out({ systemMessage: [msg, handoffMsg, capMsg].filter(Boolean).join("\n") });
   } else if (ev === "Stop") {
     G.touch(dir, sid);
+  } else if (ev === "PostToolUseFailure") {
+    const tool = input.tool_name || ""; if (tool === "Agent" || tool === "Task") G.agentEnd(dir, input.tool_use_id); // a subagent that failed or was interrupted frees its slot at once
   } else if (ev === "PostToolUse") {
     const tool = input.tool_name || "";
     if (tool === "Agent" || tool === "Task") G.agentEnd(dir, input.tool_use_id);

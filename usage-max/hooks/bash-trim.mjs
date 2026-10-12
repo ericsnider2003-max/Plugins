@@ -8,10 +8,12 @@ import { underCodex } from "../scripts/host.mjs";
 import { dataDir } from "../scripts/meter.mjs";
 import { isDisabled, recordRewrite } from "../scripts/trimtest.mjs";
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
+// Long-running commands never end, and the trimmer only prints at the end of input: a dev server or a watcher would show nothing. Leave them alone.
+const LONG = /(^|\s)(-w|--watch\w*(=\S+)?|--serve|--dev)(\s|$)|:watch\b|\b(watch|serve|dev|start)\b/i;
 export function rewrite(cmd, trimPath) {
   if (typeof cmd !== "string" || process.env.USAGE_MAX_TRIM === "off") return null;
   const c = cmd.trim();
-  if (!NOISY.test(c) || /[|><;&`$()]|\n/.test(c) || /--no-trim|--reporter|--json|-q\b|--quiet/.test(c)) return null;
+  if (!NOISY.test(c) || LONG.test(c) || /[|><;&`$()]|\n/.test(c) || /--no-trim|--reporter|--json|-q\b|--quiet/.test(c)) return null;
   return `set -o pipefail; ${c} 2>&1 | node "${trimPath.replace(/\\/g, "/")}"`;
 }
 try {

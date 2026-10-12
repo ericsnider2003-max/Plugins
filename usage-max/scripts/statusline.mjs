@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { pace } from "./lib.mjs";
 import { aboveCeiling } from "./ceiling.mjs";
+import { writeAtomic } from "./safefile.mjs";
 
 const home = process.env.USAGE_MAX_HOME || os.homedir();
 const dataDir = path.join(home, ".claude", "usage-max");
@@ -42,14 +43,15 @@ if (!modelId) {
 const parts = [`${label}${aboveCeiling(modelId) ? " ⚠ ABOVE OPUS 5.5 CEILING" : ""}`];
 let gov = null;
 try { gov = JSON.parse(fs.readFileSync(path.join(dataDir, "governor.json"), "utf8")); } catch {}
-if (gov && gov.mode) parts.push(`budget ${gov.mode.toUpperCase()}${gov.override ? " (pinned)" : ""}`);
+const govAgeH = gov && gov.last && gov.last.at && Number.isFinite(Date.parse(gov.last.at)) ? (Date.now() - Date.parse(gov.last.at)) / 3600000 : null;
+const govOld = govAgeH !== null && govAgeH > 6 && !(gov && gov.override) ? ` (as of ${govAgeH >= 48 ? Math.round(govAgeH / 24) + "d" : Math.round(govAgeH) + "h"} ago)` : "";
+if (gov && gov.mode) parts.push(`budget ${gov.mode.toUpperCase()}${gov.override ? " (pinned)" : ""}${govOld}${gov.last && gov.last.note ? " (plan % unknown until your next reply)" : ""}`);
 
 const rl = input.rate_limits || null;
 if (rl && (rl.seven_day || rl.five_hour)) {
-  try {
-    fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(limitsPath, JSON.stringify({ capturedAt: new Date().toISOString(), five_hour: rl.five_hour || null, seven_day: rl.seven_day || null }));
-  } catch {}
+  try { // atomic: the governor reads this file while the next render may be writing it. A window the reading lacks stays null (an old value must not look new).
+    writeAtomic(limitsPath, JSON.stringify({ capturedAt: new Date().toISOString(), five_hour: rl.five_hour || null, seven_day: rl.seven_day || null }));
+  } catch (e) { process.exitCode = 0; }
   const wk = pace(rl.seven_day, 7 * 24 * 3600);
   if (wk) {
     let s = `wk ${Math.round(wk.used)}%`;

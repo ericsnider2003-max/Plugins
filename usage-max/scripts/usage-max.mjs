@@ -119,6 +119,8 @@ async function doctor(fix = false) {
   }
   lim ? ok(`real plan % captured ${Math.round((Date.now() - Date.parse(lim.capturedAt)) / 60000)} min ago`) : bad("no live plan % yet (the status line only exists in the Claude Code TERMINAL app, not the desktop app or Cowork)", "in the terminal app it appears after your first reply; otherwise calibrate once, 10 seconds (read % and reset time from Settings > Usage): usage-max budget calibrate <your weekly %> --resets \"<reset date and time>\"   (or run 4-CALIBRATE-CLAUDE)");
   gov.calib ? ok(`governor calibrated (${gov.calib.source}), mode ${String(gov.mode).toUpperCase()}${gov.surplus ? "+SURPLUS" : ""}`) : bad("governor not calibrated", "will learn from the status line, or: usage-max budget calibrate <pct> --resets <date>");
+  { const mt = rj(path.join(home, ".claude", "usage-max", "meter.json"), {}) || {}; const um = Array.isArray(mt.unknownModels) ? mt.unknownModels : []; // models missing from the price table are counted at the nearest family's price, never as free
+    um.length ? bad(`${um.length} model name(s) are not in the price table (${um.slice(0, 5).join(", ")}): counted at the nearest family's list price, so cost figures are approximate`, "update usage-max, or tell the maintainer the model name") : ok("every model seen has a known price"); }
   const mine = (json(path.join(root, ".claude-plugin", "plugin.json")) || {}).version || "?";
   let latest = null;
   try { const r = await fetch("https://raw.githubusercontent.com/ericsnider2003-max/Plugins/main/usage-max/.claude-plugin/plugin.json", { signal: AbortSignal.timeout(4000) }); if (r.ok) latest = (await r.json()).version; } catch {}

@@ -3,8 +3,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { recordCost } from "./pricing.mjs";
+import { recordCost, takeUnknownModels } from "./pricing.mjs";
 import { listJsonlFiles } from "./lib.mjs";
+import { withLock, canonPath } from "./safefile.mjs";
 
 export function dataDir() {
   return path.join(process.env.USAGE_MAX_HOME || os.homedir(), ".claude", "usage-max");
@@ -71,6 +72,7 @@ export const writeFailures = [];
 export function saveMeter(m) {
   const cutoff = Date.now() - 8 * 86400000;
   for (const k of Object.keys(m.buckets)) if (Date.parse(k) < cutoff) delete m.buckets[k];
+  const keys = Object.keys(m.offsets || {}); if (keys.length > 200) for (const k of keys) { try { fs.statSync(k); } catch { delete m.offsets[k]; } } // offsets of deleted transcripts would grow forever
   try { writeJsonAtomic(path.join(dataDir(), "meter.json"), m); } catch (e) { writeFailures.push(`meter.json: ${e.code || e.message}`); }
 }
 
@@ -83,34 +85,42 @@ export function sessionFiles(transcriptPath) {
   return files;
 }
 
+// Load -> scan -> save as one step that no other session can interleave with (two Stop hooks at once used to lose or double count turns).
+// -> the added cost, or null when another process held the lock for too long (the next hook catches up from the saved offsets).
+export function updateMeter(files) {
+  const r = withLock(path.join(dataDir(), "meter.json"), () => { const m = loadMeter(); const added = meterFiles(m, files); saveMeter(m); return { m, added }; });
+  return r.ok ? r.value : null;
+}
 export function meterFiles(m, files) {
   let added = 0;
   const seen = new Set(m.recentIds || []);
   for (const f of files) {
-    const r = scanFrom(f, m.offsets[f] || 0, Date.now() - 8 * 86400000, seen);
-    m.offsets[f] = r.end;
+    const key = canonPath(f); // one entry per file however the path is spelled (case, slashes, links)
+    const r = scanFrom(f, m.offsets[key] ?? m.offsets[f] ?? 0, Date.now() - 8 * 86400000, seen);
+    delete m.offsets[f]; m.offsets[key] = r.end;
     m.cum += r.cost;
     added += r.cost;
     for (const [h, c] of Object.entries(r.byHour)) m.buckets[h] = (m.buckets[h] || 0) + c;
   }
   m.recentIds = [...seen].slice(-3000);
+  const unk = takeUnknownModels(); if (unk.length) m.unknownModels = [...new Set([...(m.unknownModels || []), ...unk])].slice(-20); // priced like the nearest family; doctor lists them
   return added;
 }
 
 export function spendInLast(m, hours, nowMs = Date.now()) {
   const from = nowMs - hours * 3600000;
   let s = 0;
-  for (const [h, c] of Object.entries(m.buckets)) if (Date.parse(h) + 3600000 > from) s += c;
+  for (const [h, c] of Object.entries(m.buckets)) { const st = Date.parse(h); if (st + 3600000 > from) s += c * Math.min(1, (st + 3600000 - from) / 3600000); } // the bucket that straddles `from` counts only its later share
   return s;
 }
 
 // Full scan used for calibration: spend since `sinceMs`, hourly buckets, and offsets set to EOF.
 export async function bootstrap(projectsDir, sinceMs) {
   const m = { cum: 0, offsets: {}, buckets: {}, startedAt: new Date().toISOString() };
-  let windowSpend = 0;
+  let windowSpend = 0; const seen = new Set(); // one seen-set for the whole scan: a message that appears in two transcript files is priced once
   for (const f of await listJsonlFiles(projectsDir)) {
-    const r = scanFrom(f, 0, Math.min(sinceMs, Date.now() - 7 * 86400000), new Set());
-    m.offsets[f] = r.end;
+    const r = scanFrom(f, 0, Math.min(sinceMs, Date.now() - 7 * 86400000), seen);
+    m.offsets[canonPath(f)] = r.end;
     for (const [h, c] of Object.entries(r.byHour)) {
       m.buckets[h] = (m.buckets[h] || 0) + c;
       if (Date.parse(h) + 3600000 > sinceMs) windowSpend += c;

@@ -12,7 +12,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pace } from "./lib.mjs";
 import { writeSelf } from "./shared.mjs";
-import { ownedSet, ownedUnset, loadApplied, saveApplied } from "./owned.mjs";
+import { ownedSet, ownedUnset, ownedRestore, loadApplied, saveApplied } from "./owned.mjs";
+import { withLock } from "./safefile.mjs";
+import { parseResetTime } from "./resettime.mjs";
 import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap, writeFailures } from "./meter.mjs";
 
 export const DEFAULT_CONFIG = {
@@ -78,13 +80,16 @@ export function decide({ estPct, hoursLeft, ratePerHour, prevMode, config }) {
 // Fold a newer real snapshot (from the status line) into the calibration. Keeps a small (time, pct) history so the
 // burn rate can come from the plan's own percentages (which include Cowork/chat), and learns k (plan % per $ of
 // local spend) from real deltas instead of needing a manual `calibrate`.
-export function absorbSnapshot(state, limits, meterCum) {
+// meterCum is the meter total NOW; the reading was taken earlier, so the spend recorded since then belongs AFTER the reading and is taken off the
+// baseline (opts.meter + opts.nowMs); otherwise the next estimate would leave out the turns between the reading and this call.
+export function absorbSnapshot(state, limits, meterCum, opts = {}) {
   const sd = limits && limits.seven_day;
   if (!sd || typeof sd.used_percentage !== "number" || !sd.resets_at) return false;
   const at = Date.parse(limits.capturedAt);
   if (!Number.isFinite(at)) return false; // no timestamp = cannot tell how old it is: never treat as fresh
   const c = state.calib;
   if (c && c.at >= at) return false;
+  if (opts.meter && Number.isFinite(opts.nowMs)) meterCum = Math.max(0, meterCum - spendInLast(opts.meter, Math.max(0, (opts.nowMs - at) / 3600000), opts.nowMs));
   state.snaps = (state.snaps || []).filter((x) => x.resetsAt === sd.resets_at).slice(-199);
   const last = state.snaps[state.snaps.length - 1];
   if (!last || at - last.at >= 5 * 60000 || sd.used_percentage !== last.pct) state.snaps.push({ at, pct: sd.used_percentage, resetsAt: sd.resets_at });
@@ -130,7 +135,7 @@ export function estimate(state, meter, nowMs = Date.now(), config = DEFAULT_CONF
     ratePerHour = c.pct / elapsedH;
     rateSource = "average so far";
   }
-  return { estPct, hoursLeft, ratePerHour: ratePerHour === null ? 0 : ratePerHour, rateSource: rateSource || "none yet" };
+  return { estPct, hoursLeft, ratePerHour: ratePerHour === null ? 0 : ratePerHour, rateSource: rateSource || "none yet", ...(c.source === "rolled" ? { note: "new window, no plan reading yet" } : {}) };
 }
 
 
@@ -138,7 +143,7 @@ export function estimate(state, meter, nowMs = Date.now(), config = DEFAULT_CONF
 // Returns true when something changed.
 export function patchModel(s, want, applied = {}, force = false) {
   let changed = false;
-  const set = (k, v) => { if (ownedSet(s, k, v, applied, force) === "set") changed = true; };
+  const set = (k, v) => { if (!force && ownedRestore(s, k, applied)) changed = true; if (ownedSet(s, k, v, applied, force) === "set") changed = true; }; // relaxing: first hand back what the user had
   set("model", want.model);
   set("effortLevel", want.effort);
   // `otherEffort` lets surplus raise only the hub model while subagent models stay economical.
@@ -188,15 +193,28 @@ export function applySettings(mode, config) {
   const want = config.modes[mode];
   if (!want) return false;
   const file = files().settings;
-  const s = readJson(file, null);
-  if (!s) return null;
-  const af = path.join(dataDir(), "applied.json"), applied = loadApplied(af);
-  const c1 = patchModel(s, want, applied, mode === "amber" || mode === "red"); // tightening may override your values; green hands back to them
-  const changed = patchLean(s, mode, applied, { lean: config.lean === true }) || c1;
-  saveApplied(af, applied);
-  if (!changed) return false;
-  writeJsonAtomic(file, s);
-  return true;
+  // read -> change -> write as one locked step: Claude Code and other tools write this file too, and a stale copy must not overwrite their change
+  const r = withLock(file, () => {
+    const s = readJson(file, null);
+    if (!s) return null;
+    const af = path.join(dataDir(), "applied.json"), applied = loadApplied(af);
+    const c1 = patchModel(s, want, applied, mode === "amber" || mode === "red"); // tightening may override your values; green hands back to them
+    const changed = patchLean(s, mode, applied, { lean: config.lean === true }) || c1;
+    saveApplied(af, applied);
+    if (!changed) return false;
+    writeJsonAtomic(file, s);
+    return true;
+  });
+  return r.ok ? r.value : false; // busy: nothing was changed, the next evaluation tries again
+}
+
+// Mode floor from the 5-hour window. A projection from the first minutes of a window is noise (4% after 7 minutes "projects" 171%),
+// so the pace only counts once 10% of the window has passed (amber) or 25% (red); a nearly full window (>=95%) is real at any time.
+export function fiveHourFloor(fp) {
+  if (!fp || fp.state !== "over") return null;
+  if (fp.used >= 95) return "red";
+  if (fp.elapsed < 0.1) return null;
+  return fp.projected > 140 && fp.elapsed >= 0.25 ? "red" : "amber";
 }
 
 // One evaluation pass: absorb snapshot, estimate, decide, enforce on change. Returns the new state.
@@ -204,7 +222,7 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   const config = loadConfig();
   const state = loadState();
   meter = meter || loadMeter();
-  absorbSnapshot(state, readJson(files().limits, null), meter.cum);
+  absorbSnapshot(state, readJson(files().limits, null), meter.cum, { meter, nowMs });
   if (rollWindow(state, meter, nowMs)) state.mode = "green"; // new week: no hysteresis from last week's mode
   const est = estimate(state, meter, nowMs, config);
   let d = state.override ? { mode: state.override, ratio: null, allowedPerHour: null } : decide({ ...est, prevMode: state.mode, config });
@@ -214,9 +232,9 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   const lim5 = !state.override ? readJson(files().limits, null) || {} : {};
   const fh = lim5.five_hour && nowMs - Date.parse(lim5.capturedAt) < 20 * 60000 ? lim5.five_hour : null; // stale snapshot = no signal
   const fp = fh && fh.resets_at * 1000 > nowMs ? pace(fh, 5 * 3600, nowMs) : null;
-  if (fp && fp.state === "over") {
+  const floor = fiveHourFloor(fp);
+  if (floor) {
     const rank = { green: 0, amber: 1, red: 2 };
-    const floor = fp.used >= 95 || fp.projected > 140 ? "red" : "amber";
     if (rank[floor] > rank[d.mode]) d = { ...d, mode: floor, reason: `5-hour window ${Math.round(fp.used)}%, projected ${Math.round(fp.projected)}%` };
   }
   const changed = d.mode !== state.mode;
@@ -239,7 +257,7 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
     try { if (applySettings(key, config) !== null) { state.appliedKey = key; state.appliedMode = state.mode; } } catch {}
   }
   const fp5 = (readJson(files().limits, null) || {}).five_hour;
-  writeSelf("claude", { mode: state.mode, surplus: Boolean(state.surplus), estPct: est.estPct, hoursLeft: est.hoursLeft, fivePct: fp5 && typeof fp5.used_percentage === "number" ? fp5.used_percentage : null });
+  writeSelf("claude", { dataAt: state.calib && state.calib.at ? new Date(state.calib.at).toISOString() : null, mode: state.mode, surplus: Boolean(state.surplus), estPct: est.estPct, hoursLeft: est.hoursLeft, fivePct: fp5 && typeof fp5.used_percentage === "number" ? fp5.used_percentage : null });
   saveState(state);
   return state;
 }
@@ -254,7 +272,7 @@ async function cli() {
     const pct = Number(String(rest[0] || "").replace(/%/g, "").trim());
     if (!Number.isFinite(pct)) { console.log("usage: calibrate <weekly % from Settings > Usage> [--resets <ISO date or epoch seconds>]"); process.exit(1); }
     let resetsAt = flag("resets");
-    if (resetsAt) resetsAt = /^\d+$/.test(resetsAt) ? Number(resetsAt) : Math.floor(Date.parse(resetsAt) / 1000);
+    if (resetsAt) { const pr = parseResetTime(resetsAt); if (pr.error) { console.log("not calibrated: " + pr.error); process.exit(1); } if (pr.note) console.log("note: " + pr.note); resetsAt = Math.floor(pr.ms / 1000); }
     const lim = readJson(files().limits, null);
     if (!resetsAt && lim && lim.seven_day && lim.seven_day.resets_at * 1000 > Date.now()) resetsAt = lim.seven_day.resets_at;
     if (!resetsAt) { console.log("need --resets <when the weekly limit resets> (shown in Settings > Usage)"); process.exit(1); }

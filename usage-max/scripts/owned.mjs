@@ -11,8 +11,21 @@ function put(o, p, v) {
 }
 
 // Remove a key only if it still holds the value usage-max wrote (the user's own value is never removed). Returns true when removed.
+// When usage-max FORCES a value over one the user set (tightening), the user's value is remembered under applied.__prev and handed back
+// (instead of deleted or replaced by our own default) when the key is released.
+const PREV = "__prev";
+const prevOf = (applied, k) => applied[PREV] && k in applied[PREV] ? applied[PREV] : null;
+const dropPrev = (applied, k) => { if (applied[PREV]) { delete applied[PREV][k]; if (!Object.keys(applied[PREV]).length) delete applied[PREV]; } };
+export function ownedRestore(obj, keyPath, applied) {
+  const pv = prevOf(applied, keyPath); if (!pv) return false;
+  const cur = get(obj, keyPath), ours = keyPath in applied && J(cur) === J(applied[keyPath]), user = pv[keyPath];
+  delete applied[keyPath]; dropPrev(applied, keyPath);
+  if (!ours) return false; // the user changed it again since: it is theirs now
+  put(obj, keyPath, user); return true;
+}
 export function ownedUnset(obj, keyPath, applied) {
   if (!(keyPath in applied)) return false;
+  if (prevOf(applied, keyPath)) return ownedRestore(obj, keyPath, applied);
   const cur = get(obj, keyPath), ours = J(cur) === J(applied[keyPath]); delete applied[keyPath];
   if (!ours || cur === undefined) return false;
   const ks = keyPath.split("."), last = ks.pop(), parent = ks.reduce((x, k) => (x ? x[k] : undefined), obj);
@@ -27,6 +40,10 @@ export const saveApplied = (file, applied) => writeJsonAtomic(file, applied);
 export function ownedSet(obj, keyPath, value, applied, force = false) {
   const cur = get(obj, keyPath);
   if (J(cur) === J(value)) { if (keyPath in applied) applied[keyPath] = value; return "same"; } // already that value: only ours if we wrote it before; a user's own identical value is never claimed (so it can never be "handed back" = deleted)
-  if (force || cur === undefined || (keyPath in applied && J(applied[keyPath]) === J(cur))) { put(obj, keyPath, value); applied[keyPath] = value; return "set"; }
+  const ours = keyPath in applied && J(applied[keyPath]) === J(cur);
+  if (force || cur === undefined || ours) {
+    if (force && cur !== undefined && !ours) applied[PREV] = { ...(applied[PREV] || {}), [keyPath]: cur }; // remember what the user had
+    put(obj, keyPath, value); applied[keyPath] = value; return "set";
+  }
   return "kept";
 }

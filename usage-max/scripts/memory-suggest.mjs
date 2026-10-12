@@ -66,7 +66,7 @@ export function suggest(root, { maxTotal = MAX_TOTAL } = {}) {
         for (const sent of plain(line).split(/(?<=[.!?])\s+/)) {
           if (sent.length < 25 || sent.length > MAX_TEXT || !isRule(sent.trim())) continue; // too long = skipped, never cut
           const cues = (sent.match(new RegExp(MUST.source, "gi")) || []).length + (START.test(sent.trim()) ? 1 : 0);
-          push({ kind: "decision", key: slug(sent), text: sent.trim(), score: 4 + cues }, i + 1); break;
+          push({ kind: "decision", key: slug(sent) + "-" + crypto.createHash("sha1").update(sent.trim()).digest("hex").slice(0, 4), text: sent.trim(), score: 4 + cues }, i + 1); break; // the hash keeps two sentences that share their first words apart
         }
       }
     }

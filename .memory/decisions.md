@@ -8,3 +8,4 @@ One line each: `- YYYY-MM-DD | key | value`. The newest line for a key wins. The
 - 2026-10-11 | !repeated questions | The user is tired of re-answering. Check .memory/decisions.md before asking; record every answer with memory decide
 - 2026-10-11 | proof | Every change is proven by the offline suites (node usage-max/scripts/check.mjs, usage-max/test/*.mjs, usage-max/codex/test/run.mjs) plus usage-max/test/live.mjs before merge
 - 2026-10-11 | big-project problem | Claude and Codex forget parts of big projects, causing rework; project memory (.memory/) is the fix, built in 0.16.0
+- 2026-10-12 | audit tests | usage-max/test/fix.mjs has one block per roundtrip finding id; run one with: node usage-max/test/fix.mjs BUG-014

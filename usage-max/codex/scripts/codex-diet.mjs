@@ -3,6 +3,7 @@
 // node codex-diet.mjs [--cwd dir] [--json] [--apply] [--disable-mcp name1,name2]
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { fileURLToPath } from "node:url";
 import { codexHome, setTopLevel } from "./codex-governor.mjs";
+import { editText } from "./safefile.mjs";
 const read = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return ""; } };
 const TOK = (c) => Math.round(c / 3.6);
 export function audit({ cwd = process.cwd(), home = codexHome() } = {}) {
@@ -22,16 +23,23 @@ export function audit({ cwd = process.cwd(), home = codexHome() } = {}) {
   return { rows, advice, always: rows.reduce((a, r) => a + (r.tokens || 0), 0) };
 }
 export function apply(home = codexHome(), disable = []) {
-  const f = path.join(home, "config.toml"); let t = read(f); try { fs.writeFileSync(f + ".usage-max-diet-backup", t, { flag: "wx" }); } catch {}
-  const kv = {}; // never sets tool_output_token_limit / model_auto_compact_token_limit: smaller values make Codex lose project detail
-  if (!/^\s*compact_prompt\s*=/m.test(t)) kv.compact_prompt = "Summarize for continuation: keep user goal, decisions made, file paths touched, current errors and exact next step. Drop dead ends, raw tool output and repeated reasoning.";
-  t = setTopLevel(t, kv);
-  for (const name of disable) t = t.replace(new RegExp(`(^\\[mcp_servers\\.${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]\\s*\\n)(?![\\s\\S]*?^\\s*enabled\\s*=)`, "m"), "$1enabled = false\n");
-  fs.writeFileSync(f, t.replace(/\n*$/, "\n")); return { set: Object.keys(kv), disabled: disable };
+  const f = path.join(home, "config.toml"); const kv = {}; // never sets tool_output_token_limit / model_auto_compact_token_limit: smaller values make Codex lose project detail
+  const r = editText(f, (t) => {
+    if (!/^\s*compact_prompt\s*=/m.test(t)) kv.compact_prompt = "Summarize for continuation: keep user goal, decisions made, file paths touched, current errors and exact next step. Drop dead ends, raw tool output and repeated reasoning.";
+    t = setTopLevel(t, kv);
+    for (const name of disable) { // inside that server's own table only: an `enabled =` in a LATER table must not stop this one
+      const hdr = new RegExp(`^\\[mcp_servers\\.${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\][ \\t]*\\r?$`, "m"), h = hdr.exec(t); if (!h) continue;
+      const bodyStart = h.index + h[0].length + 1, nx = t.slice(bodyStart).search(/^\s*\[/m), bodyEnd = nx < 0 ? t.length : bodyStart + nx;
+      if (/^\s*enabled\s*=/m.test(t.slice(bodyStart, bodyEnd))) continue;
+      t = t.slice(0, bodyStart) + "enabled = false\n" + t.slice(bodyStart);
+    }
+    return t.replace(/\n*$/, "\n");
+  });
+  return { set: r.error ? [] : Object.keys(kv), disabled: r.error ? [] : disable, ...(r.error ? { error: r.error } : {}) };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const a = process.argv.slice(2); const flag = (n) => { const i = a.indexOf("--" + n); return i >= 0 ? a[i + 1] : null; };
-  if (a.includes("--apply") || flag("disable-mcp")) { const r = apply(codexHome(), (flag("disable-mcp") || "").split(",").filter(Boolean)); console.log(`applied: set ${r.set.join(", ") || "nothing new"}; disabled MCP: ${r.disabled.join(", ") || "none"} (backup config.toml.usage-max-diet-backup)`); process.exit(0); }
+  if (a.includes("--apply") || flag("disable-mcp")) { const r = apply(codexHome(), (flag("disable-mcp") || "").split(",").filter(Boolean)); if (r.error) { console.error("NOT applied: " + r.error); process.exit(1); } console.log(`applied: set ${r.set.join(", ") || "nothing new"}; disabled MCP: ${r.disabled.join(", ") || "none"} (previous version kept as config.toml.usage-max-backup-<time>)`); process.exit(0); }
   const r = audit({ cwd: flag("cwd") || process.cwd() });
   if (a.includes("--json")) { console.log(JSON.stringify(r, null, 2)); process.exit(0); }
   console.log(`usage-max codex-diet — measurable always-loaded ≈ ${r.always} tokens (excludes MCP tool schemas & system prompt; check /status)`);

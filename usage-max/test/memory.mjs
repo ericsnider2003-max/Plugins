@@ -138,7 +138,7 @@ t("directive only counts at the START of the prompt; pasted text is ignored; sec
   assert.equal(M.extractDirective("Here is the email:\nGoing forward, we will bill monthly and keep a ledger."), null);
   assert.equal(M.extractDirective("Summary of the changelog. From now on the API is versioned per release."), null);
   assert.ok(M.extractDirective("From now on, answer in short sentences"));
-  assert.equal(M.extractDirective("remember: the prod password is hunter2hunter2"), null, "secret-looking directive not captured");
+  const sd = M.extractDirective("remember: the prod password is hunter2hunter2"); assert.ok(sd, "extracted so the refusal can be shown to the user"); assert.ok(M.decide(mem, M.directiveKey(sd), sd).error, "but never saved");
   for (const bad of ["use sk-live-abcdefghijklmnop1234 for billing", "password: Tr0ub4dor&3xyz", "AKIAABCDEFGHIJKLMNOP is the key", "token=ghp_abcdefghijklmnopqrstuvwxyz0123456789"]) { assert.ok(M.looksSecret(bad), bad); assert.ok(M.decide(mem, "x", bad).error, bad); assert.ok(M.addFact(mem, "x", bad).error, bad); }
   assert.ok(!M.looksSecret("the password lives in 1Password item Billing"));
 });

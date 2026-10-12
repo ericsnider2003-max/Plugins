@@ -14,9 +14,19 @@ const TABLE = [
   { match: /haiku/, input: 1, write1h: 2, write5m: 1.25, read: 0.1, output: 5, approx: true }
 ];
 // ctx = prompt size in tokens (input + cache writes + cache reads); only matters for tiered models.
+// A model name the table does not know (a new version, a renamed one) is priced like the nearest family and flagged, never as free: a free
+// price would silently hide real spend from the budget. Names seen this way are collected for `doctor` (takeUnknownModels).
+const UNKNOWN = new Set();
+export const takeUnknownModels = () => { const a = [...UNKNOWN]; UNKNOWN.clear(); return a; };
+function fallbackFor(name) {
+  const fam = (re) => TABLE.find((x) => x.match.test(re)); // by family; anything else gets the opus rate (an over-estimate beats a free one)
+  const byFamily = /fable/.test(name) ? fam("fable") : /opus/.test(name) ? fam("opus-5") : /sonnet/.test(name) ? fam("sonnet-4") : /haiku/.test(name) ? fam("haiku-4") : fam("opus-5");
+  return { ...byFamily, approx: true, fallback: true };
+}
 export function priceFor(model, ctx = 0) {
   const name = String(model || "").toLowerCase();
-  const p = TABLE.find((x) => x.match.test(name)) || null;
+  let p = TABLE.find((x) => x.match.test(name)) || null;
+  if (!p && name && name !== "<synthetic>" && name !== "unknown") { p = fallbackFor(name); UNKNOWN.add(String(model)); }
   return p && p.long && ctx > p.longAbove ? { ...p, ...p.long } : p;
 }
 // Cache-write cost honouring the real 5m/1h split when the transcript carries it (else everything at the 1h rate).

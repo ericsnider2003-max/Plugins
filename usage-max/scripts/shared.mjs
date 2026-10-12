@@ -15,10 +15,16 @@ export function writeSelf(self, entry) {
     const tmp = `${file()}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(all, null, 2));
     fs.renameSync(tmp, file());
-  } catch {}
+    return true;
+  } catch (e) { return false; } // the other side just sees an older entry; nothing depends on this write succeeding
 }
 export const readOther = (other) => read()[other] || null;
-export const isFresh = (entry, now = Date.now(), maxAgeMs = 6 * 3600e3) => Boolean(entry && Date.now && now - Date.parse(entry.updatedAt) < maxAgeMs && now >= Date.parse(entry.updatedAt) - 60000);
+// `updatedAt` is when the entry was written; `dataAt` (when present) is when the plan reading behind it was taken. A governor that re-writes
+// its entry every hour from a three-day-old reading must not look fresh to the other side.
+export const isFresh = (entry, now = Date.now(), maxAgeMs = 6 * 3600e3) => {
+  if (!entry) return false; const u = Date.parse(entry.updatedAt), d = entry.dataAt ? Date.parse(entry.dataAt) : u;
+  return Number.isFinite(u) && Number.isFinite(d) && now - u < maxAgeMs && now - d < maxAgeMs && now >= u - 60000;
+};
 
 // Pure. self/other are shared entries; names are for the message only.
 export function balanceAdvice(self, other, now = Date.now(), { selfName = "Claude", otherName = "Codex", dispatch = "" } = {}) {

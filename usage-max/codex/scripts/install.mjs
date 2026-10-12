@@ -1,35 +1,42 @@
 #!/usr/bin/env node
 // Installs usage-max into Codex: skill, AGENTS.md block, notify hook, profiles. Idempotent; backs up config.toml.
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
-import { codexHome, dataDir, setTopLevel, writeProfiles, loadConfig, applyMode, evaluate, markInstalled, modelsSeen, weightFor, DEFAULT_CONFIG } from "./codex-governor.mjs";
+import { codexHome, dataDir, setTopLevel, topValue, writeProfiles, loadConfig, applyMode, evaluate, markInstalled, modelsSeen, weightFor, DEFAULT_CONFIG } from "./codex-governor.mjs";
 import { binDir, syncBin } from "./sync.mjs";
+import { editText } from "./safefile.mjs";
 const plugin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."); const sr = syncBin({ root: plugin, force: true }); if (sr.error) console.error("sync to stable dir failed (using existing copy if any):", sr.error);
 const root = binDir(); const ch = codexHome(); fs.mkdirSync(ch, { recursive: true });
 // 1. skill (user skills dir)
 const sk = path.join(ch, "skills", "usage-max"); fs.mkdirSync(sk, { recursive: true });
 const rp = root.replace(/\\/g, "/"); const sub = (s) => s.split("<usage-max>").join(rp);
 fs.writeFileSync(path.join(sk, "SKILL.md"), sub(fs.readFileSync(path.join(root, "skills/usage-max/SKILL.md"), "utf8")));
-// 2. AGENTS.md managed block
-const ag = path.join(ch, "AGENTS.md"); let a = ""; try { a = fs.readFileSync(ag, "utf8"); } catch {}
+// 2. AGENTS.md managed block (an unreadable file is never treated as empty: it is left alone and the failure is shown)
+const ag = path.join(ch, "AGENTS.md");
 const blk = fs.readFileSync(path.join(root, "AGENTS.usage-max.md"), "utf8").trim().split("<usage-max>").join(rp);
 const re = /<!-- usage-max:start -->[\s\S]*?<!-- usage-max:end -->/;
-a = re.test(a) ? a.replace(re, () => blk) : (a ? a.replace(/\n*$/, "\n\n") : "") + blk + "\n"; fs.writeFileSync(ag, a);
+{ const r = editText(ag, (a) => re.test(a) ? a.replace(re, () => blk) : (a ? a.replace(/\n*$/, "\n\n") : "") + blk + "\n"); if (r.error) console.error("AGENTS.md NOT updated: " + r.error); }
 // 3. notify hook (only if user has none, or ours)
-const cf = path.join(ch, "config.toml"); let t = ""; try { t = fs.readFileSync(cf, "utf8"); } catch {}
-const notify = path.join(root, "scripts", "notify.mjs").replace(/\\/g, "/"); const m = t.match(/^\s*notify\s*=.*$/m);
-if (!m || m[0].includes("usage-max") || m[0].includes("notify.mjs")) { if (t) { try { fs.writeFileSync(cf + ".usage-max-backup", t, { flag: "wx" }); } catch {} } t = setTopLevel(t, {}); 
-  const line = `notify = ["node", ${JSON.stringify(notify)}]`; t = m ? t.replace(/^\s*notify\s*=.*$/m, line) : (() => { const L = t.split("\n"); let i = L.findIndex(l => /^\s*\[/.test(l)); if (i < 0) i = L.length; L.splice(i, 0, line); return L.join("\n"); })(); fs.writeFileSync(cf, t.replace(/\n*$/, "\n")); console.log("notify hook set"); }
-else console.log(`existing notify= left untouched; run node ${rp}/scripts/notify.mjs from your own notifier to keep metering`);
+const cf = path.join(ch, "config.toml");
+const notify = path.join(root, "scripts", "notify.mjs").replace(/\\/g, "/");
+{ const r = editText(cf, (t) => {
+    const cur = topValue(t, "notify");
+    if (cur !== undefined && !cur.includes("usage-max") && !cur.includes("notify.mjs")) { console.log(`existing notify= left untouched; run node ${rp}/scripts/notify.mjs from your own notifier to keep metering`); return null; }
+    t = setTopLevel(t, { notify: { raw: `["node", ${JSON.stringify(notify)}]` } });
+    return t.replace(/\n*$/, "\n");
+  }); if (r.error) console.error("config.toml notify NOT set: " + r.error); else if (r.changed) console.log("notify hook set"); }
 // 4. hooks.json (merge, idempotent). Codex asks you to trust non-managed hooks once: run /hooks in Codex.
 {
-  const hf = path.join(ch, "hooks.json"); let hj = {}; try { hj = JSON.parse(fs.readFileSync(hf, "utf8")); } catch {}
-  hj.hooks = hj.hooks || {}; const hs = path.join(root, "scripts", "codex-hook.mjs").replace(/\\/g, "/");
+  const hf = path.join(ch, "hooks.json"); const hs = path.join(root, "scripts", "codex-hook.mjs").replace(/\\/g, "/");
   const entry = (ev, matcher) => ({ ...(matcher ? { matcher } : {}), hooks: [{ type: "command", command: `node "${hs}" ${ev}`, timeout: 15, statusMessage: "usage-max" }] });
-  for (const [ev, matcher] of [["SessionStart"], ["UserPromptSubmit"], ["Stop"], ["PreToolUse", "Bash"]]) {
-    const arr = (hj.hooks[ev] = (hj.hooks[ev] || []).filter((g) => !JSON.stringify(g).includes("codex-hook.mjs"))); arr.push(entry(ev, matcher));
-  }
-  try { fs.writeFileSync(hf + ".usage-max-backup", fs.readFileSync(hf), { flag: "wx" }); } catch {}
-  fs.writeFileSync(hf, JSON.stringify(hj, null, 2)); console.log("hooks.json merged (run /hooks in Codex once to trust them)");
+  const r = editText(hf, (txt) => {
+    let hj = {}; if (txt.trim()) { try { hj = JSON.parse(txt); } catch { throw new Error("hooks.json is not valid JSON, so it was not touched (fix or move it, then run install again)"); } }
+    hj.hooks = hj.hooks || {};
+    for (const [ev, matcher] of [["SessionStart"], ["UserPromptSubmit"], ["Stop"], ["PreToolUse", "Bash"]]) {
+      const arr = (hj.hooks[ev] = (hj.hooks[ev] || []).filter((g) => !JSON.stringify(g).includes("codex-hook.mjs"))); arr.push(entry(ev, matcher));
+    }
+    return JSON.stringify(hj, null, 2);
+  });
+  if (r.error) console.error("hooks.json NOT updated: " + r.error); else console.log("hooks.json merged (run /hooks in Codex once to trust them)");
 }
 // 5. seed config.json modes from models seen in sessions (never overwrite)
 {

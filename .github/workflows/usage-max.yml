@@ -2,7 +2,7 @@ name: usage-max tests
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "roundtrip/**"]  # fix branches get their CI run (incl. Windows) before a pull request exists
 jobs:
   offline:
     runs-on: ubuntu-latest
@@ -19,6 +19,7 @@ jobs:
           node usage-max/test/new.mjs
           node usage-max/test/guard.mjs
           node usage-max/test/memory.mjs
+          node usage-max/test/fix.mjs
       - name: Codex tests
         run: node usage-max/codex/test/run.mjs
       - name: Build the desktop kit and plugin zip
@@ -26,3 +27,23 @@ jobs:
           python3 install/build-kit.py --out "$RUNNER_TEMP/kit"
           unzip -l "$RUNNER_TEMP"/kit/usage-max-plugin-*.zip | grep -q "usage-max/.claude-plugin/plugin.json"
           unzip -l "$RUNNER_TEMP"/kit/usage-max-desktop.zip | grep -q "usage-max-desktop/4-CALIBRATE-CLAUDE.cmd"
+
+  # The plugin is used on a Windows PC: path handling, line endings and the .cmd launchers only show up there.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Static checks
+        run: node usage-max/scripts/check.mjs
+      - name: Claude plugin tests
+        run: |
+          node usage-max/test/run.mjs
+          node usage-max/test/new.mjs
+          node usage-max/test/guard.mjs
+          node usage-max/test/memory.mjs
+          node usage-max/test/fix.mjs
+      - name: Codex tests
+        run: node usage-max/codex/test/run.mjs
