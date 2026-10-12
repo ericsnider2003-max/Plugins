@@ -14,13 +14,14 @@ import { readOther, balanceAdvice } from "./shared.mjs"; import { wrap } from ".
 let R = null; try { R = await import("./resume.mjs"); } catch { try { R = await import("../../scripts/resume.mjs"); } catch {} }
 let M = null; try { M = await import("./memory.mjs"); } catch { try { M = await import("../../scripts/memory.mjs"); } catch {} }
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
+const LONG = /(^|\s)(-w|--watch\w*(=\S+)?|--serve|--dev)(\s|$)|:watch\b|\b(watch|serve|dev|start)\b/i; // never ends: the trimmer would show nothing until it does
 const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
 export { wrap };
 export function rewrite(cmd, runPath, platform = process.platform) {
   if (typeof cmd !== "string" || process.env.USAGE_MAX_TRIM === "off") return null;
   const cj = rj("config.json"); if (cj && cj.trim === "off") return null;
   if (platform === "win32" && process.env.USAGE_MAX_TRIM !== "force") { const ok = rj("trim-ok.json"); if (!ok || ok.ok !== true) return null; }
-  const c = cmd.trim(); if (!NOISY.test(c) || /[|><;&`$()]|\n|\r/.test(c) || /--no-trim|--reporter|--json|-q\b|--quiet/.test(c)) return null;
+  const c = cmd.trim(); if (!NOISY.test(c) || LONG.test(c) || /[|><;&`$()]|\n|\r/.test(c) || /--no-trim|--reporter|--json|-q\b|--quiet/.test(c)) return null;
   return wrap(c, runPath);
 }
 const DIRECTIVE = { amber: "usage-max AMBER: weekly budget is being burned faster than sustainable. Use low reasoning effort, keep scope tight, avoid re-reading files, no large autonomous jobs without asking.", red: "usage-max RED: weekly budget is nearly exhausted for the time left. Cheapest path only: minimal reads, no exploratory work, no fast mode, no long autonomous runs; ask before anything big." };

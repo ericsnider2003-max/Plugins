@@ -29,4 +29,11 @@ await t("BUG-016", "a few minutes into the 5-hour window never forces red", asyn
   assert.equal(G.fiveHourFloor({ state: "over", used: 70, elapsed: 0.4, projected: 175 }), "red");
 });
 
+await t("BUG-006", "watchers and dev servers are never wrapped by the trimmer", async () => {
+  const home = tmp(); const wrapped = (c) => { const r = spawnSync("node", [path.join(root, "hooks/bash-trim.mjs")], { input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: c } }), encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: home, USAGE_MAX_HOST: "claude" } }); return /updatedInput/.test(r.stdout); };
+  for (const c of ["npm run dev", "npm run test:watch", "npx jest --watch", "npx tsc --watch", "pnpm run build --watch", "npm run test -- --watchAll", "make serve", "yarn test -w", "npm run start"]) assert.equal(wrapped(c), false, c);
+  for (const c of ["npm test", "npx tsc", "pytest tests/", "cargo build", "npm run build"]) assert.equal(wrapped(c), true, c + " is still trimmed");
+  const CH = await imp("codex/scripts/codex-hook.mjs"); for (const c of ["npm run dev", "npx jest --watch", "npm run test:watch"]) assert.equal(CH.rewrite(c, "/x/run.mjs", "linux"), null, "codex: " + c); assert.ok(CH.rewrite("npm test", "/x/run.mjs", "linux"), "codex still trims npm test");
+});
+
 console.log(`${n} passing`);
