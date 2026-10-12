@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Installs usage-max into Codex: skill, AGENTS.md block, notify hook, profiles. Idempotent; backs up config.toml.
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
-import { codexHome, dataDir, setTopLevel, writeProfiles, loadConfig, applyMode, evaluate, markInstalled, modelsSeen, weightFor, DEFAULT_CONFIG } from "./codex-governor.mjs";
+import { codexHome, dataDir, setTopLevel, topValue, writeProfiles, loadConfig, applyMode, evaluate, markInstalled, modelsSeen, weightFor, DEFAULT_CONFIG } from "./codex-governor.mjs";
 import { binDir, syncBin } from "./sync.mjs";
 import { editText } from "./safefile.mjs";
 const plugin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."); const sr = syncBin({ root: plugin, force: true }); if (sr.error) console.error("sync to stable dir failed (using existing copy if any):", sr.error);
@@ -19,10 +19,9 @@ const re = /<!-- usage-max:start -->[\s\S]*?<!-- usage-max:end -->/;
 const cf = path.join(ch, "config.toml");
 const notify = path.join(root, "scripts", "notify.mjs").replace(/\\/g, "/");
 { const r = editText(cf, (t) => {
-    const m = t.match(/^\s*notify\s*=.*$/m);
-    if (m && !m[0].includes("usage-max") && !m[0].includes("notify.mjs")) { console.log(`existing notify= left untouched; run node ${rp}/scripts/notify.mjs from your own notifier to keep metering`); return null; }
-    const line = `notify = ["node", ${JSON.stringify(notify)}]`; t = setTopLevel(t, {});
-    t = m ? t.replace(/^\s*notify\s*=.*$/m, line) : (() => { const L = t.split("\n"); let i = L.findIndex(l => /^\s*\[/.test(l)); if (i < 0) i = L.length; L.splice(i, 0, line); return L.join("\n"); })();
+    const cur = topValue(t, "notify");
+    if (cur !== undefined && !cur.includes("usage-max") && !cur.includes("notify.mjs")) { console.log(`existing notify= left untouched; run node ${rp}/scripts/notify.mjs from your own notifier to keep metering`); return null; }
+    t = setTopLevel(t, { notify: { raw: `["node", ${JSON.stringify(notify)}]` } });
     return t.replace(/\n*$/, "\n");
   }); if (r.error) console.error("config.toml notify NOT set: " + r.error); else if (r.changed) console.log("notify hook set"); }
 // 4. hooks.json (merge, idempotent). Codex asks you to trust non-managed hooks once: run /hooks in Codex.

@@ -146,17 +146,9 @@ export function calibrate(pct, resets, now = Date.now()) {
   st.k = st.k && newK ? 0.7 * newK + 0.3 * st.k : newK || st.k; st.calib = { pct, at: now, resets }; wj(sf, st); return st;
 }
 
-// ---- TOML: replace-or-insert top-level scalar keys (before first [table]), never touch other content.
-export function setTopLevel(toml, kv) {
-  const lines = toml.split("\n"); let firstTable = lines.findIndex(l => /^\s*\[/.test(l)); if (firstTable < 0) firstTable = lines.length;
-  for (const [k, v] of Object.entries(kv)) {
-    const val = v === null ? null : typeof v === "number" ? String(v) : JSON.stringify(v);
-    const re = new RegExp("^\\s*" + k + "\\s*="); const i = lines.slice(0, firstTable).findIndex(l => re.test(l));
-    if (val === null) { if (i >= 0) { lines.splice(i, 1); firstTable--; } continue; }
-    if (i >= 0) lines[i] = `${k} = ${val}`; else { lines.splice(firstTable, 0, `${k} = ${val}`); firstTable++; }
-  }
-  return lines.join("\n");
-}
+// ---- TOML: top-level keys only; see toml.mjs
+import { setTopLevel as setTop, topValue as topVal } from "./toml.mjs";
+export const setTopLevel = setTop, topValue = topVal;
 export const LEGACY_TUNING = { tool_output_token_limit: 8000, model_auto_compact_token_limit: 64000, project_doc_max_bytes: 16384 };
 const tuningKV = (cfg) => Object.fromEntries(Object.entries(cfg.tuning || {}).filter(([, v]) => Number.isFinite(v)));
 const modeKV = (mc, cfg) => ({ ...(mc.model ? { model: mc.model } : {}), model_reasoning_effort: mc.effort, ...(mc.service_tier ? { service_tier: mc.service_tier } : {}), plan_mode_reasoning_effort: mc.effort === "low" ? "medium" : mc.effort, ...tuningKV(cfg) });
@@ -172,11 +164,9 @@ export const modeKey = (mode, surplus) => mode + (surplus ? "+s" : "");
 export function markApplied(key) { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.appliedKey = key; wj(sf, st); }
 // Old defaults are removed ONLY when (a) usage-max once applied a mode on this machine (governor.json has appliedKey, i.e. it is the one that wrote them),
 // (b) the line is a top-level key (above the first [table]) holding exactly the old default, and (c) you did not ask for that limit under "tuning".
-const topLevel = (t) => { const i = String(t).search(/^\s*\[/m); return i < 0 ? String(t) : String(t).slice(0, i); };
 export function legacyRemovals(text, cfg = loadConfig()) {
   const out = {}; const st = j(path.join(dataDir(), "governor.json"), {}); if (!st.appliedKey) return out;
-  const head = topLevel(text);
-  for (const [k, v] of Object.entries(LEGACY_TUNING)) { const m = head.match(new RegExp(`^\\s*${k}\\s*=\\s*(\\d+)\\s*(?:#.*)?$`, "m")); if (m && Number(m[1]) === v && !Number.isFinite((cfg.tuning || {})[k])) out[k] = null; }
+  for (const [k, v] of Object.entries(LEGACY_TUNING)) { const raw = topVal(text, k); if (raw !== undefined && /^\d+$/.test(raw) && Number(raw) === v && !Number.isFinite((cfg.tuning || {})[k])) out[k] = null; }
   return out;
 }
 // Runs on every SessionStart: hand back the context-shrinking limits an older usage-max wrote, whatever the budget mode. Returns the keys removed.

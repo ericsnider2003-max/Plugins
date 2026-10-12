@@ -27,7 +27,12 @@ export function apply(home = codexHome(), disable = []) {
   const r = editText(f, (t) => {
     if (!/^\s*compact_prompt\s*=/m.test(t)) kv.compact_prompt = "Summarize for continuation: keep user goal, decisions made, file paths touched, current errors and exact next step. Drop dead ends, raw tool output and repeated reasoning.";
     t = setTopLevel(t, kv);
-    for (const name of disable) t = t.replace(new RegExp(`(^\\[mcp_servers\\.${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]\\s*\\n)(?![\\s\\S]*?^\\s*enabled\\s*=)`, "m"), "$1enabled = false\n");
+    for (const name of disable) { // inside that server's own table only: an `enabled =` in a LATER table must not stop this one
+      const hdr = new RegExp(`^\\[mcp_servers\\.${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\][ \\t]*\\r?$`, "m"), h = hdr.exec(t); if (!h) continue;
+      const bodyStart = h.index + h[0].length + 1, nx = t.slice(bodyStart).search(/^\s*\[/m), bodyEnd = nx < 0 ? t.length : bodyStart + nx;
+      if (/^\s*enabled\s*=/m.test(t.slice(bodyStart, bodyEnd))) continue;
+      t = t.slice(0, bodyStart) + "enabled = false\n" + t.slice(bodyStart);
+    }
     return t.replace(/\n*$/, "\n");
   });
   return { set: r.error ? [] : Object.keys(kv), disabled: r.error ? [] : disable, ...(r.error ? { error: r.error } : {}) };

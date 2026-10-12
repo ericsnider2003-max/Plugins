@@ -118,4 +118,18 @@ await t("BUG-002", "Codex install/apply never overwrite a file they could not re
   assert.equal(fs.readFileSync(path.join(c3, "config.toml.usage-max-backup"), "utf8"), 'model = "x"\n', "the untouched original is still kept");
 });
 
+await t("BUG-005", "TOML edits understand quoted keys, multi-line values, CRLF and table scope", async () => {
+  const T = await imp("codex/scripts/codex-governor.mjs"), D = await imp("codex/scripts/codex-diet.mjs");
+  assert.equal(T.setTopLevel('"model_reasoning_effort" = "high"\nother = 1\n', { model_reasoning_effort: "low" }), 'model_reasoning_effort = "low"\nother = 1\n', "quoted key replaced, not duplicated");
+  const multi = 'notify = [\n  "node",\n  "old.mjs",\n]\nafter = 1\n[tbl]\nnotify = "keep"\n';
+  assert.equal(T.setTopLevel(multi, { notify: { raw: '["node", "new.mjs"]' } }), 'notify = ["node", "new.mjs"]\nafter = 1\n[tbl]\nnotify = "keep"\n', "the whole multi-line array is replaced, the table's own notify is untouched");
+  const nested = 'matrix = [\n[1, 2],\n[3, 4]\n]\n[t]\nx = 1\n'; const o = T.setTopLevel(nested, { model: "m" });
+  assert.equal(o, 'matrix = [\n[1, 2],\n[3, 4]\n]\nmodel = "m"\n[t]\nx = 1\n', "a [ line inside an array is not a table header");
+  assert.equal(T.topValue('# notify = ["x"]\nnotify = ["a", # c\n "b"]\n', "notify"), '["a", # c\n "b"]');
+  assert.equal(T.setTopLevel('model = "a"\r\n[t]\r\nx = 1\r\n', { model: "b", effort: "low" }), 'model = "b"\r\neffort = "low"\r\n[t]\r\nx = 1\r\n', "CRLF kept");
+  assert.equal(T.setTopLevel("k = 1\n", { k: null }), "", "null removes");
+  const home = tmp(); fs.writeFileSync(path.join(home, "config.toml"), '[mcp_servers.a]\ncommand = "x"\n\n[mcp_servers.b]\nenabled = true\n'); D.apply(home, ["a"]);
+  assert.match(fs.readFileSync(path.join(home, "config.toml"), "utf8"), /\[mcp_servers\.a\]\nenabled = false\ncommand/, "a later table's enabled= does not stop this one being disabled");
+});
+
 console.log(`${n} passing`);
