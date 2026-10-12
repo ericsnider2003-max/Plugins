@@ -373,4 +373,11 @@ await t("BUG-027", "the calibrate launcher never lets typed text run as a comman
   assert.doesNotMatch(c, /calibrate %PCT%/, "no unquoted use of what was typed");
 });
 
+await t("BUG-028", "calibration prices a message once even when two transcript files hold it", async () => {
+  const home = tmp(); const proj = path.join(home, "projects/x"); fs.mkdirSync(proj, { recursive: true }); const line = JSON.stringify({ type: "assistant", timestamp: new Date().toISOString(), message: { id: "dup1", model: "claude-opus-5-5", usage: { input_tokens: 1e6, output_tokens: 0 } } }) + "\n";
+  fs.writeFileSync(path.join(proj, "a.jsonl"), line); fs.writeFileSync(path.join(proj, "b.jsonl"), line);
+  const M = await imp("scripts/meter.mjs"); const { windowSpend, meter } = await M.bootstrap(path.join(home, "projects"), Date.now() - 864e5); const total = Object.values(meter.buckets).reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(total - 4) < 1e-6, "one 1M-token opus message = $4, not $8: " + total); assert.ok(Math.abs(windowSpend - 4) < 1e-6);
+});
+
 console.log(`${n} passing`);

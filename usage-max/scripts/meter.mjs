@@ -117,9 +117,9 @@ export function spendInLast(m, hours, nowMs = Date.now()) {
 // Full scan used for calibration: spend since `sinceMs`, hourly buckets, and offsets set to EOF.
 export async function bootstrap(projectsDir, sinceMs) {
   const m = { cum: 0, offsets: {}, buckets: {}, startedAt: new Date().toISOString() };
-  let windowSpend = 0;
+  let windowSpend = 0; const seen = new Set(); // one seen-set for the whole scan: a message that appears in two transcript files is priced once
   for (const f of await listJsonlFiles(projectsDir)) {
-    const r = scanFrom(f, 0, Math.min(sinceMs, Date.now() - 7 * 86400000), new Set());
+    const r = scanFrom(f, 0, Math.min(sinceMs, Date.now() - 7 * 86400000), seen);
     m.offsets[canonPath(f)] = r.end;
     for (const [h, c] of Object.entries(r.byHour)) {
       m.buckets[h] = (m.buckets[h] || 0) + c;
