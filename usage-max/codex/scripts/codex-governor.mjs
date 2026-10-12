@@ -40,10 +40,10 @@ export const weightFor = (model, cfg = DEFAULT_CONFIG) => { const m = String(mod
 export function* walk(dir) { let es; try { es = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; } for (const e of es) { const p = path.join(dir, e.name); if (e.isDirectory()) yield* walk(p); else if (/rollout-.*\.jsonl$/.test(e.name)) yield p; } }
 
 // Tolerant parse: token_count events (last_token_usage) priced by the model in the latest turn_context/session_meta.
-export function scanFile(file, offset, cfg) {
+export function scanFile(file, offset, cfg, model0 = null) {
   const buf = fs.readFileSync(file); if (offset > buf.length) offset = 0;
-  const text = buf.subarray(offset).toString("utf8"); const end = text.lastIndexOf("\n"); if (end < 0) return { items: [], offset, limits: null };
-  const items = []; let model = null; let limits = null;
+  const text = buf.subarray(offset).toString("utf8"); const end = text.lastIndexOf("\n"); if (end < 0) return { items: [], offset, limits: null, model: model0 };
+  const items = []; let model = model0; let limits = null; // the model of the last turn carries over a scan boundary
   for (const line of text.slice(0, end).split("\n")) {
     if (!line.trim()) continue; let o; try { o = JSON.parse(line); } catch { continue; }
     const p = o.payload || o;
@@ -59,7 +59,7 @@ export function scanFile(file, offset, cfg) {
       items.push({ ts, cost, model: model || "?" });
     }
   }
-  return { items, limits, offset: offset + Buffer.byteLength(text.slice(0, end + 1)) };
+  return { items, limits, model, offset: offset + Buffer.byteLength(text.slice(0, end + 1)) };
 }
 export function loadMeter() { return j(path.join(dataDir(), "meter.json"), { files: {}, hours: {} }); }
 export const METER_TTL_MS = 20e3;
@@ -68,7 +68,7 @@ export function meterAll(cfg = loadConfig(), nowMs = Date.now(), force = false) 
   for (const f of walk(path.join(codexHome(), "sessions"))) {
     let st; try { st = fs.statSync(f); } catch { continue; } if (st.mtimeMs < cut) continue;
     const prev = m.files[f] || { offset: 0, size: 0 }; if (st.size === prev.size) continue;
-    const r = scanFile(f, prev.offset, cfg); m.files[f] = { offset: r.offset, size: st.size };
+    const r = scanFile(f, prev.offset, cfg, prev.model || null); m.files[f] = { offset: r.offset, size: st.size, model: r.model };
     for (const it of r.items) { const h = Math.floor(it.ts / 36e5); m.hours[h] = (m.hours[h] || 0) + it.cost; }
     if (r.limits && (!m.limits || r.limits.ts >= m.limits.ts)) m.limits = r.limits;
   }
