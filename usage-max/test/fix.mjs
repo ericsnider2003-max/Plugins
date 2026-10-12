@@ -88,4 +88,34 @@ await t("BUG-015", "spend since a moment counts only the later share of the stra
   assert.equal(G.fiveFloor({ pct: 4, resetsAt: Math.floor((now + 293 * 6e4) / 1000), windowMinutes: 300 }, now), "green");
 });
 
+await t("IMP-001", "shared safe file-edit helper: unreadable is not empty, atomic, timestamped backups", async () => {
+  const S = await imp("scripts/safefile.mjs"); assert.equal(fs.readFileSync(path.join(root, "scripts/safefile.mjs"), "utf8"), fs.readFileSync(path.join(root, "codex/scripts/safefile.mjs"), "utf8"), "Codex copy is identical");
+  const d = tmp(); const f = path.join(d, "config.toml");
+  assert.equal(S.readText(f), null, "missing = null"); assert.throws(() => S.readText(d), "a directory is unreadable, not empty");
+  const bad = S.editText(d, () => "x"); assert.ok(bad.error && !bad.changed, "unreadable: refused, no overwrite");
+  assert.equal(S.editText(f, (c) => c + "a = 1\n").changed, true); assert.equal(fs.readdirSync(d).filter((x) => x.includes("backup")).length, 0, "nothing to back up for a new file");
+  let r = S.editText(f, (c) => c + "b = 2\n"); assert.ok(r.backup && /usage-max-backup-\d{8}T/.test(r.backup) && fs.readFileSync(r.backup, "utf8") === "a = 1\n", "backup holds the previous content");
+  for (let i = 0; i < 8; i++) S.editText(f, (c) => c + "c" + i + " = 1\n"); assert.ok(fs.readdirSync(d).filter((x) => x.includes("backup")).length <= 5, "backups pruned");
+  assert.equal(S.editText(f, (c) => c).changed, false, "no change, no write");
+  assert.deepEqual(fs.readdirSync(d).filter((x) => x.endsWith(".tmp")), [], "no temp files left");
+});
+
+await t("BUG-002", "Codex install/apply never overwrite a file they could not read or parse", async () => {
+  const home = tmp(), ch = path.join(home, ".codex"); fs.mkdirSync(ch, { recursive: true });
+  const env = { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: ch }; const broken = '{"hooks": {"Stop": [ {"mine": true} '; fs.writeFileSync(path.join(ch, "hooks.json"), broken);
+  const r = spawnSync("node", [path.join(root, "codex/scripts/install.mjs")], { env, encoding: "utf8" });
+  assert.equal(fs.readFileSync(path.join(ch, "hooks.json"), "utf8"), broken, "invalid hooks.json is left exactly as it was");
+  assert.match(r.stdout + r.stderr, /hooks\.json NOT updated/); assert.ok(fs.existsSync(path.join(ch, "AGENTS.md")), "the other steps still run");
+  // a config.toml that cannot be read (here: a directory in its place) is not "empty": nothing is written, nothing is marked applied
+  const h2 = tmp(), c2 = path.join(h2, ".codex"); fs.mkdirSync(path.join(c2, "config.toml"), { recursive: true });
+  const e2 = { ...process.env, USAGE_MAX_HOME: h2, CODEX_HOME: c2 }; const g = spawnSync("node", [path.join(root, "codex/scripts/codex-governor.mjs"), "mode", "red"], { env: e2, encoding: "utf8" });
+  assert.ok(fs.statSync(path.join(c2, "config.toml")).isDirectory(), "left alone"); assert.ok(!fs.existsSync(path.join(h2, ".usage-max-codex/governor.json")) || !JSON.parse(fs.readFileSync(path.join(h2, ".usage-max-codex/governor.json"), "utf8")).appliedKey, "not marked applied");
+  // every change keeps the state before it, not only the first
+  const h3 = tmp(), c3 = path.join(h3, ".codex"); fs.mkdirSync(c3, { recursive: true }); fs.writeFileSync(path.join(c3, "config.toml"), 'model = "x"\n');
+  const e3 = { ...process.env, USAGE_MAX_HOME: h3, CODEX_HOME: c3 }; const go = (m) => spawnSync("node", [path.join(root, "codex/scripts/codex-governor.mjs"), "mode", m], { env: e3, encoding: "utf8" });
+  go("red"); fs.appendFileSync(path.join(c3, "config.toml"), "# my edit after red\n"); go("green");
+  const bk = fs.readdirSync(c3).filter((x) => x.startsWith("config.toml.usage-max-backup-")); assert.ok(bk.some((x) => fs.readFileSync(path.join(c3, x), "utf8").includes("my edit after red")), "the user's later edit is in a backup");
+  assert.equal(fs.readFileSync(path.join(c3, "config.toml.usage-max-backup"), "utf8"), 'model = "x"\n', "the untouched original is still kept");
+});
+
 console.log(`${n} passing`);

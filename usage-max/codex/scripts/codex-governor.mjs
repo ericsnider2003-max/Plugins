@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { binDir } from "./sync.mjs";
+import { editText } from "./safefile.mjs";
 import { writeSelf, readOther, isFresh } from "./shared.mjs";
 
 export const HOME = () => process.env.USAGE_MAX_HOME || os.homedir();
@@ -181,16 +182,18 @@ export function legacyRemovals(text, cfg = loadConfig()) {
 // Runs on every SessionStart: hand back the context-shrinking limits an older usage-max wrote, whatever the budget mode. Returns the keys removed.
 export function cleanLegacy(cfg = loadConfig()) {
   try {
-    const f = path.join(codexHome(), "config.toml"); let t = ""; try { t = fs.readFileSync(f, "utf8"); } catch { return []; }
-    const rm = legacyRemovals(t, cfg); const keys = Object.keys(rm); if (!keys.length) return [];
-    try { fs.writeFileSync(f + ".usage-max-backup", t, { flag: "wx" }); } catch {}
-    const tmp = f + "." + process.pid + ".tmp"; fs.writeFileSync(tmp, setTopLevel(t, rm).replace(/\n*$/, "\n")); fs.renameSync(tmp, f); writeProfiles(cfg); return keys;
+    const f = path.join(codexHome(), "config.toml"); let keys = [];
+    const r = editText(f, (t) => { if (!t) return null; const rm = legacyRemovals(t, cfg); keys = Object.keys(rm); return keys.length ? setTopLevel(t, rm).replace(/\n*$/, "\n") : null; });
+    if (r.error) { writeFailures.push(r.error); return []; }
+    if (r.changed) writeProfiles(cfg); return r.changed ? keys : [];
   } catch { return []; }
 }
 export function applyMode(mode, cfg = loadConfig(), surplus = false) {
-  const f = path.join(codexHome(), "config.toml"); let t = ""; try { t = fs.readFileSync(f, "utf8"); } catch {}
-  fs.mkdirSync(codexHome(), { recursive: true }); if (t) { try { fs.writeFileSync(f + ".usage-max-backup", t, { flag: "wx" }); } catch {} }
-  fs.writeFileSync(f, setTopLevel(t, { ...legacyRemovals(t, cfg), ...modeKV(cfg.modes[mode === "green" && surplus ? "surplus" : mode], cfg) }).replace(/\n*$/, "\n")); writeProfiles(cfg); markApplied(modeKey(mode, surplus));
+  const f = path.join(codexHome(), "config.toml");
+  // An unreadable config.toml is never treated as empty: the file is left exactly as it is and the failure is reported.
+  const r = editText(f, (t) => setTopLevel(t, { ...legacyRemovals(t, cfg), ...modeKV(cfg.modes[mode === "green" && surplus ? "surplus" : mode], cfg) }).replace(/\n*$/, "\n"));
+  if (r.error) { writeFailures.push(r.error); console.error("usage-max: " + r.error); return r; }
+  writeProfiles(cfg); markApplied(modeKey(mode, surplus)); return r;
 }
 export function modelsSeen() {
   const out = {}; for (const f of walk(path.join(codexHome(), "sessions"))) { let t; try { t = fs.readFileSync(f, "utf8"); } catch { continue; } for (const m of t.matchAll(/"model"\s*:\s*"([^"]+)"/g)) out[m[1]] = (out[m[1]] || 0) + 1; }
