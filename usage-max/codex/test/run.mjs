@@ -198,7 +198,7 @@ const withHome = (h, f) => { const old = process.env.USAGE_MAX_HOME; process.env
   t("run-trimmed: exit codes 0/3/127 forwarded, stderr captured, short output unchanged", () => {
     let r = run("echo hi"); assert.equal(r.status, 0); assert.equal(r.stdout.replace(/\r\n/g, "\n"), "hi\n");
     r = run("node e.mjs", noisy); assert.equal(r.status, 3); assert.match(r.stdout, /out/); assert.match(r.stdout, /errtext/);
-    r = run("definitely-not-a-command-xyz"); assert.equal(r.status, 127);
+    r = run("definitely-not-a-command-xyz"); assert.equal(r.status, process.platform === "win32" ? 1 : 127); /* cmd.exe reports a missing program as 1 */
   });
   t("run-trimmed: long output trimmed, stats are aggregate only (no command text)", () => {
     const before = fs.existsSync(path.join(X.sd, "trim-stats.json")) ? stats().rewrites : 0;
