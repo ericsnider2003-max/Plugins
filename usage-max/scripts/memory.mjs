@@ -182,9 +182,13 @@ export function syncBlock(mem, { cap = 3500 } = {}) {
 export function syncFile(mem, file, opts) {
   const block = syncBlock(mem, opts); let cur; try { cur = readForWrite(file); } catch { return { file, changed: false, error: "could not read the file (locked or unreadable); left untouched" }; }
   let next;
-  const a = cur.indexOf(BEGIN), b = cur.indexOf(END);
-  if (a >= 0 && b > a) next = cur.slice(0, a) + block + cur.slice(b + END.length).replace(/^\r?\n/, "");
-  else next = (cur ? cur.replace(/\s*$/, "\n\n") : "") + block;
+  // Markers count only when alone on their own line and outside a ``` fence. Anything but exactly one well-formed pair is left alone:
+  // the text between mismatched/duplicate markers may be the user's own, and deleting it is worse than not updating.
+  const lines = cur.split("\n"); let fence = false; const bs = [], es = []; let off = 0;
+  for (const ln of lines) { const tl = ln.replace(/\r$/, "").trim(); if (/^(```|~~~)/.test(tl)) fence = !fence; else if (!fence && tl === BEGIN) bs.push(off); else if (!fence && tl === END) es.push(off + ln.length); off += ln.length + 1; }
+  if (bs.length === 1 && es.length === 1 && es[0] > bs[0]) next = cur.slice(0, bs[0]) + block + cur.slice(es[0]).replace(/^\r?\n/, "");
+  else if (bs.length === 0 && es.length === 0) next = (cur ? cur.replace(/\s*$/, "\n\n") : "") + block;
+  else return { file, changed: false, error: "the usage-max markers in this file are duplicated, unpaired or out of order; left untouched (remove the stray marker lines and run again)" };
   if (next === cur) return { file, changed: false };
   fs.writeFileSync(file, next); return { file, changed: true };
 }

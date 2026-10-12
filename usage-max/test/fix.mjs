@@ -47,4 +47,13 @@ await t("BUG-007", "loop guard ignores polling and file-changing commands, and l
   let n4 = null; for (let i = 0; i < 3; i++) n4 = CG.loopNote(d2, "c3", "npm test -- foo"); assert.ok(n4, "a real repeat still warns");
 });
 
+await t("BUG-001", "memory sync never deletes text around odd markers", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const M = await imp("scripts/memory.mjs"); const proj = path.join(home, "p"); fs.mkdirSync(proj); const mem = M.init(proj); M.decide(mem, "package manager", "pnpm");
+  const f = path.join(proj, "AGENTS.md"), keep = "MY OWN NOTES: never delete me\n";
+  const cases = { orphanBegin: M.BEGIN + "\n" + keep + "more user text\n", orphanEnd: keep + M.END + "\n", dup: M.BEGIN + "\n" + keep + M.BEGIN + "\nx\n" + M.END + "\n", fenced: "```\n" + M.BEGIN + "\n```\n" + keep + "\n" + M.END + "\n" };
+  for (const [k, text] of Object.entries(cases)) { fs.writeFileSync(f, text); const r = M.syncFile(mem, f); assert.ok(fs.readFileSync(f, "utf8").includes("never delete me"), k + ": user text survives"); assert.ok(r.error || r.changed === false, k); }
+  fs.writeFileSync(f, "intro\n" + M.BEGIN + "\nold\n" + M.END + "\noutro\n"); assert.equal(M.syncFile(mem, f).changed, true); const out = fs.readFileSync(f, "utf8"); assert.ok(out.startsWith("intro\n") && out.includes("outro") && !out.includes("\nold\n") && out.includes("pnpm"), "a well-formed block is replaced in place");
+  assert.equal(M.syncFile(mem, f).changed, false, "idempotent");
+});
+
 console.log(`${n} passing`);
