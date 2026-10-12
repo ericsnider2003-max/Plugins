@@ -33,7 +33,7 @@ await t("BUG-006", "watchers and dev servers are never wrapped by the trimmer", 
   const home = tmp(); const wrapped = (c) => { const r = spawnSync("node", [path.join(root, "hooks/bash-trim.mjs")], { input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: c } }), encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: home, USAGE_MAX_HOST: "claude" } }); return /updatedInput/.test(r.stdout); };
   for (const c of ["npm run dev", "npm run test:watch", "npx jest --watch", "npx tsc --watch", "pnpm run build --watch", "npm run test -- --watchAll", "make serve", "yarn test -w", "npm run start"]) assert.equal(wrapped(c), false, c);
   for (const c of ["npm test", "npx tsc", "pytest tests/", "cargo build", "npm run build"]) assert.equal(wrapped(c), true, c + " is still trimmed");
-  const CH = await imp("codex/scripts/codex-hook.mjs"); for (const c of ["npm run dev", "npx jest --watch", "npm run test:watch"]) assert.equal(CH.rewrite(c, "/x/run.mjs", "linux"), null, "codex: " + c); assert.ok(CH.rewrite("npm test", "/x/run.mjs", "linux"), "codex still trims npm test");
+  process.env.USAGE_MAX_TRIM = "force"; const CH = await imp("codex/scripts/codex-hook.mjs"); for (const c of ["npm run dev", "npx jest --watch", "npm run test:watch"]) assert.equal(CH.rewrite(c, "/x/run.mjs", "linux"), null, "codex: " + c); assert.ok(CH.rewrite("npm test", "/x/run.mjs", "linux"), "codex still trims npm test");
 });
 
 await t("BUG-007", "loop guard ignores polling and file-changing commands, and long commands that differ", async () => {
@@ -163,6 +163,14 @@ await t("BUG-003", "a value the user set is remembered when tightening overrides
   const env = { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: ch }; const go = (m) => spawnSync("node", [path.join(root, "codex/scripts/codex-governor.mjs"), "mode", m], { env, encoding: "utf8" }); const eff = () => (fs.readFileSync(path.join(ch, "config.toml"), "utf8").match(/^model_reasoning_effort = (.*)$/m) || [])[1];
   go("red"); assert.equal(eff(), '"low"'); go("green"); assert.equal(eff(), '"high"', "Codex: your effort comes back in green");
   go("red"); fs.writeFileSync(path.join(ch, "config.toml"), fs.readFileSync(path.join(ch, "config.toml"), "utf8").replace('"low"', '"xhigh"')); go("green"); assert.equal(eff(), '"xhigh"', "Codex: a value you changed while tightened stays yours");
+});
+
+await t("SEC-004", "Codex output trimming (which needs an auto-approve) is opt-in, never silent", async () => {
+  const home = tmp(); const env = { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: path.join(home, ".codex") }; delete env.PLUGIN_ROOT; delete env.USAGE_MAX_TRIM;
+  const run = () => spawnSync("node", [path.join(root, "codex/scripts/codex-hook.mjs"), "PreToolUse"], { input: JSON.stringify({ tool_name: "Bash", tool_input: { command: "npm test" }, session_id: "s", cwd: home }), env, encoding: "utf8" }).stdout;
+  assert.equal(run().trim(), "", "by default the command is left exactly as the user's approval rules saw it");
+  fs.mkdirSync(path.join(home, ".usage-max-codex"), { recursive: true }); fs.writeFileSync(path.join(home, ".usage-max-codex/config.json"), JSON.stringify({ trimApprove: true }));
+  const o = JSON.parse(run()); assert.equal(o.hookSpecificOutput.permissionDecision, "allow"); assert.ok(o.hookSpecificOutput.updatedInput.command.includes("run-trimmed.mjs"), "opted in: trimmed");
 });
 
 console.log(`${n} passing`);

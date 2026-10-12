@@ -173,7 +173,7 @@ const HK = await import(pathToFileURL(path.join(root, "scripts/codex-hook.mjs"))
 const RT = path.join(root, "scripts/run-trimmed.mjs"); const GV = path.join(root, "scripts/codex-governor.mjs"); const GOV = await import(pathToFileURL(GV).href);
 const mkHome = () => { const h = fs.mkdtempSync(path.join(os.tmpdir(), "umn-")); const e = { ...process.env, USAGE_MAX_HOME: h }; delete e.CODEX_HOME; return { h, e, sd: path.join(h, ".usage-max-codex"), ch: path.join(h, ".codex") }; };
 const gg = (e, ...a) => spawnSync("node", [GV, ...a], { env: e, encoding: "utf8" });
-const withHome = (h, f) => { const old = process.env.USAGE_MAX_HOME; process.env.USAGE_MAX_HOME = h; delete process.env.USAGE_MAX_TRIM; try { return f(); } finally { old === undefined ? delete process.env.USAGE_MAX_HOME : process.env.USAGE_MAX_HOME = old; } };
+const withHome = (h, f) => { const old = process.env.USAGE_MAX_HOME; process.env.USAGE_MAX_HOME = h; delete process.env.USAGE_MAX_TRIM; fs.mkdirSync(path.join(h, ".usage-max-codex"), { recursive: true }); try { const cf = path.join(h, ".usage-max-codex", "config.json"); if (!fs.existsSync(cf)) fs.writeFileSync(cf, JSON.stringify({ trimApprove: true })); } catch {} try { return f(); } finally { old === undefined ? delete process.env.USAGE_MAX_HOME : process.env.USAGE_MAX_HOME = old; } };
 {
   const X = mkHome();
   t("rewrite: readable (the original words stay visible), no shell syntax, same text for PowerShell, cmd and sh", () => withHome(X.h, () => {
@@ -212,8 +212,8 @@ const withHome = (h, f) => { const old = process.env.USAGE_MAX_HOME; process.env
     const r = gg(X.e, "selftest-trim"); assert.equal(r.status, 0, r.stdout + r.stderr); assert.match(r.stdout, /PASS sh/); const ok = JSON.parse(fs.readFileSync(path.join(X.sd, "trim-ok.json"), "utf8")); assert.equal(ok.ok, true); assert.deepEqual(ok.shells, ["sh"]);
     assert.match(gg(X.e, "doctor").stdout, /ok\s+output trimming self-test passed \(sh\)/); assert.match(gg(X.e, "doctor").stdout, /trim stats:/);
   });
-  t("doctor: win32 without trim-ok says run selftest-trim; non-win32 not needed", () => {
-    const Y = mkHome(); const gov = GOV; withHome(Y.h, () => { assert.match(gov.doctor(Y.ch, "win32"), /FIX\s+output trimming is disabled on Windows[\s\S]*selftest-trim/); assert.match(gov.doctor(Y.ch, "linux"), /not needed/); });
+  t("doctor: win32 without trim-ok says run selftest-trim; non-win32 says it is on (opted in)", () => {
+    const Y = mkHome(); const gov = GOV; withHome(Y.h, () => { assert.match(gov.doctor(Y.ch, "win32"), /FIX\s+output trimming is disabled on Windows[\s\S]*selftest-trim/); assert.match(gov.doctor(Y.ch, "linux"), /output trimming is ON/); });
   });
 }
 // savings

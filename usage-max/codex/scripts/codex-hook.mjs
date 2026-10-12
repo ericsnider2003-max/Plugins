@@ -19,7 +19,10 @@ const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(),
 export { wrap };
 export function rewrite(cmd, runPath, platform = process.platform) {
   if (typeof cmd !== "string" || process.env.USAGE_MAX_TRIM === "off") return null;
+  // Codex only honours a rewritten command together with permissionDecision "allow", which also skips Codex's own approval prompt for that command.
+  // So trimming is OFF unless you opt in with {"trimApprove": true} in ~/.usage-max-codex/config.json (or USAGE_MAX_TRIM=force).
   const cj = rj("config.json"); if (cj && cj.trim === "off") return null;
+  if (process.env.USAGE_MAX_TRIM !== "force" && !(cj && cj.trimApprove === true)) return null;
   if (platform === "win32" && process.env.USAGE_MAX_TRIM !== "force") { const ok = rj("trim-ok.json"); if (!ok || ok.ok !== true) return null; }
   const c = cmd.trim(); if (!NOISY.test(c) || LONG.test(c) || /[|><;&`$()]|\n|\r/.test(c) || /--no-trim|--reporter|--json|-q\b|--quiet/.test(c)) return null;
   return wrap(c, runPath);

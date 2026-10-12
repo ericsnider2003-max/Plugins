@@ -245,7 +245,7 @@ export function doctor(home = codexHome(), platform = process.platform) {
     if (off) ok("output trimming is switched OFF (USAGE_MAX_TRIM=off or config.json trim:\"off\")");
     else if (tok && tok.ok) ok(`output trimming self-test passed (${(tok.shells || []).join(", ")}) on ${String(tok.at).slice(0, 10)}`);
     else if (platform === "win32") bad("output trimming is disabled on Windows until the self-test passes", `run: node ${binDir().replace(/\\/g, "/")}/scripts/codex-governor.mjs selftest-trim`);
-    else ok("output trimming self-test not needed (enabled by default on this platform)");
+    else ok(cfg.trimApprove === true ? "output trimming is ON (you opted in with trimApprove)" : "output trimming is OFF until you opt in: it needs Codex to auto-approve the rewritten command; set {\"trimApprove\": true} in ~/.usage-max-codex/config.json");
     if (ts) ok(`trim stats: ${ts.rewrites} rewrites, ${ts.rawBytes} -> ${ts.outBytes} bytes (last ${ts.lastAt})`); }
   const walkCount = [...walk(path.join(home, "sessions"))].length; walkCount ? ok(`${walkCount} Codex session logs found`) : bad("no Codex session logs under " + path.join(home, "sessions"), "run Codex once; check CODEX_HOME");
   return out.join("\n");
