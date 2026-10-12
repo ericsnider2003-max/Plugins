@@ -388,4 +388,11 @@ await t("BUG-029", "spend recorded after a plan reading is counted after it, not
   const st2 = {}; G.absorbSnapshot(st2, limits, meter.cum); assert.equal(st2.calib.cumAt, 100, "without the extra information the old behaviour is unchanged");
 });
 
+await t("BUG-030", "the static checks pass on a checkout with Windows line endings, and git is told to keep LF", async () => {
+  const ga = fs.readFileSync(path.join(root, "..", ".gitattributes"), "utf8"); assert.match(ga, /\* text=auto eol=lf/); assert.match(ga, /\*\.cmd text eol=crlf/);
+  const copy = tmp("umcrlf-"); fs.cpSync(root, path.join(copy, "usage-max"), { recursive: true, filter: (p) => !p.includes(`${path.sep}test`) }); fs.cpSync(path.join(root, "..", "install"), path.join(copy, "install"), { recursive: true }); fs.cpSync(path.join(root, "..", ".claude-plugin"), path.join(copy, ".claude-plugin"), { recursive: true });
+  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(md|json|mjs)$/.test(e.name)) fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace(/\r?\n/g, "\r\n")); } }; walk(path.join(copy, "usage-max"));
+  const r = spawnSync("node", [path.join(copy, "usage-max/scripts/check.mjs")], { encoding: "utf8" }); assert.equal(r.status, 0, (r.stdout || "").split("\n").filter((l) => /FAIL/.test(l)).join("\n"));
+});
+
 console.log(`${n} passing`);

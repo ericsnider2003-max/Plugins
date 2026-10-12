@@ -29,7 +29,7 @@ function readJson(file) {
 
 function frontmatter(file) {
   const text = fs.readFileSync(file, "utf8");
-  const match = text.match(/^---\n([\s\S]*?)\n---\n/);
+  const match = text.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n/);
   if (!match) {
     fail(`frontmatter ${path.basename(file)}`, "missing --- block");
     return null;
