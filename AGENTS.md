@@ -6,6 +6,7 @@ Decisions already made (do not re-ask):
 - [pinned] codex usage: Codex is used through ChatGPT: the desktop app and cloud tasks from the mobile app. No assumption of a CLI-only workflow
 - [pinned] automation: Everything must be automatic: no manual reminding, no permission prompts
 - [pinned] user machine: Windows PC (scripts must work on Windows; no bash-only tricks)
+- audit tests: usage-max/test/fix.mjs has one block per roundtrip finding id; run one with: node usage-max/test/fix.mjs BUG-014
 - big-project problem: Claude and Codex forget parts of big projects, causing rework; project memory (.memory/) is the fix, built in 0.16.0
 - proof: Every change is proven by the offline suites (node usage-max/scripts/check.mjs, usage-max/test/*.mjs, usage-max/codex/test/run.mjs) plus usage-max/test/live.mjs before merge
 
