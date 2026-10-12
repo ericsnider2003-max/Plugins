@@ -225,4 +225,11 @@ await t("BUG-011", "a failed or interrupted subagent frees its slot, and paralle
   assert.equal(Object.keys(JSON.parse(fs.readFileSync(path.join(d2, "inflight.json"), "utf8"))).length, 4, "exactly the cap, never more");
 });
 
+await t("BUG-012", "the Codex launcher never passes model=null", async () => {
+  const L = await imp("codex/scripts/codex-lean.mjs");
+  const a = L.leanArgs(["exec", "do it"], { model: null, effort: "low", service_tier: null }); assert.ok(!a.join(" ").includes("model=") || !/model=(null|undefined)/.test(a.join(" ")), a.join(" ")); assert.ok(!a.some((x) => /^model=/.test(x)), "no model override when the mode has none"); assert.ok(a.includes("model_reasoning_effort=low"));
+  assert.ok(L.leanArgs(["exec", "x"], { model: "gpt-x", effort: "high" }).includes("model=gpt-x"), "a mode with a model still passes it");
+  assert.deepEqual(L.leanArgs(["exec", "x"], { model: null, effort: "low" }, true).slice(0, 3), ["exec", "-c", "model_reasoning_effort=low"]);
+});
+
 console.log(`${n} passing`);
