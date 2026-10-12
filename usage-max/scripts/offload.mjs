@@ -7,6 +7,7 @@
 import fs from "node:fs"; import path from "node:path";
 import { dataDir } from "./meter.mjs";
 import { bump } from "./guard.mjs";
+import { looksSecret } from "./memory.mjs";
 export const HOST = () => process.env.USAGE_MAX_OLLAMA || "http://127.0.0.1:11434";
 export const MAX_IN = 60000;
 export const JOBS = {
@@ -18,7 +19,7 @@ export const JOBS = {
 const SECRET_NAME = /(^|[\\/])(\.env(\..*)?|id_rsa|id_ed25519|.*\.(pem|key|p12|pfx|keystore)|credentials(\.json)?|\.npmrc|\.netrc)$/i;
 const SECRET_BODY = /-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30,}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,})\b/;
 export const isLoopback = (u) => { try { const h = new URL(u).hostname.replace(/^\[|\]$/g, ""); return h === "localhost" || h === "127.0.0.1" || h === "::1"; } catch { return false; } };
-export function secretReason(name, text) { if (SECRET_NAME.test(name || "")) return `${name} looks like a secrets file`; if (SECRET_BODY.test(text || "")) return `${name || "input"} contains something that looks like a key or token`; return null; }
+export function secretReason(name, text) { if (SECRET_NAME.test(name || "")) return `${name} looks like a secrets file`; if (SECRET_BODY.test(text || "") || looksSecret(text)) return `${name || "input"} contains something that looks like a key or token`; return null; }
 export function buildPrompt(job, text) {
   let inst = JOBS[job]; if (!inst && /^convert:/.test(job)) inst = `Convert the text below to ${job.slice(8).replace(/[^\w .+-]/g, "").slice(0, 30)}. Output only the converted result.`;
   if (!inst) return null; return `${inst}\n\n--- BEGIN INPUT ---\n${text}\n--- END INPUT ---`;

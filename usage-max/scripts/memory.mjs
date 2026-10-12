@@ -50,7 +50,14 @@ export function init(cwd = process.cwd()) {
 }
 
 // ---- secrets never go into memory (it is committed, copied into AGENTS.md and injected into prompts)
-const SECRET = /\b(sk|pk|rk)[-_](live|test|proj|ant)?[-_]?[A-Za-z0-9]{16,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY|\b(pass(word)?|passwd|pwd|secret|api[_ -]?key|token|bearer)\b\s*(is|=|:)\s*\S{6,}|\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,}/i;
+const SECRET = new RegExp([
+  String.raw`\b(sk|pk|rk)[-_](live|test|proj|ant|svcacct|admin)?[-_]?[A-Za-z0-9][A-Za-z0-9_-]{15,}`, // OpenAI / Anthropic / Stripe style keys, incl. sk-ant-api03-… and sk-proj-…
+  String.raw`\bAKIA[0-9A-Z]{16}\b`, String.raw`\bgh[pousr]_[A-Za-z0-9]{30,}`, String.raw`\bgithub_pat_[A-Za-z0-9_]{20,}`, String.raw`\bxox[abprs]-[A-Za-z0-9-]{10,}`,
+  String.raw`\bwhsec_[A-Za-z0-9]{16,}`, String.raw`\bAIza[0-9A-Za-z_-]{30,}`, String.raw`\bnpm_[A-Za-z0-9]{30,}`, String.raw`-----BEGIN [A-Z ]*PRIVATE KEY`,
+  String.raw`\b[a-z][a-z0-9+.-]{1,20}://[^/\s:@]+:[^/\s@]{3,}@`, // user:password@host in any connection string
+  String.raw`\b(pass(word)?|passwd|pwd|secret|api[_ -]?key|token|bearer)\b\s*(=|:)\s*\S{6,}`, // an assignment
+  String.raw`\b(pass(word)?|passwd|pwd|secret|api[_ -]?key|token|bearer)\b\s+is\s+(?=\S*[0-9_$#@!%^&*+=/-])\S{8,}`, // "is <value>" counts only when the value looks like one ("the token is refreshed hourly" does not)
+  String.raw`\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,}`].join("|"), "i");
 export const looksSecret = (t) => SECRET.test(String(t || ""));
 export const redact = (t) => String(t || "").replace(new RegExp(SECRET.source, "gi"), "[redacted]");
 

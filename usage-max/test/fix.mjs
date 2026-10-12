@@ -56,4 +56,12 @@ await t("BUG-001", "memory sync never deletes text around odd markers", async ()
   assert.equal(M.syncFile(mem, f).changed, false, "idempotent");
 });
 
+await t("SEC-001", "secret filter catches modern key shapes and leaves ordinary sentences alone", async () => {
+  const M = await imp("scripts/memory.mjs"), O = await imp("scripts/offload.mjs");
+  const bad = ["sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv", "sk-proj-AbCdEfGhIjKlMnOpQrStUvWx", "github_pat_11ABCDEFG0abcdefghijkl_mnopqrstuv", "postgres://admin:s3cretPw@db.internal:5432/app", "whsec_AbCdEfGhIjKlMnOpQrSt", "AIzaSyA-1234567890abcdefghijklmnopqrstuv", "npm_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789", "the password is hunter2hunter2", "token: abcdefgh"];
+  for (const b of bad) { assert.ok(M.looksSecret(b), "caught: " + b); assert.ok(!M.redact(b).includes(b.split(/[ :]/).pop()) || b.includes("://"), "redacted: " + b); }
+  for (const ok of ["the token is refreshed hourly", "password reset flow lives in auth/reset.ts", "we rotate the secret every quarter", "use pnpm, not npm", "see https://example.com/docs for details"]) assert.ok(!M.looksSecret(ok), "not a secret: " + ok);
+  assert.ok(O.secretReason("x.txt", "postgres://admin:s3cretPw@db/app"), "offload refuses it too");
+});
+
 console.log(`${n} passing`);
