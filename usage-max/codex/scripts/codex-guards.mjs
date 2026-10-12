@@ -30,7 +30,7 @@ export function bigCat(cmd, cwd, platform = process.platform) {
 export function guard(dir, sid, cmd, cwd, platform = process.platform, env = process.env) {
   if (platform === "win32" || env.USAGE_MAX_GUARDS === "off" || rj(path.join(dir, "config.json"), {}).guards === "off") return null;
   const big = bigCat(cmd, cwd, platform); if (big) { stat(dir, "bigCats"); return big.command; }
-  const note = loopNote(dir, sid, cmd); if (note && !/\n/.test(cmd)) return `( ${cmd.trim()} ); rc=$?; echo ${q(note)}; exit $rc`;
+  const note = loopNote(dir, sid, cmd); if (note && !/\n/.test(cmd)) return `(\n${cmd.trim()}\n); rc=$?; echo ${q(note)}; exit $rc`; // own lines: a trailing `# comment` must not swallow the closing )
   return null;
 }
 export const stats = (dir) => rj(path.join(dir, "guard-stats.json"), {});

@@ -207,4 +207,10 @@ await t("BUG-008", "a Stop inside the one-minute gap does no transcript read or 
   const cx = fs.readFileSync(path.join(root, "codex/scripts/codex-hook.mjs"), "utf8"); assert.match(cx, /saveResume\(R\.sharedDir\(\), cwdR, \(\) =>/, "so does the Codex hook");
 });
 
+await t("BUG-010", "the loop-note wrapper works for commands that end in a # comment", async () => {
+  const CG = await imp("codex/scripts/codex-guards.mjs"); const dir = tmp(), cmd = "echo hello # trailing comment";
+  let w = null; for (let i = 0; i < 4; i++) w = CG.guard(dir, "s", cmd, dir, "linux", {}) || w; assert.ok(w, "wrapped on the 3rd repeat");
+  const r = spawnSync("sh", ["-c", w], { encoding: "utf8" }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /hello/); assert.match(r.stdout, /this exact command has now run/);
+});
+
 console.log(`${n} passing`);
