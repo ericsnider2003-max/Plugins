@@ -100,7 +100,7 @@ export function meterFiles(m, files) {
 export function spendInLast(m, hours, nowMs = Date.now()) {
   const from = nowMs - hours * 3600000;
   let s = 0;
-  for (const [h, c] of Object.entries(m.buckets)) if (Date.parse(h) + 3600000 > from) s += c;
+  for (const [h, c] of Object.entries(m.buckets)) { const st = Date.parse(h); if (st + 3600000 > from) s += c * Math.min(1, (st + 3600000 - from) / 3600000); } // the bucket that straddles `from` counts only its later share
   return s;
 }
 

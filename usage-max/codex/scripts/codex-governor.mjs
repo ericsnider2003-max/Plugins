@@ -75,7 +75,7 @@ export function meterAll(cfg = loadConfig(), nowMs = Date.now(), force = false) 
   for (const h of Object.keys(m.hours)) if (h < (nowMs - 8 * 864e5) / 36e5) delete m.hours[h];
   m.lastRun = nowMs; wj(path.join(dataDir(), "meter.json"), m); return m;
 }
-export const spendSince = (m, ms) => Object.entries(m.hours).reduce((a, [h, c]) => a + (h * 36e5 + 36e5 > ms ? c : 0), 0);
+export const spendSince = (m, ms) => Object.entries(m.hours).reduce((a, [h, c]) => a + (h * 36e5 + 36e5 > ms ? c * Math.min(1, (h * 36e5 + 36e5 - ms) / 36e5) : 0), 0); // the hour that straddles `ms` counts only its later share
 export const spendLast = (m, hrs, now = Date.now()) => spendSince(m, now - hrs * 36e5);
 
 export function decide({ estPct, hoursLeft, ratePerHour, prevMode = "green", cfg }) {
@@ -83,9 +83,9 @@ export function decide({ estPct, hoursLeft, ratePerHour, prevMode = "green", cfg
   if (cfg.target - estPct <= 0) return "red";
   const sustain = Math.max(0, cfg.target - estPct) / Math.max(hoursLeft, 0.5);
   const ratio = sustain > 0 ? ratePerHour / sustain : Infinity;
-  const up = prevMode === "green" ? 1 : 0.9; // hysteresis
-  if (ratio >= cfg.redRatio * up) return "red";
-  if (ratio >= cfg.amberRatio * up) return "amber";
+  // hysteresis: a mode is left only when the ratio falls 10% below the level that entered it (entering red from amber needs the full red level)
+  if (ratio >= cfg.redRatio * (prevMode === "red" ? 0.9 : 1)) return "red";
+  if (ratio >= cfg.amberRatio * (prevMode === "green" ? 1 : 0.9)) return "amber";
   return "green";
 }
 export function estimate(state, m, now, cfg) {
@@ -94,7 +94,8 @@ export function estimate(state, m, now, cfg) {
   if (rs <= now) { rs += (Math.floor((now - rs) / P) + 1) * P; at = rs - P; pct = 0; } // weekly reset passed: new window from prev reset, 0%
   const est = Math.min(100, pct + (state.k || 0) * spendSince(m, at));
   const hoursLeft = (rs - now) / 36e5;
-  const rate = (state.k || 0) * spendLast(m, cfg.burnWindowHours, now) / cfg.burnWindowHours;
+  const from = Math.max(now - cfg.burnWindowHours * 36e5, rs - P); // spend before this window began is not this window's burn
+  const rate = (state.k || 0) * spendSince(m, from) / Math.max((now - from) / 36e5, 1);
   return { est, hoursLeft, rate };
 }
 // Real plan numbers straight from Codex's own logs: the long window (>= ~7 days) calibrates the weekly estimate
@@ -117,9 +118,9 @@ export function absorbLimits(st, m, now) {
 export function fiveFloor(f, now) {
   if (!f || !f.resetsAt || f.resetsAt * 1000 <= now) return "green";
   const win = (f.windowMinutes || 300) * 60000, start = f.resetsAt * 1000 - win, elapsed = Math.min(Math.max((now - start) / win, 0), 1);
-  if (f.pct >= 100) return "red"; if (elapsed < 0.02) return "green";
+  if (f.pct >= 95) return "red"; if (elapsed < 0.1) return "green"; // minutes into a window the projection is noise (same rule as the Claude side)
   const projected = f.pct / elapsed; if (projected <= 100) return "green";
-  return projected > 140 || f.pct >= 95 ? "red" : "amber";
+  return projected > 140 && elapsed >= 0.25 ? "red" : "amber";
 }
 export function evaluate(now = Date.now(), force = false) {
   const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json");

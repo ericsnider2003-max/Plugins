@@ -70,4 +70,22 @@ await t("GAP-001", "CI also runs the node tests on Windows", async () => {
   for (const f of ["check.mjs", "test/run.mjs", "test/memory.mjs", "test/guard.mjs", "codex/test/run.mjs"]) assert.ok(win.includes(f), "windows job runs " + f);
 });
 
+await t("BUG-015", "spend since a moment counts only the later share of the straddling hour; Codex rate and hysteresis are sane", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const G = await imp("codex/scripts/codex-governor.mjs"), Mt = await imp("scripts/meter.mjs");
+  const h0 = Math.floor(Date.now() / 36e5) - 3, mid = h0 * 36e5 + 18e5;
+  assert.ok(Math.abs(G.spendSince({ hours: { [h0]: 10 } }, mid) - 5) < 1e-9, "half the hour is after the half-hour mark");
+  assert.ok(Math.abs(Mt.spendInLast({ buckets: { [new Date(h0 * 36e5).toISOString()]: 10 } }, (Date.now() - mid) / 36e5, Date.now()) - 5) < 1e-6, "Claude meter: same rule");
+  const cfg = G.DEFAULT_CONFIG;
+  assert.equal(G.decide({ estPct: 10, hoursLeft: 100, ratePerHour: 0, prevMode: "amber", cfg }), "green");
+  const sustain = (cfg.target - 10) / 100; const justBelowRed = sustain * cfg.redRatio * 0.95;
+  assert.equal(G.decide({ estPct: 10, hoursLeft: 100, ratePerHour: justBelowRed, prevMode: "amber", cfg }), "amber", "amber does not jump to red below the red level");
+  assert.equal(G.decide({ estPct: 10, hoursLeft: 100, ratePerHour: justBelowRed, prevMode: "red", cfg }), "red", "red is held a little longer");
+  const now = Date.now(), resets = now + 6.9 * 864e5; // window began ~2.4 h ago; earlier spend must not count
+  const m = { hours: { [Math.floor((now - 5 * 36e5) / 36e5)]: 100, [Math.floor(now / 36e5)]: 1 } };
+  const e = G.estimate({ calib: { pct: 1, at: now - 2.4 * 36e5, resets: new Date(resets).toISOString() }, k: 1 }, m, now, { ...cfg, burnWindowHours: 12 });
+  assert.ok(e.rate < 5, "rate ignores spend from before the window began: " + e.rate);
+  assert.equal(G.fiveFloor({ pct: 4, resetsAt: Math.floor((now + 293 * 6e4) / 1000), windowMinutes: 300 }, now), "green");
+});
+
 console.log(`${n} passing`);
