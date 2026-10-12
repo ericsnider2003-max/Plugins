@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { recordCost, takeUnknownModels } from "./pricing.mjs";
 import { listJsonlFiles } from "./lib.mjs";
-import { withLock } from "./safefile.mjs";
+import { withLock, canonPath } from "./safefile.mjs";
 
 export function dataDir() {
   return path.join(process.env.USAGE_MAX_HOME || os.homedir(), ".claude", "usage-max");
@@ -95,8 +95,9 @@ export function meterFiles(m, files) {
   let added = 0;
   const seen = new Set(m.recentIds || []);
   for (const f of files) {
-    const r = scanFrom(f, m.offsets[f] || 0, Date.now() - 8 * 86400000, seen);
-    m.offsets[f] = r.end;
+    const key = canonPath(f); // one entry per file however the path is spelled (case, slashes, links)
+    const r = scanFrom(f, m.offsets[key] ?? m.offsets[f] ?? 0, Date.now() - 8 * 86400000, seen);
+    delete m.offsets[f]; m.offsets[key] = r.end;
     m.cum += r.cost;
     added += r.cost;
     for (const [h, c] of Object.entries(r.byHour)) m.buckets[h] = (m.buckets[h] || 0) + c;
@@ -119,7 +120,7 @@ export async function bootstrap(projectsDir, sinceMs) {
   let windowSpend = 0;
   for (const f of await listJsonlFiles(projectsDir)) {
     const r = scanFrom(f, 0, Math.min(sinceMs, Date.now() - 7 * 86400000), new Set());
-    m.offsets[f] = r.end;
+    m.offsets[canonPath(f)] = r.end;
     for (const [h, c] of Object.entries(r.byHour)) {
       m.buckets[h] = (m.buckets[h] || 0) + c;
       if (Date.parse(h) + 3600000 > sinceMs) windowSpend += c;

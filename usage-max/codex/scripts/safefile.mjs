@@ -56,3 +56,11 @@ function editTextUnlocked(file, fn, { backup = true } = {}) {
   try { const b = cur === null || !backup ? null : backupFile(file); writeAtomic(file, next); return { changed: true, ...(b ? { backup: b } : {}) }; }
   catch (e) { return { changed: false, error: `could not write ${path.basename(file)} (${e.code || e.message}); left as it was` }; }
 }
+
+// One spelling per folder/file: real path (symlinks, 8.3 short names resolved), and on Windows lower-case with forward slashes, so
+// C:\Users\Me\Proj, c:/users/me/proj and a junction to it all give the same key.
+export function canonPath(p, platform = process.platform) {
+  let r = String(p ?? ""); if (!r) return r;
+  try { r = fs.realpathSync.native(r); } catch (e) { r = path.resolve(r); ignore(e); } // a path that does not exist (yet) is only made absolute
+  return platform === "win32" ? r.replace(/\\/g, "/").toLowerCase() : r;
+}

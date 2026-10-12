@@ -285,4 +285,15 @@ await t("BUG-020", "a model missing from the price table is priced like its fami
   process.env.USAGE_MAX_HOME = home; const M = await imp("scripts/meter.mjs"); const m = { cum: 0, offsets: {}, buckets: {} }; M.meterFiles(m, [tr]); assert.ok(m.cum > 0, "metered"); assert.deepEqual(m.unknownModels, ["claude-opus-5-1"], "remembered for doctor");
 });
 
+await t("BUG-021", "two spellings of one folder map to one resume note and one meter offset", async () => {
+  const S = await imp("scripts/safefile.mjs"), R = await imp("scripts/resume.mjs");
+  assert.equal(S.canonPath("C:\\Users\\Me\\Proj", "win32"), S.canonPath("c:/users/me/proj", "win32"), "case and slashes on Windows");
+  const home = tmp(); const real = path.join(home, "real"); fs.mkdirSync(real); const link = path.join(home, "link"); fs.symlinkSync(real, link, "dir");
+  assert.equal(R.resumeFile(home, real), R.resumeFile(home, link), "a link to the folder shares its note");
+  const dd = path.join(home, "data"); assert.equal(R.saveResume(dd, real, "note from the real path"), true); assert.match(R.peekResume(dd, link) || "", /note from the real path/);
+  const tr = path.join(real, "s.jsonl"); fs.writeFileSync(tr, JSON.stringify({ type: "assistant", timestamp: new Date().toISOString(), message: { id: "z1", model: "claude-opus-5-5", usage: { input_tokens: 1000, output_tokens: 1000 } } }) + "\n");
+  process.env.USAGE_MAX_HOME = home; const M = await imp("scripts/meter.mjs"); const m = { cum: 0, offsets: {}, buckets: {} }; M.meterFiles(m, [tr]); const first = m.cum; M.meterFiles(m, [path.join(link, "s.jsonl")]);
+  assert.equal(m.cum, first, "the same transcript through a link is not counted twice"); assert.equal(Object.keys(m.offsets).length, 1);
+});
+
 console.log(`${n} passing`);

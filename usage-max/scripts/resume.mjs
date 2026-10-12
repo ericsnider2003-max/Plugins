@@ -7,6 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { redact } from "./memory.mjs";
+import { canonPath } from "./safefile.mjs";
 
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const clip = (s, n) => { s = String(s || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
@@ -14,7 +15,7 @@ const textOf = (c) => typeof c === "string" ? c : Array.isArray(c) ? c.filter((b
 const SYNTH = /^<(system-reminder|command-|local-command|user-prompt-submit-hook)|^\[Request interrupted|^Caveat:/;
 // ONE resume note per folder, shared by Claude Code and Codex: start in whichever plan has room and the other tool can pick it up.
 export const sharedDir = (env = process.env) => path.join(env.USAGE_MAX_HOME || os.homedir(), ".usage-max");
-export const resumeFile = (dir, cwd) => path.join(dir, "resume", crypto.createHash("sha1").update(path.resolve(cwd)).digest("hex").slice(0, 12) + ".md");
+export const resumeFile = (dir, cwd) => path.join(dir, "resume", crypto.createHash("sha1").update(canonPath(cwd)).digest("hex").slice(0, 12) + ".md");
 
 export function tailLines(file, bytes = 600 * 1024) {
   const fd = fs.openSync(file, "r");
