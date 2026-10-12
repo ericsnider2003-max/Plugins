@@ -5,7 +5,7 @@
 //   UserPromptSubmit      once per session per mode: budget directive for Claude + notice for you
 //   PreToolUse (Agent)    any mode: downgrade Opus/Fable or inheriting subagents to Sonnet
 //   PreModelSwitch        block switches above Opus 5.5; in red, ask before switching to Opus
-import { loadMeter, saveMeter, sessionFiles, meterFiles } from "../scripts/meter.mjs";
+import { loadMeter, sessionFiles, updateMeter } from "../scripts/meter.mjs";
 import { evaluate, loadState, saveState, loadConfig, timeToEmpty } from "../scripts/governor.mjs";
 import { aboveCeiling } from "../scripts/ceiling.mjs";
 import { underCodex } from "../scripts/host.mjs";
@@ -41,9 +41,7 @@ try {
   const event = input.hook_event_name || process.argv[2] || "";
 
   if (event === "Stop" || event === "SubagentStop") {
-    const meter = loadMeter();
-    meterFiles(meter, sessionFiles(input.transcript_path));
-    saveMeter(meter);
+    const u = updateMeter(sessionFiles(input.transcript_path)); const meter = u ? u.m : loadMeter();
     const before = loadState().mode;
     const state = evaluate({ meter });
     if (state.mode !== before && event === "Stop") {

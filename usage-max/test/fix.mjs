@@ -132,4 +132,22 @@ await t("BUG-005", "TOML edits understand quoted keys, multi-line values, CRLF a
   assert.match(fs.readFileSync(path.join(home, "config.toml"), "utf8"), /\[mcp_servers\.a\]\nenabled = false\ncommand/, "a later table's enabled= does not stop this one being disabled");
 });
 
+await t("BUG-004", "concurrent sessions cannot lose or double count meter data or clobber a settings file", async () => {
+  const home = tmp(); const ch = path.join(home, ".codex"); const env = { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: ch };
+  const dir = path.join(ch, "sessions/2026/10/12"); fs.mkdirSync(dir, { recursive: true }); const now = Date.now();
+  const tc = (i) => JSON.stringify({ timestamp: new Date(now - 1000 - i).toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 1000000, cached_input_tokens: 0, output_tokens: 0 } } } }) + "\n";
+  fs.writeFileSync(path.join(dir, "rollout-a.jsonl"), JSON.stringify({ type: "turn_context", payload: { model: "sol-1" } }) + "\n" + [0, 1, 2, 3].map(tc).join(""));
+  const gov = pathToFileURL(path.join(root, "codex/scripts/codex-governor.mjs")).href;
+  const code = `const G = await import(${JSON.stringify(gov)}); G.meterAll(G.loadConfig(), Date.now(), true);`;
+  const { spawn } = await import("node:child_process"); await Promise.all(Array.from({ length: 6 }, () => new Promise((res) => spawn("node", ["--input-type=module", "-e", code], { env }).on("exit", res))));
+  const m = JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/meter.json"), "utf8")); assert.ok(Math.abs(Object.values(m.hours).reduce((a, b) => a + b, 0) - 80) < 1e-6, "4 lines x weight 20 counted once: " + JSON.stringify(m.hours));
+  // the lock itself: 6 processes x 30 locked read-modify-write steps never lose an update
+  const S = pathToFileURL(path.join(root, "scripts/safefile.mjs")).href, f = path.join(home, "counter.json"); fs.writeFileSync(f, "0");
+  const code2 = `const S = await import(${JSON.stringify(S)}); const fs = await import("node:fs"); for (let i = 0; i < 30; i++) { const r = S.withLock(${JSON.stringify(f)}, () => { const v = Number(fs.readFileSync(${JSON.stringify(f)}, "utf8")); fs.writeFileSync(${JSON.stringify(f)}, String(v + 1)); }, { waitMs: 20000 }); if (!r.ok) process.exit(3); }`;
+  await Promise.all(Array.from({ length: 6 }, () => new Promise((res) => spawn("node", ["--input-type=module", "-e", code2]).on("exit", res))));
+  assert.equal(Number(fs.readFileSync(f, "utf8")), 180, "no lost updates");
+  // offsets of logs that no longer exist are dropped
+  const M = await imp("scripts/meter.mjs"); process.env.USAGE_MAX_HOME = home; const big = { cum: 0, buckets: {}, offsets: {} }; for (let i = 0; i < 250; i++) big.offsets["/gone/" + i + ".jsonl"] = 10; M.saveMeter(big); assert.equal(Object.keys(big.offsets).length, 0);
+});
+
 console.log(`${n} passing`);

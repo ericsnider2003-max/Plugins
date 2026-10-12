@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { binDir } from "./sync.mjs";
-import { editText } from "./safefile.mjs";
+import { editText, writeAtomic, withLock } from "./safefile.mjs";
 import { writeSelf, readOther, isFresh } from "./shared.mjs";
 
 export const HOME = () => process.env.USAGE_MAX_HOME || os.homedir();
@@ -18,7 +18,7 @@ const j = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } cat
 // Codex runs shell commands the model starts in a sandbox that may forbid writing outside the workspace (EPERM). Reading and
 // computing still work, so never crash: remember the failure and say so plainly (hooks run on the host and CAN save).
 export const writeFailures = [];
-const wj = (f, v) => { try { fs.mkdirSync(path.dirname(f), { recursive: true }); const t = f + ".tmp"; fs.writeFileSync(t, JSON.stringify(v, null, 2)); fs.renameSync(t, f); return true; } catch (e) { writeFailures.push(`${path.basename(f)}: ${e.code || e.message}`); return false; } };
+const wj = (f, v) => { try { writeAtomic(f, JSON.stringify(v, null, 2)); return true; } catch (e) { writeFailures.push(`${path.basename(f)}: ${e.code || e.message}`); return false; } };
 
 // Relative cost weights per model family (only ratios matter; k calibrates to plan %). From Plus 5h message ratios.
 export const DEFAULT_CONFIG = {
@@ -65,15 +65,22 @@ export function scanFile(file, offset, cfg, model0 = null) {
 export function loadMeter() { return j(path.join(dataDir(), "meter.json"), { files: {}, hours: {} }); }
 export const METER_TTL_MS = 20e3;
 export function meterAll(cfg = loadConfig(), nowMs = Date.now(), force = false) {
-  const m = loadMeter(); if (!force && m.lastRun && nowMs - m.lastRun >= 0 && nowMs - m.lastRun < METER_TTL_MS) return m; const cut = nowMs - 8 * 864e5;
+  const m0 = loadMeter(); if (!force && m0.lastRun && nowMs - m0.lastRun >= 0 && nowMs - m0.lastRun < METER_TTL_MS) return m0;
+  // load -> scan -> save as one locked step: two Codex sessions at once used to read the same offsets and count the same lines twice
+  const r = withLock(path.join(dataDir(), "meter.json"), () => meterAllLocked(cfg, nowMs));
+  return r.ok ? r.value : m0; // busy: use the last saved numbers, the next call catches up
+}
+function meterAllLocked(cfg, nowMs) {
+  const m = loadMeter(); const cut = nowMs - 8 * 864e5;
   for (const f of walk(path.join(codexHome(), "sessions"))) {
-    let st; try { st = fs.statSync(f); } catch { continue; } if (st.mtimeMs < cut) continue;
+    let st; try { st = fs.statSync(f); } catch { continue; } if (st.mtimeMs < cut) { delete m.files[f]; continue; }
     const prev = m.files[f] || { offset: 0, size: 0 }; if (st.size === prev.size) continue;
     const r = scanFile(f, prev.offset, cfg, prev.model || null); m.files[f] = { offset: r.offset, size: st.size, model: r.model };
     for (const it of r.items) { const h = Math.floor(it.ts / 36e5); m.hours[h] = (m.hours[h] || 0) + it.cost; }
     if (r.limits && (!m.limits || r.limits.ts >= m.limits.ts)) m.limits = r.limits;
   }
   for (const h of Object.keys(m.hours)) if (h < (nowMs - 8 * 864e5) / 36e5) delete m.hours[h];
+  for (const f of Object.keys(m.files)) { try { fs.statSync(f); } catch { delete m.files[f]; } } // offsets of deleted logs would grow forever
   m.lastRun = nowMs; wj(path.join(dataDir(), "meter.json"), m); return m;
 }
 export const spendSince = (m, ms) => Object.entries(m.hours).reduce((a, [h, c]) => a + (h * 36e5 + 36e5 > ms ? c * Math.min(1, (h * 36e5 + 36e5 - ms) / 36e5) : 0), 0); // the hour that straddles `ms` counts only its later share

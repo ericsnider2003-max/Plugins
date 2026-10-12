@@ -29,8 +29,27 @@ export function backupFile(file, { keep = 5, now = new Date() } = {}) {
   for (const n of [...all, path.basename(out)].sort().slice(0, -keep)) try { fs.rmSync(path.join(dir, n), { force: true }); } catch (e) { ignore(e); }
   return out;
 }
+// Cross-process lock for a read-modify-write: an atomically created `<file>.lock` folder. Waits up to waitMs, steals a lock older than staleMs
+// (its owner died). -> { ok: true, value } or { ok: false } when busy: the caller skips this round (it is retried at the next hook) rather than racing.
+export function withLock(file, fn, { waitMs = 2000, staleMs = 15000 } = {}) {
+  const lock = file + ".lock", t0 = Date.now(); fs.mkdirSync(path.dirname(file), { recursive: true });
+  for (;;) {
+    try { fs.mkdirSync(lock); break; }
+    catch (e) {
+      if (!e || e.code !== "EEXIST") return { ok: false };
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > staleMs) { fs.rmdirSync(lock); continue; } } catch (e2) { ignore(e2); }
+      if (Date.now() - t0 > waitMs) return { ok: false };
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 + (process.pid % 30));
+    }
+  }
+  try { return { ok: true, value: fn() }; } finally { try { fs.rmdirSync(lock); } catch (e) { ignore(e); } }
+}
 // editText(file, fn): fn(currentText | "") -> next text (or null/undefined = leave alone). Returns { changed, backup?, error? }; never throws.
-export function editText(file, fn, { backup = true } = {}) {
+export function editText(file, fn, opts = {}) {
+  const r = withLock(file, () => editTextUnlocked(file, fn, opts));
+  return r.ok ? r.value : { changed: false, error: `${path.basename(file)} is being changed by another process; try again in a moment` };
+}
+function editTextUnlocked(file, fn, { backup = true } = {}) {
   let cur; try { cur = readText(file); } catch (e) { return { changed: false, error: `could not read ${path.basename(file)} (${e.code || e.message}); left untouched` }; }
   let next; try { next = fn(cur === null ? "" : cur); } catch (e) { return { changed: false, error: String(e && e.message || e) }; }
   if (next === null || next === undefined || next === cur) return { changed: false };

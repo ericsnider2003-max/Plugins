@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { recordCost } from "./pricing.mjs";
 import { listJsonlFiles } from "./lib.mjs";
+import { withLock } from "./safefile.mjs";
 
 export function dataDir() {
   return path.join(process.env.USAGE_MAX_HOME || os.homedir(), ".claude", "usage-max");
@@ -71,6 +72,7 @@ export const writeFailures = [];
 export function saveMeter(m) {
   const cutoff = Date.now() - 8 * 86400000;
   for (const k of Object.keys(m.buckets)) if (Date.parse(k) < cutoff) delete m.buckets[k];
+  const keys = Object.keys(m.offsets || {}); if (keys.length > 200) for (const k of keys) { try { fs.statSync(k); } catch { delete m.offsets[k]; } } // offsets of deleted transcripts would grow forever
   try { writeJsonAtomic(path.join(dataDir(), "meter.json"), m); } catch (e) { writeFailures.push(`meter.json: ${e.code || e.message}`); }
 }
 
@@ -83,6 +85,12 @@ export function sessionFiles(transcriptPath) {
   return files;
 }
 
+// Load -> scan -> save as one step that no other session can interleave with (two Stop hooks at once used to lose or double count turns).
+// -> the added cost, or null when another process held the lock for too long (the next hook catches up from the saved offsets).
+export function updateMeter(files) {
+  const r = withLock(path.join(dataDir(), "meter.json"), () => { const m = loadMeter(); const added = meterFiles(m, files); saveMeter(m); return { m, added }; });
+  return r.ok ? r.value : null;
+}
 export function meterFiles(m, files) {
   let added = 0;
   const seen = new Set(m.recentIds || []);

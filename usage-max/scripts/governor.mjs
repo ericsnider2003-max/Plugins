@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { pace } from "./lib.mjs";
 import { writeSelf } from "./shared.mjs";
 import { ownedSet, ownedUnset, loadApplied, saveApplied } from "./owned.mjs";
+import { withLock } from "./safefile.mjs";
 import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap, writeFailures } from "./meter.mjs";
 
 export const DEFAULT_CONFIG = {
@@ -188,15 +189,19 @@ export function applySettings(mode, config) {
   const want = config.modes[mode];
   if (!want) return false;
   const file = files().settings;
-  const s = readJson(file, null);
-  if (!s) return null;
-  const af = path.join(dataDir(), "applied.json"), applied = loadApplied(af);
-  const c1 = patchModel(s, want, applied, mode === "amber" || mode === "red"); // tightening may override your values; green hands back to them
-  const changed = patchLean(s, mode, applied, { lean: config.lean === true }) || c1;
-  saveApplied(af, applied);
-  if (!changed) return false;
-  writeJsonAtomic(file, s);
-  return true;
+  // read -> change -> write as one locked step: Claude Code and other tools write this file too, and a stale copy must not overwrite their change
+  const r = withLock(file, () => {
+    const s = readJson(file, null);
+    if (!s) return null;
+    const af = path.join(dataDir(), "applied.json"), applied = loadApplied(af);
+    const c1 = patchModel(s, want, applied, mode === "amber" || mode === "red"); // tightening may override your values; green hands back to them
+    const changed = patchLean(s, mode, applied, { lean: config.lean === true }) || c1;
+    saveApplied(af, applied);
+    if (!changed) return false;
+    writeJsonAtomic(file, s);
+    return true;
+  });
+  return r.ok ? r.value : false; // busy: nothing was changed, the next evaluation tries again
 }
 
 // Mode floor from the 5-hour window. A projection from the first minutes of a window is noise (4% after 7 minutes "projects" 171%),
