@@ -6,7 +6,7 @@
 // The SessionStart hook calls apply({ write: true }) so usage-max configures itself; opt out with
 // USAGE_MAX_AUTOAPPLY=off or {"autoApply": false} in ~/.claude/usage-max/config.json.
 import fs from "node:fs";
-import { withLock, backupFile } from "./safefile.mjs";
+import { withLock, backupFile, writeAtomic } from "./safefile.mjs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -101,7 +101,7 @@ export async function apply({ write = false, home = homeDir(), root = pluginRoot
   let backup = null;
   if (write) {
     fs.mkdirSync(dataDir(home), { recursive: true });
-    fs.writeFileSync(launcher, LAUNCHER); // keep the stable launcher + root pointer fresh on every run
+    writeAtomic(launcher, LAUNCHER); // keep the stable launcher + root pointer fresh on every run
     writeJsonAtomic(path.join(dataDir(home), "root.json"), { root, version: readJson(path.join(root, ".claude-plugin", "plugin.json"), {}).version || null, at: new Date().toISOString() });
     if (real.length) {
       // read -> change -> write as one locked step with a fresh read: Claude Code and other tools edit this file too, and our earlier copy may be stale

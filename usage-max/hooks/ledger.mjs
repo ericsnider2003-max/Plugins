@@ -7,6 +7,7 @@ import path from "node:path";
 import { aboveCeiling } from "../scripts/ceiling.mjs";
 import { underCodex } from "../scripts/host.mjs";
 import { redact } from "../scripts/memory.mjs";
+import { writeAtomic } from "../scripts/safefile.mjs";
 
 function homeDir() {
   return process.env.USAGE_MAX_HOME || os.homedir();
@@ -126,8 +127,10 @@ function firstWarning(dir, key) {
   const keys = Object.keys(seen);
   if (keys.length > 500) for (const k of keys.slice(0, keys.length - 500)) delete seen[k];
   try {
-    fs.writeFileSync(file, JSON.stringify(seen));
-  } catch {}
+    writeAtomic(file, JSON.stringify(seen));
+  } catch (e) {
+    return false; // could not record it: stay quiet rather than warn again every time
+  }
   return true;
 }
 

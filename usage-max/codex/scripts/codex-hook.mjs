@@ -10,9 +10,10 @@ import fs from "node:fs"; import path from "node:path"; import { fileURLToPath }
 // Helpers are loaded with guarded dynamic imports: a half-updated install (a copy that lacks a function, or a file) must make this hook do nothing,
 // never fail at startup in the middle of a Codex turn.
 const load = async (f) => { try { return await import(f); } catch { return null; } };
-const CGOV = await load("./codex-governor.mjs"), SH = await load("./shared.mjs"), RTR = await load("./run-trimmed.mjs"), GU = await load("./codex-guards.mjs"), TC = await load("./trimcheck.mjs");
+const CGOV = await load("./codex-governor.mjs"), SH = await load("./shared.mjs"), RTR = await load("./run-trimmed.mjs"), GU = await load("./codex-guards.mjs"), TC = await load("./trimcheck.mjs"), SF = await load("./safefile.mjs");
 const { evaluate, applyMode, dataDir, modeKey, codexHome } = CGOV || {}; const { readOther, balanceAdvice } = SH || {}; const { guard, sessionContext, nudge, nudgeAt } = GU || {};
 export const wrap = RTR ? RTR.wrap : undefined;
+const writeAtomic = SF ? SF.writeAtomic : (f, t) => fs.writeFileSync(f, t); // atomic when the helper is there; a plain write is still better than none
 const READY = Boolean(CGOV && SH && RTR && GU && TC && evaluate && applyMode && dataDir && modeKey && codexHome && readOther && balanceAdvice && wrap && guard && sessionContext && nudge && nudgeAt && TC.isDisabled && TC.record);
 // project memory + shared resume point: ./memory.mjs and ./resume.mjs next to this file (the stable bin copy) or the plugin's scripts/ (running from the plugin). Absent = feature silently off.
 let R = null; try { R = await import("./resume.mjs"); } catch { try { R = await import("../../scripts/resume.mjs"); } catch {} }
@@ -31,7 +32,7 @@ export function rewrite(cmd, runPath, platform = process.platform) {
   return wrap(c, runPath);
 }
 const DIRECTIVE = { amber: "usage-max AMBER: weekly budget is being burned faster than sustainable. Use low reasoning effort, keep scope tight, avoid re-reading files, no large autonomous jobs without asking.", red: "usage-max RED: weekly budget is nearly exhausted for the time left. Cheapest path only: minimal reads, no exploratory work, no fast mode, no long autonomous runs; ask before anything big." };
-function seen(ev) { try { const f = path.join(dataDir(), "hook-seen.json"); let o = {}; try { o = JSON.parse(fs.readFileSync(f, "utf8")); } catch {} o[ev] = new Date().toISOString(); fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o)); } catch {} }
+function seen(ev) { try { const f = path.join(dataDir(), "hook-seen.json"); let o = {}; try { o = JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { o = {}; } o[ev] = new Date().toISOString(); writeAtomic(f, JSON.stringify(o)); } catch (e) { return e; } }
 function userHooksInstalled() { try { return fs.readFileSync(path.join(codexHome(), "hooks.json"), "utf8").includes("codex-hook.mjs"); } catch { return false; } }
 const ignore = (e) => e; // deliberate: a failed best-effort step never stops the hook
 function memoryText(ev, input, sid) {
@@ -86,7 +87,7 @@ function main() {
       if (recent.length >= 3 && !st.sent[bk]) { st.sent[bk] = t; process.stdout.write(`\nusage-max: ${recent.length} Codex sessions started in this folder within 3 minutes. Each carries its own full context and is billed separately, so running them in parallel multiplies usage. If they are copies of one job, tell the user in one sentence that one session at a time costs far less.`); } } catch {} }
     if (ev === "UserPromptSubmit") { try { const nd = nudge(sessionContext(codexHome(), sid), nudgeAt(mode)); const nk = nd && `${sid}:ctx:${nd.level}`; if (nd && !st.sent[nk]) { st.sent[nk] = Date.now(); process.stdout.write("\n" + nd.text); } } catch {} }
     const keys = Object.keys(st.sent); if (keys.length > 200) for (const x of keys.slice(0, keys.length - 100)) delete st.sent[x];
-    try { fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(sf, JSON.stringify(st)); } catch {}
+    try { writeAtomic(sf, JSON.stringify(st)); } catch (e) { return e; }
   } else if (ev === "Stop" && key !== beforeKey) {
     process.stdout.write(JSON.stringify({ systemMessage: `usage-max: budget mode ${beforeKey.toUpperCase()} -> ${key.toUpperCase()}. New sessions use ${cfg.modes[surplus ? "surplus" : mode].model || "your model"} @ ${cfg.modes[surplus ? "surplus" : mode].effort}; use /model to change this one.` }));
   }

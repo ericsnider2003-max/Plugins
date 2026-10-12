@@ -355,4 +355,16 @@ await t("BUG-025", "with no inputs named, the result cache notices a changed fil
   assert.doesNotMatch(p2.stderr, /HIT/, "outside git with no key: never cached"); assert.match(p2.stderr, /without the cache/);
 });
 
+await t("BUG-026", "small status files are written atomically", async () => {
+  const src = (f) => fs.readFileSync(path.join(root, f), "utf8");
+  assert.doesNotMatch(src("scripts/statusline.mjs"), /writeFileSync\(limitsPath/); assert.doesNotMatch(src("scripts/profile.mjs"), /writeFileSync\(launcher/); assert.doesNotMatch(src("hooks/ledger.mjs"), /writeFileSync\(file, JSON/);
+  assert.doesNotMatch(src("codex/scripts/codex-hook.mjs"), /writeFileSync\((f|sf), JSON/, "hook-seen.json and hook-state.json");
+  const home = tmp(); const env = { ...process.env, USAGE_MAX_HOME: home }; const now = Math.floor(Date.now() / 1000);
+  const rl = { rate_limits: { seven_day: { used_percentage: 10, resets_at: now + 86400 * 3 }, five_hour: { used_percentage: 5, resets_at: now + 3600 } }, model: { id: "claude-opus-5-5", display_name: "Opus" } };
+  const { spawn } = await import("node:child_process"); await Promise.all(Array.from({ length: 6 }, () => new Promise((res) => { const c = spawn("node", [path.join(root, "scripts/statusline.mjs")], { env }); c.stdin.end(JSON.stringify(rl)); c.on("exit", res); })));
+  const dd = path.join(home, ".claude/usage-max"); assert.equal(JSON.parse(fs.readFileSync(path.join(dd, "limits.json"), "utf8")).seven_day.used_percentage, 10); assert.deepEqual(fs.readdirSync(dd).filter((x) => x.endsWith(".tmp")), [], "no temp files left");
+  const sh = spawnSync("node", [path.join(root, "codex/scripts/codex-hook.mjs"), "Stop"], { input: "{}", env: { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: path.join(home, ".codex") }, encoding: "utf8" }); assert.equal(sh.status, 0);
+  assert.ok(JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/hook-seen.json"), "utf8")).Stop, "hook-seen written"); assert.deepEqual(fs.readdirSync(path.join(home, ".usage-max-codex")).filter((x) => x.endsWith(".tmp")), []);
+});
+
 console.log(`${n} passing`);
