@@ -213,4 +213,16 @@ await t("BUG-010", "the loop-note wrapper works for commands that end in a # com
   const r = spawnSync("sh", ["-c", w], { encoding: "utf8" }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /hello/); assert.match(r.stdout, /this exact command has now run/);
 });
 
+await t("BUG-011", "a failed or interrupted subagent frees its slot, and parallel starts cannot exceed the cap", async () => {
+  const G = await imp("scripts/guard.mjs"); const dir = tmp();
+  for (let i = 0; i < 4; i++) assert.equal(G.agentStart(dir, "a" + i, "green", false), null); assert.ok(G.agentStart(dir, "a4", "green", false).deny, "5th is held at the cap of 4");
+  const hj = JSON.parse(fs.readFileSync(path.join(root, "hooks/hooks.json"), "utf8")).hooks; assert.ok(JSON.stringify(hj.PostToolUseFailure || []).includes("guard.mjs") && /Agent/.test(JSON.stringify(hj.PostToolUseFailure || [])), "failure of an Agent call is hooked");
+  const home = tmp(); const dd = path.join(home, ".claude", "usage-max"); fs.mkdirSync(dd, { recursive: true }); fs.writeFileSync(path.join(dd, "inflight.json"), JSON.stringify({ x1: Date.now() }));
+  spawnSync("node", [path.join(root, "hooks/guard.mjs")], { input: JSON.stringify({ hook_event_name: "PostToolUseFailure", tool_name: "Agent", tool_use_id: "x1", session_id: "s", tool_input: {} }), env: { ...process.env, USAGE_MAX_HOME: home, USAGE_MAX_HOST: "claude" }, encoding: "utf8" });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dd, "inflight.json"), "utf8")), {}, "slot released on failure");
+  const d2 = tmp(); const gu = pathToFileURL(path.join(root, "scripts/guard.mjs")).href; const { spawn } = await import("node:child_process");
+  await Promise.all(Array.from({ length: 8 }, (_, i) => new Promise((res) => spawn("node", ["--input-type=module", "-e", `const G = await import(${JSON.stringify(gu)}); G.agentStart(${JSON.stringify(d2)}, "p${i}", "green", false);`]).on("exit", res))));
+  assert.equal(Object.keys(JSON.parse(fs.readFileSync(path.join(d2, "inflight.json"), "utf8"))).length, 4, "exactly the cap, never more");
+});
+
 console.log(`${n} passing`);

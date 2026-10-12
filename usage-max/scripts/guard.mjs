@@ -3,6 +3,7 @@
 // event counters for the digest, and the low-priority task queue. Nothing here blocks work except the subagent cap;
 // everything else only adds a message (to you via systemMessage = free, to Claude via additionalContext = a few tokens).
 import fs from "node:fs";
+import { withLock } from "./safefile.mjs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { recordCost } from "./pricing.mjs";
@@ -139,13 +140,18 @@ export function agentCap(dir, mode, surplus) {
 }
 export function agentStart(dir, id, mode, surplus, now = Date.now()) {
   if (!id) return null; // cannot be released later without an id: do not track
-  const f = path.join(dir, "inflight.json"); const live = Object.entries(readJson(f, {}) || {}).filter(([, t]) => now - t < FLIGHT_TTL);
-  const cap = agentCap(dir, mode, surplus);
-  if (live.length >= cap) { bump(dir, "subagentsHeld"); return { deny: `usage-max: ${live.length} subagents are already running (cap ${cap} in ${String(mode).toUpperCase()} mode; each one pays its own full startup context). Wait for them to finish, or fold this task into one of them or do it yourself.` }; }
-  const o = Object.fromEntries(live); o[id || `a${now}`] = now; try { writeJsonAtomic(f, o); } catch {} return null;
+  const f = path.join(dir, "inflight.json");
+  // check + register as one locked step: several parallel Agent calls start at the same instant and must not all see a free slot
+  const r = withLock(f, () => {
+    const live = Object.entries(readJson(f, {}) || {}).filter(([, t]) => now - t < FLIGHT_TTL);
+    const cap = agentCap(dir, mode, surplus);
+    if (live.length >= cap) { bump(dir, "subagentsHeld"); return { deny: `usage-max: ${live.length} subagents are already running (cap ${cap} in ${String(mode).toUpperCase()} mode; each one pays its own full startup context). Wait for them to finish, or fold this task into one of them or do it yourself.` }; }
+    const o = Object.fromEntries(live); o[id] = now; try { writeJsonAtomic(f, o); } catch (e) { return null; } return null;
+  });
+  return r.ok ? r.value : null; // lock busy for 2 s: never block the user's work on our bookkeeping
 }
 export function agentEnd(dir, id) {
-  try { const f = path.join(dir, "inflight.json"); const o = readJson(f, {}) || {}; if (id in o) { delete o[id]; writeJsonAtomic(f, o); } } catch {}
+  try { const f = path.join(dir, "inflight.json"); withLock(f, () => { const o = readJson(f, {}) || {}; if (id in o) { delete o[id]; writeJsonAtomic(f, o); } }); } catch (e) { return e; }
 }
 
 // ---- digest
