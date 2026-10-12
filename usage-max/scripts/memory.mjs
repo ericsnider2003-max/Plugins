@@ -92,9 +92,12 @@ export function decide(mem, key, value, now = new Date(), { pin = false } = {}) 
   if (looksSecret(key + " " + value)) return { error: "that looks like a secret/credential; not saved (memory is committed and injected into prompts). Record where it lives instead, e.g. \"prod DB password: in 1Password item X\"." };
   const cur = readDecisions(mem).find((d) => d.key.toLowerCase() === key.toLowerCase());
   if (cur && cur.value === value && cur.pinned === Boolean(pin)) return { unchanged: true, key };
-  fs.mkdirSync(mem, { recursive: true });
-  const f = path.join(mem, "decisions.md"); const prefix = fs.existsSync(f) && !read(f).endsWith("\n") ? "\n" : "";
-  fs.appendFileSync(f, `${prefix}- ${DATE(now)} | ${pin ? "!" : ""}${key} | ${value}\n`); rebuildIndex(mem);
+  const f = path.join(mem, "decisions.md");
+  try {
+    fs.mkdirSync(mem, { recursive: true }); const prefix = fs.existsSync(f) && !read(f).endsWith("\n") ? "\n" : "";
+    fs.appendFileSync(f, `${prefix}- ${DATE(now)} | ${pin ? "!" : ""}${key} | ${value}\n`);
+  } catch (e) { return { error: `could not write ${path.basename(f)} (${e.code || e.message}); nothing was saved` }; }
+  rebuildIndex(mem);
   return { key, value, replaced: cur ? cur.value : null };
 }
 
@@ -176,9 +179,11 @@ export function recall(mem, query, { max = 3, budget = 1500, seen = new Set(), l
 
 // ---- "remember: ..." typed by the user is saved without a model call
 export function extractDirective(prompt) {
-  const p = String(prompt || "").slice(0, 800);
-  const m = p.match(/^\s*(?:please\s+)?(?:remember(?:\s+that|:)|from now on|going forward|always remember)[:,]?\s+([^\n]{10,1000})/i); // only when the prompt BEGINS with it: pasted emails/changelogs are not instructions
-  return m && !looksSecret(m[1]) ? m[1].trim() : null;
+  const p = String(prompt || "").slice(0, 1400);
+  // only when the prompt BEGINS with it (pasted emails/changelogs are not instructions); the note runs to the end of its paragraph, so a
+  // two-line "remember: ..." is kept whole. A secret is returned too, so decide() refuses it WITH a message instead of the hook staying silent.
+  const m = p.match(/^\s*(?:please\s+)?(?:remember(?:\s+that|:)|from now on|going forward|always remember)[:,]?\s+([\s\S]{10,1200}?)(?:\n[ \t]*\n|$)/i);
+  return m ? norm(m[1]) : null;
 }
 
 export const directiveKey = (text) => "note-" + String(text).toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).slice(0, 4).join("-") + "-" + (() => { let h = 5381; for (const c of String(text)) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36).slice(0, 5); })();

@@ -303,4 +303,14 @@ await t("BUG-022", "a half-updated Codex install makes the hook do nothing inste
   assert.equal(r.status, 0, r.stderr); assert.equal(r.stderr.trim(), "", "no startup error"); assert.equal(r.stdout.trim(), "", "and no half-working output");
 });
 
+await t("BUG-023", "remember: never fails silently, keeps a second line, refuses secrets out loud", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const M = await imp("scripts/memory.mjs"); const proj = path.join(home, "p"); fs.mkdirSync(proj); const mem = M.init(proj);
+  const env = { ...process.env, USAGE_MAX_HOME: home, USAGE_MAX_HOST: "claude" }; const say = (prompt) => { const r = spawnSync("node", [path.join(root, "hooks/memory.mjs")], { input: JSON.stringify({ hook_event_name: "UserPromptSubmit", cwd: proj, session_id: "r", prompt }), env, encoding: "utf8" }); return r.stdout ? JSON.parse(r.stdout).systemMessage || "" : ""; };
+  assert.match(say("remember: the staging password is hunter2hunter2 for the test box"), /not saved.*secret/i, "a secret is refused WITH a message");
+  assert.match(say("remember: use pnpm in this repo,\nnever npm, because the lockfile is pnpm's"), /saved to project memory/); const dec = fs.readFileSync(path.join(mem, "decisions.md"), "utf8"); assert.ok(dec.includes("never npm"), "the second line is kept: " + dec);
+  assert.match(say("remember: " + "x".repeat(400)), /not saved/i, "too long: said so");
+  fs.rmSync(path.join(mem, "decisions.md")); fs.mkdirSync(path.join(mem, "decisions.md")); // cannot be written
+  assert.match(say("remember: deploys go through the release branch only"), /not saved/i, "a write failure is reported, not swallowed");
+});
+
 console.log(`${n} passing`);
