@@ -60,9 +60,9 @@ function main() {
   // automatic resume point (shared with Claude Code): written at Stop, offered to the next fresh chat in this folder. Before the budget code on purpose.
   if (R && (ev === "Stop" || ev === "SessionStart")) {
     try {
-      const cwdR = input.cwd || process.cwd(), cfgR = rj("config.json") || {}; const roll = R.findRollout({ transcript: input.transcript_path, sessionId: input.session_id, codexHome: codexHome() });
+      const cwdR = input.cwd || process.cwd(), cfgR = rj("config.json") || {};
       if (cfgR.resume !== "off") {
-        if (ev === "Stop" && roll) R.saveResume(R.sharedDir(), cwdR, R.buildResume({ transcript: roll, cwd: cwdR, tool: "codex" }));
+        if (ev === "Stop") R.saveResume(R.sharedDir(), cwdR, () => { const roll = R.findRollout({ transcript: input.transcript_path, sessionId: input.session_id, codexHome: codexHome() }); return roll ? R.buildResume({ transcript: roll, cwd: cwdR, tool: "codex" }) : null; }); // the folder walk and git run only when the note is due
         if (ev === "SessionStart" && (!input.source || input.source === "startup" || input.source === "clear")) { const t = R.takeResume(R.sharedDir(), cwdR, { tool: "codex" }); if (t) process.stdout.write(M.fenceNotes(t, "resume-note") + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)\n"); }
       }
     } catch {}

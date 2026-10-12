@@ -84,8 +84,10 @@ export function buildResume({ transcript, cwd, now = new Date(), tool = "claude"
   return redact(L.join("\n"));
 }
 export function saveResume(dir, cwd, text, { now = Date.now(), minGapMs = 60e3 } = {}) {
-  if (!text) return false; const f = resumeFile(dir, cwd);
-  try { if (now - fs.statSync(f).mtimeMs < minGapMs) return false; } catch {}
+  const f = resumeFile(dir, cwd); // `text` may be a function: it is called only AFTER the throttle check, so a Stop inside the gap costs no transcript read or git call
+  let last = 0; try { last = fs.statSync(f).mtimeMs; } catch (e) { last = 0; } // no earlier note: nothing to throttle against
+  if (last && now - last < minGapMs) return false;
+  if (typeof text === "function") text = text(); if (!text) return false;
   try { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text + "\n"); return true; } catch { return false; }
 }
 // After a compaction the summary can drop detail: show the current note again WITHOUT consuming it (it describes this same session).

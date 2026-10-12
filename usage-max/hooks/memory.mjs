@@ -43,9 +43,9 @@ try {
     if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen); }
     if (r.text || msg) ctx(ev, M.fenceNotes(r.text), msg);
   } else if (ev === "PreCompact" && cfg.resume !== "off") {
-    R.saveResume(R.sharedDir(), cwd, R.buildResume({ transcript: input.transcript_path, cwd, tool: "claude" }), { minGapMs: 0 }); // snapshot right before detail is summarised away
+    R.saveResume(R.sharedDir(), cwd, () => R.buildResume({ transcript: input.transcript_path, cwd, tool: "claude" }), { minGapMs: 0 }); // snapshot right before detail is summarised away
   } else if (ev === "Stop" && cfg.resume !== "off") {
-    R.saveResume(R.sharedDir(), cwd, R.buildResume({ transcript: input.transcript_path, cwd, tool: "claude" }));
+    R.saveResume(R.sharedDir(), cwd, () => R.buildResume({ transcript: input.transcript_path, cwd, tool: "claude" }));
   }
   process.exitCode = 0;
 } catch { process.exitCode = 0; }

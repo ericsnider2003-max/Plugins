@@ -198,4 +198,13 @@ await t("SEC-003", "repo notes and resume text reach the model fenced, as data, 
   assert.match(c3, /<resume-note/); assert.ok(!/Ignore previous instructions/i.test(c3) && c3.includes("real detail"));
 });
 
+await t("BUG-008", "a Stop inside the one-minute gap does no transcript read or git work", async () => {
+  const home = tmp(); const R = await imp("scripts/resume.mjs"); const cwd = path.join(home, "p"); fs.mkdirSync(cwd);
+  assert.equal(R.saveResume(home, cwd, "first note"), true); let called = 0;
+  assert.equal(R.saveResume(home, cwd, () => { called++; return "second"; }), false); assert.equal(called, 0, "builder not called inside the gap");
+  assert.equal(R.saveResume(home, cwd, () => { called++; return "second"; }, { minGapMs: 0 }), true); assert.equal(called, 1);
+  const src = fs.readFileSync(path.join(root, "hooks/memory.mjs"), "utf8"); assert.match(src, /saveResume\(R\.sharedDir\(\), cwd, \(\) =>/, "the Claude Stop hook passes a builder, not a built note");
+  const cx = fs.readFileSync(path.join(root, "codex/scripts/codex-hook.mjs"), "utf8"); assert.match(cx, /saveResume\(R\.sharedDir\(\), cwdR, \(\) =>/, "so does the Codex hook");
+});
+
 console.log(`${n} passing`);
