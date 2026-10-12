@@ -36,7 +36,7 @@ export function withLock(file, fn, { waitMs = 2000, staleMs = 15000 } = {}) {
   for (;;) {
     try { fs.mkdirSync(lock); break; }
     catch (e) {
-      if (!e || e.code !== "EEXIST") return { ok: false };
+      if (!e || !["EEXIST", "EPERM", "EACCES", "EBUSY"].includes(e.code)) return { ok: false }; // Windows reports a folder that is still being deleted as EPERM/EACCES/EBUSY: wait and retry, do not give up
       try { if (Date.now() - fs.statSync(lock).mtimeMs > staleMs) { fs.rmdirSync(lock); continue; } } catch (e2) { ignore(e2); }
       if (Date.now() - t0 > waitMs) return { ok: false };
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 + (process.pid % 30));
