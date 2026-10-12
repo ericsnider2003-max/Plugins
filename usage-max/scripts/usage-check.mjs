@@ -42,7 +42,7 @@ async function main() {
     toolCallSpike: Number(arg("tool-call-threshold", 25)),
     contextSpike: Number(arg("context-threshold", 200000))
   });
-  const days = Math.max(1, (now.getTime() - reset.getTime()) / 86400000);
+  const days = Math.max(1 / 24, (now.getTime() - reset.getTime()) / 86400000); // real elapsed days (floor one hour); the first day is labelled low confidence below
   const burnPerDay = weekly.ranges.all.context / days;
   const cacheShare = weekly.ranges.all.context > 0
     ? (weekly.ranges.all.created + weekly.ranges.all.read) / weekly.ranges.all.context
@@ -90,6 +90,7 @@ async function main() {
     const used = Number(weeklyUsed);
     const daily = used / days;
     projection.dailyPercent = Number.isFinite(daily) ? daily : null;
+    projection.confidence = days < 1 ? "low (under a day into the week: one busy morning looks like a whole week)" : "ok";
     if (daily > 0) {
       const left = (100 - used) / daily;
       projection.projectedDaysLeft = left;

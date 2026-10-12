@@ -270,4 +270,10 @@ await t("BUG-018", "a mistyped reset time is rejected or normalised, never store
   const z = P("2026-10-15T20:00:00", now); assert.ok(z.ms && /time zone/.test(z.note), "zone-less time is accepted but says how it was read"); assert.ok(P("2026-10-15T20:00:00-04:00", now).ms === Date.parse("2026-10-15T20:00:00-04:00"));
 });
 
+await t("BUG-019", "12 hours into the week with 20% used reads 40% a day", async () => {
+  const home = tmp(), now = Date.now(); const lim = path.join(home, "limits.json"); fs.writeFileSync(lim, JSON.stringify({ capturedAt: new Date(now).toISOString(), seven_day: { used_percentage: 20, resets_at: Math.floor((now + 6.5 * 864e5) / 1000) }, five_hour: null }));
+  const uc = spawnSync("node", [path.join(root, "scripts/usage-check.mjs"), "--limits", lim, "--weekly-used-percent", "20", "--projects-dir", path.join(home, "none"), "--json"], { env: { ...process.env, USAGE_MAX_HOME: home }, encoding: "utf8" });
+  const j = JSON.parse(uc.stdout.slice(uc.stdout.indexOf("{"))); assert.ok(Math.abs(j.projection.dailyPercent - 40) < 1, "daily % " + j.projection.dailyPercent); assert.match(j.projection.confidence, /^low/);
+});
+
 console.log(`${n} passing`);
