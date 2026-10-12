@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { aboveCeiling } from "../scripts/ceiling.mjs";
 import { underCodex } from "../scripts/host.mjs";
+import { redact } from "../scripts/memory.mjs";
 
 function homeDir() {
   return process.env.USAGE_MAX_HOME || os.homedir();
@@ -33,7 +34,7 @@ function detailFor(input) {
   const tool = input.tool_name || input.toolName || "unknown";
   const payload = input.tool_input || input.toolInput || {};
   if (tool === "Bash" && typeof payload.command === "string") {
-    return { kind: "bash", command: payload.command.slice(0, 160), hash: hash(payload.command) };
+    return { kind: "bash", command: redact(payload.command).slice(0, 160), hash: hash(payload.command) };
   }
   if ((tool === "Edit" || tool === "Write") && typeof payload.file_path === "string") {
     return { kind: "file", tool, file: path.basename(payload.file_path), hash: hash(payload.file_path) };

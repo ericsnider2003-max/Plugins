@@ -4,8 +4,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+// Saved output is run through the secret filter first (command output can contain tokens and connection strings). If the filter cannot be
+// loaded, nothing is saved rather than saving unfiltered text.
+let redact = null; try { ({ redact } = await import("./memory.mjs")); } catch { try { ({ redact } = await import("../../scripts/memory.mjs")); } catch { redact = null; } }
 // The trimmed middle is never gone: the whole output is kept here (newest 40 files, 2 days) and the model is told where.
 export function saveFull(raw, home = process.env.USAGE_MAX_HOME || os.homedir()) {
+  if (!redact) return null; raw = redact(raw);
   try {
     const d = path.join(home, ".usage-max", "full-output"); fs.mkdirSync(d, { recursive: true, mode: 0o700 });
     const f = path.join(d, `${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.createHash("sha1").update(raw).digest("hex").slice(0, 6)}.txt`); fs.writeFileSync(f, raw, { mode: 0o600 }); // private: command output can contain tokens

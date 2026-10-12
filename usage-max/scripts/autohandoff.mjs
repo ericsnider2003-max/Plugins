@@ -1,6 +1,7 @@
 // Automatic handoff, no model call: build a resume file from the session transcript (recent requests, files touched, open todos, git state).
 // Used when the cache has gone cold on a big context: instead of paying to re-read it, /clear and continue from this file.
 import fs from "node:fs"; import path from "node:path"; import { spawnSync } from "node:child_process";
+import { redact } from "./memory.mjs";
 const txt = (c) => (typeof c === "string" ? c : Array.isArray(c) ? c.filter((x) => x && x.type === "text").map((x) => x.text).join("\n") : "");
 const clip = (s, n) => { s = String(s).replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n) + "…" : s; };
 const NOISE = /^<(system-reminder|command-|local-command|task-notification)|^\[Request interrupted|^Caveat:/;
@@ -28,7 +29,7 @@ export function render(s, sid, { now = new Date() } = {}) {
   if (s.files.length) L.push("", "## Files changed in this session", ...s.files.map(([f, n]) => `- ${f}${n > 1 ? ` (${n} edits)` : ""}`));
   if (g.st) L.push("", "## git status", "```", g.st, "```"); if (g.log) L.push("", "## recent commits", "```", g.log, "```");
   L.push("", "## To continue", "Start a fresh session (/clear) and say: \"Continue from the handoff file at <this file's path>; check git status first.\"");
-  return L.join("\n") + "\n";
+  return redact(L.join("\n")) + "\n"; // prompts and git output can contain pasted keys
 }
 export function write(dir, sid, transcriptPath, { now = new Date() } = {}) {
   const s = summarize(transcriptPath); if (!s || !s.prompts.length) return null;

@@ -173,4 +173,14 @@ await t("SEC-004", "Codex output trimming (which needs an auto-approve) is opt-i
   const o = JSON.parse(run()); assert.equal(o.hookSpecificOutput.permissionDecision, "allow"); assert.ok(o.hookSpecificOutput.updatedInput.command.includes("run-trimmed.mjs"), "opted in: trimmed");
 });
 
+await t("SEC-002", "saved handoffs, full command output and the tool ledger are secret-filtered", async () => {
+  const home = tmp(); const key = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv", pg = "postgres://admin:s3cretPw@db.internal/app";
+  const A = await imp("scripts/autohandoff.mjs"); const out = A.render({ prompts: ["use " + key + " for the test"], files: [], todos: [], cwd: null, branch: null }, "sid");
+  assert.ok(!out.includes(key) && out.includes("[redacted]"), "handoff");
+  const T = await imp("scripts/trim.mjs"); const f = T.saveFull("line 1\nDATABASE_URL=" + pg + "\nline 3\n", home); assert.ok(f, "still saved"); assert.ok(!fs.readFileSync(f, "utf8").includes("s3cretPw"), "full output");
+  const TC = await imp("codex/scripts/trim.mjs"); const f2 = TC.saveFull("token ghp_" + "a".repeat(36) + "\n", home); assert.ok(f2 && !fs.readFileSync(f2, "utf8").includes("ghp_aaaa"), "codex full output");
+  const lp = path.join(home, "ledger.jsonl"); spawnSync("node", [path.join(root, "hooks/ledger.mjs")], { input: JSON.stringify({ hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "curl -H 'x: " + key + "' https://x" }, session_id: "s" }), env: { ...process.env, USAGE_MAX_HOME: home, USAGE_MAX_LEDGER_PATH: lp, USAGE_MAX_HOST: "claude" }, encoding: "utf8" });
+  const led = fs.readFileSync(lp, "utf8"); assert.ok(led.includes("curl") && !led.includes("AbCdEfGh"), "ledger keeps the command shape, not the key");
+});
+
 console.log(`${n} passing`);
