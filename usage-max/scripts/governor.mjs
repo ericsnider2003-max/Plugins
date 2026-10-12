@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pace } from "./lib.mjs";
 import { writeSelf } from "./shared.mjs";
-import { ownedSet, ownedUnset, loadApplied, saveApplied } from "./owned.mjs";
+import { ownedSet, ownedUnset, ownedRestore, loadApplied, saveApplied } from "./owned.mjs";
 import { withLock } from "./safefile.mjs";
 import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap, writeFailures } from "./meter.mjs";
 
@@ -139,7 +139,7 @@ export function estimate(state, meter, nowMs = Date.now(), config = DEFAULT_CONF
 // Returns true when something changed.
 export function patchModel(s, want, applied = {}, force = false) {
   let changed = false;
-  const set = (k, v) => { if (ownedSet(s, k, v, applied, force) === "set") changed = true; };
+  const set = (k, v) => { if (!force && ownedRestore(s, k, applied)) changed = true; if (ownedSet(s, k, v, applied, force) === "set") changed = true; }; // relaxing: first hand back what the user had
   set("model", want.model);
   set("effortLevel", want.effort);
   // `otherEffort` lets surplus raise only the hub model while subagent models stay economical.

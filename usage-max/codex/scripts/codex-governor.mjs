@@ -185,12 +185,33 @@ export function cleanLegacy(cfg = loadConfig()) {
     if (r.changed) writeProfiles(cfg); return r.changed ? keys : [];
   } catch { return []; }
 }
+// Ownership of the keys a mode sets (governor.json "owned": key -> { prev: what you had, wrote: what we wrote }):
+//  - a value you set yourself is only overridden while TIGHTENING (amber/red), and is remembered;
+//  - relaxing (green/surplus) hands it back; a value you changed while we held it is yours and is never touched again.
+export function planModeKeys(t, want, tight, owned) {
+  const out = {}; const raw = (v) => (typeof v === "number" ? String(v) : JSON.stringify(v));
+  for (const [k, v] of Object.entries(want)) {
+    const w = raw(v), cur = topVal(t, k), own = owned[k];
+    if (own && cur === own.wrote) { // still ours
+      if (tight || own.prev === null) { if (cur !== w) out[k] = v; owned[k] = { prev: own.prev, wrote: w }; }
+      else { out[k] = { raw: own.prev }; delete owned[k]; }
+      continue;
+    }
+    if (own) delete owned[k]; // you changed it while we held it: it is yours now
+    if (cur === undefined) { out[k] = v; owned[k] = { prev: null, wrote: w }; }
+    else if (cur !== w && tight) { out[k] = v; owned[k] = { prev: cur, wrote: w }; }
+  }
+  return out;
+}
 export function applyMode(mode, cfg = loadConfig(), surplus = false) {
-  const f = path.join(codexHome(), "config.toml");
+  const f = path.join(codexHome(), "config.toml"), sf = path.join(dataDir(), "governor.json"); let owned = {};
   // An unreadable config.toml is never treated as empty: the file is left exactly as it is and the failure is reported.
-  const r = editText(f, (t) => setTopLevel(t, { ...legacyRemovals(t, cfg), ...modeKV(cfg.modes[mode === "green" && surplus ? "surplus" : mode], cfg) }).replace(/\n*$/, "\n"));
+  const r = editText(f, (t) => {
+    owned = { ...(j(sf, {}).owned || {}) }; const want = modeKV(cfg.modes[mode === "green" && surplus ? "surplus" : mode], cfg);
+    return setTopLevel(t, { ...legacyRemovals(t, cfg), ...planModeKeys(t, want, mode === "amber" || mode === "red", owned) }).replace(/\n*$/, "\n");
+  });
   if (r.error) { writeFailures.push(r.error); console.error("usage-max: " + r.error); return r; }
-  writeProfiles(cfg); markApplied(modeKey(mode, surplus)); return r;
+  writeProfiles(cfg); const st = j(sf, {}); st.owned = owned; st.appliedKey = modeKey(mode, surplus); wj(sf, st); return r;
 }
 export function modelsSeen() {
   const out = {}; for (const f of walk(path.join(codexHome(), "sessions"))) { let t; try { t = fs.readFileSync(f, "utf8"); } catch { continue; } for (const m of t.matchAll(/"model"\s*:\s*"([^"]+)"/g)) out[m[1]] = (out[m[1]] || 0) + 1; }

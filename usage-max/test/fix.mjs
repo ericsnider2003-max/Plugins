@@ -150,4 +150,19 @@ await t("BUG-004", "concurrent sessions cannot lose or double count meter data o
   const M = await imp("scripts/meter.mjs"); process.env.USAGE_MAX_HOME = home; const big = { cum: 0, buckets: {}, offsets: {} }; for (let i = 0; i < 250; i++) big.offsets["/gone/" + i + ".jsonl"] = 10; M.saveMeter(big); assert.equal(Object.keys(big.offsets).length, 0);
 });
 
+await t("BUG-003", "a value the user set is remembered when tightening overrides it, and handed back afterwards (Claude and Codex)", async () => {
+  const G = await imp("scripts/governor.mjs"), O = await imp("scripts/owned.mjs");
+  const s = { model: "claude-opus-5-5", effortLevel: "high" }, applied = {}, red = { model: "claude-sonnet-5-5", effort: "low" }, green = { model: "claude-opus-5-5", effort: "medium" };
+  G.patchModel(s, red, applied, true); assert.equal(s.effortLevel, "low"); assert.equal(s.model, "claude-sonnet-5-5");
+  G.patchModel(s, green, applied, false); assert.equal(s.effortLevel, "high", "your own effort is back, not our 'medium'"); assert.equal(s.model, "claude-opus-5-5");
+  assert.ok(!("effortLevel" in applied) && !applied.__prev, "nothing left claimed");
+  const s2 = { effortLevel: "high" }, a2 = {}; O.ownedSet(s2, "effortLevel", "low", a2, true); s2.effortLevel = "xhigh"; // the user changes it while we hold it
+  O.ownedUnset(s2, "effortLevel", a2); assert.equal(s2.effortLevel, "xhigh", "a value the user changed again is theirs");
+  // Codex: same rule
+  const home = tmp(), ch = path.join(home, ".codex"); fs.mkdirSync(ch, { recursive: true }); fs.writeFileSync(path.join(ch, "config.toml"), 'model_reasoning_effort = "high"\n');
+  const env = { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: ch }; const go = (m) => spawnSync("node", [path.join(root, "codex/scripts/codex-governor.mjs"), "mode", m], { env, encoding: "utf8" }); const eff = () => (fs.readFileSync(path.join(ch, "config.toml"), "utf8").match(/^model_reasoning_effort = (.*)$/m) || [])[1];
+  go("red"); assert.equal(eff(), '"low"'); go("green"); assert.equal(eff(), '"high"', "Codex: your effort comes back in green");
+  go("red"); fs.writeFileSync(path.join(ch, "config.toml"), fs.readFileSync(path.join(ch, "config.toml"), "utf8").replace('"low"', '"xhigh"')); go("green"); assert.equal(eff(), '"xhigh"', "Codex: a value you changed while tightened stays yours");
+});
+
 console.log(`${n} passing`);
