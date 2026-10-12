@@ -2,6 +2,11 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.17.1 (Oct 12 2026) — usage-max no longer switches off telemetry or anything else you use
+- **Fixed: Remote Control blocked.** The profile wrote `DISABLE_TELEMETRY=1` (and four other switches: feedback survey off, away summary off, goal check-ins off, terminal title off) plus `crossSessionInbound: "hold"` into your Claude settings. Telemetry off was reported to block Remote Control; holding cross-session messages and the away recap are also remote/phone features. usage-max **no longer sets any of them**, and at the next SessionStart it **hands back** the ones it wrote (only while the value is still exactly what it wrote: anything you set yourself is left alone). `usage-max safety` now lists them with who set them; `usage-max safety --fix` hands them back on demand.
+- The rule, extended: usage-max does not switch off a product feature or a connection. It only changes model, effort, cache lifetime, and the other cost settings listed by `usage-max safety`.
+- Note: a change to settings only reaches sessions that START after it; a session already running keeps what it started with.
+
 ## 0.17.0 (Oct 11 2026) — context safety: nothing here may cost you context in the middle of your work
 Found by auditing every effect the plugin has on a live session, after a report that conversations were losing context mid-work. The rule from now on: **usage-max never lowers what Claude or Codex can see, never compacts, clears or ends a conversation for you, and never hides output without saving all of it.**
 - **Fixed (Codex): the installer had been writing `model_auto_compact_token_limit = 64000`, `tool_output_token_limit = 8000` and `project_doc_max_bytes = 16384` into `~/.codex/config.toml`** in every budget mode. That compacted every chat at 64k tokens and cut AGENTS.md off at 16 KB, which is exactly "Codex forgets parts of my project". Not written any more; at every Codex SessionStart the exact old values are removed (a limit you set yourself is never touched; one you ask for under `tuning` in config.json is still honoured). `codex-diet` no longer recommends them.
