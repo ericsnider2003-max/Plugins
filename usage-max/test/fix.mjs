@@ -64,4 +64,10 @@ await t("SEC-001", "secret filter catches modern key shapes and leaves ordinary 
   assert.ok(O.secretReason("x.txt", "postgres://admin:s3cretPw@db/app"), "offload refuses it too");
 });
 
+await t("GAP-001", "CI also runs the node tests on Windows", async () => {
+  const y = fs.readFileSync(path.join(root, "..", ".github/workflows/usage-max.yml"), "utf8");
+  assert.match(y, /runs-on:\s*windows-latest/); const win = y.slice(y.indexOf("windows-latest"));
+  for (const f of ["check.mjs", "test/run.mjs", "test/memory.mjs", "test/guard.mjs", "codex/test/run.mjs"]) assert.ok(win.includes(f), "windows job runs " + f);
+});
+
 console.log(`${n} passing`);
