@@ -22,6 +22,12 @@ export function claudeRows(h = home) {
   add("env.CLAUDE_CODE_DISABLE_CRON", (v) => v === "1", "turns off scheduled tasks and loops");
   add("env.BASH_MAX_OUTPUT_LENGTH", (v) => Number(v) < 30000, "cuts long command output shorter than the default 30000");
   add("alwaysThinkingEnabled", (v) => v === false, "turns off extended thinking");
+  add("env.DISABLE_TELEMETRY", (v) => v === "1" || v === 1 || v === true, "switches telemetry off (reported to block Remote Control)");
+  add("crossSessionInbound", (v) => v === "hold", "holds messages sent to this session from other sessions or devices");
+  add("env.CLAUDE_CODE_ENABLE_AWAY_SUMMARY", (v) => v === "0" || v === 0, "turns off the 'while you were away' recap");
+  add("env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", (v) => v === "1", "turns off feedback prompts");
+  add("env.CLAUDE_CODE_GOAL_CHECKIN_MINUTES", (v) => v === "0", "turns off goal check-ins");
+  add("env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE", (v) => v === "1", "turns off the terminal title");
   return { rows, leanOptIn: cfg.lean === true };
 }
 export function codexRows(h = home) {
@@ -50,6 +56,7 @@ export function report(h = home) {
 }
 export async function fix(h = home) {
   const done = [];
+  try { const P = await import("./profile.mjs"); const k = P.handBack(h); if (k.length) done.push("Claude: handed back " + k.join(", ")); } catch {}
   try { const G = await import("./governor.mjs"); if (G.releaseLean()) done.push("Claude: handed back the lean-mode values usage-max had written"); } catch {}
   try { const C = await import("../codex/scripts/codex-governor.mjs"); const k = C.cleanLegacy(); if (k.length) done.push("Codex: removed " + k.join(", ")); } catch {}
   return done;

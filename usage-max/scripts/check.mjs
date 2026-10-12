@@ -79,7 +79,8 @@ for (const [file, model] of Object.entries(expectedModels)) {
 }
 for (const k of ["DISABLE_TELEMETRY", "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "BASH_MAX_OUTPUT_LENGTH", "CLAUDE_CODE_GOAL_CHECKIN_MINUTES"]) {
   const pe = JSON.parse(fs.readFileSync(path.join(root, "profiles", "settings.enforced.json"), "utf8"));
-  if (pe.env && pe.env[k] !== undefined) pass("profile env " + k); else fail("profile env " + k, "missing");
+  const must = k === "BASH_MAX_OUTPUT_LENGTH"; // everything else that switches a feature or connection off must NOT be in the profile
+  if (must ? pe.env && pe.env[k] === "30000" : !(pe.env && pe.env[k] !== undefined)) pass("profile env " + k + (must ? " (default)" : " absent")); else fail("profile env " + k, must ? "must be the default 30000" : "must not be set by usage-max");
 }
 // Description budget (upstream warns at 15k combined tokens; keep far under).
 const descChars = ["scout.md", "worker.md", "reviewer.md"]

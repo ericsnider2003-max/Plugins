@@ -12,11 +12,14 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, loadState, patchModel } from "./governor.mjs";
 import { readJson, writeJsonAtomic } from "./meter.mjs";
 import { ttlAdvice } from "./ttl.mjs";
-import { ownedSet, loadApplied, saveApplied } from "./owned.mjs";
+import { ownedSet, ownedUnset, loadApplied, saveApplied } from "./owned.mjs";
 
 export const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const MARKETPLACE = { name: "eric-plugins", repo: "ericsnider2003-max/Plugins", ref: "main" }; // pinned to main: auto-update never depends on the repo's default branch
 const OWNED_BY_GOVERNOR = new Set(["model", "effortLevel", "modelSettings"]);
+// Written by older versions, never by this one: they switch off features or connections (telemetry off was reported to block Remote Control).
+// Handed back only while the value is still exactly what usage-max wrote; a value you set yourself is never touched.
+export const HAND_BACK = ["env.DISABLE_TELEMETRY", "env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "env.CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "env.CLAUDE_CODE_GOAL_CHECKIN_MINUTES", "env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "crossSessionInbound"];
 const fwd = (p) => p.replace(/\\/g, "/");
 const homeDir = () => process.env.USAGE_MAX_HOME || os.homedir();
 const dataDir = (home) => path.join(home, ".claude", "usage-max");
@@ -50,6 +53,7 @@ export function computeProfile(settings, { profile, launcher, modelWant = null, 
     if (key === "env") for (const [k, v] of Object.entries(value)) set(`env.${k}`, v);
     else set(key, value);
   }
+  for (const k of HAND_BACK) if (ownedUnset(next, k, applied)) changes.push(`${k}: handed back (usage-max no longer sets it)`);
   if (modelWant) {
     const before = JSON.stringify([next.model, next.effortLevel, next.modelSettings]);
     if (patchModel(next, modelWant, applied, tighten)) changes.push(`model/effort: ${before} -> ${JSON.stringify([next.model, next.effortLevel, next.modelSettings])}`);
@@ -110,6 +114,16 @@ export async function apply({ write = false, home = homeDir(), root = pluginRoot
   return { file, existed, changes, kept, wrote, backup, ttl };
 }
 
+// For `usage-max safety --fix` and SessionStart: only the hand-back, nothing else. Returns the keys given back.
+export function handBack(home = homeDir()) {
+  try {
+    const file = path.join(home, ".claude", "settings.json"), s = readJson(file, null); if (!s) return [];
+    const af = path.join(dataDir(home), "applied.json"), applied = loadApplied(af), done = [];
+    for (const k of HAND_BACK) if (ownedUnset(s, k, applied)) done.push(k);
+    if (done.length) { writeJsonAtomic(file, s); saveApplied(af, applied); }
+    return done;
+  } catch { return []; }
+}
 export function autoApplyEnabled(home = homeDir()) {
   if (process.env.USAGE_MAX_AUTOAPPLY === "off") return false;
   return readJson(path.join(dataDir(home), "config.json"), {}).autoApply !== false;
