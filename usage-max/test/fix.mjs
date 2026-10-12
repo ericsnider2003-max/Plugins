@@ -19,4 +19,14 @@ await t("BUG-014", "Codex model survives a scan boundary (split log costs the sa
   assert.ok(Math.abs(total - 40) < 1e-6, "two 1M-input lines at weight 20 = 40, got " + total);
 });
 
+await t("BUG-016", "a few minutes into the 5-hour window never forces red", async () => {
+  const L = await imp("scripts/lib.mjs"), G = await imp("scripts/governor.mjs");
+  const now = Date.now(), win = { used_percentage: 4, resets_at: Math.floor((now + (5 * 3600 - 7 * 60) * 1000) / 1000) };
+  const fp = L.pace(win, 5 * 3600, now);
+  assert.equal(G.fiveHourFloor(fp), null, "4% after 7 minutes: not enough evidence");
+  assert.equal(G.fiveHourFloor({ state: "over", used: 96, elapsed: 0.05, projected: 500 }), "red", "a nearly full window is real at any time");
+  assert.equal(G.fiveHourFloor({ state: "over", used: 40, elapsed: 0.15, projected: 200 }), "amber", "10%+ elapsed: amber, not red");
+  assert.equal(G.fiveHourFloor({ state: "over", used: 70, elapsed: 0.4, projected: 175 }), "red");
+});
+
 console.log(`${n} passing`);

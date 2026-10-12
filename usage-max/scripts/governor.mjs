@@ -199,6 +199,15 @@ export function applySettings(mode, config) {
   return true;
 }
 
+// Mode floor from the 5-hour window. A projection from the first minutes of a window is noise (4% after 7 minutes "projects" 171%),
+// so the pace only counts once 10% of the window has passed (amber) or 25% (red); a nearly full window (>=95%) is real at any time.
+export function fiveHourFloor(fp) {
+  if (!fp || fp.state !== "over") return null;
+  if (fp.used >= 95) return "red";
+  if (fp.elapsed < 0.1) return null;
+  return fp.projected > 140 && fp.elapsed >= 0.25 ? "red" : "amber";
+}
+
 // One evaluation pass: absorb snapshot, estimate, decide, enforce on change. Returns the new state.
 export function evaluate({ meter, nowMs = Date.now() } = {}) {
   const config = loadConfig();
@@ -214,9 +223,9 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   const lim5 = !state.override ? readJson(files().limits, null) || {} : {};
   const fh = lim5.five_hour && nowMs - Date.parse(lim5.capturedAt) < 20 * 60000 ? lim5.five_hour : null; // stale snapshot = no signal
   const fp = fh && fh.resets_at * 1000 > nowMs ? pace(fh, 5 * 3600, nowMs) : null;
-  if (fp && fp.state === "over") {
+  const floor = fiveHourFloor(fp);
+  if (floor) {
     const rank = { green: 0, amber: 1, red: 2 };
-    const floor = fp.used >= 95 || fp.projected > 140 ? "red" : "amber";
     if (rank[floor] > rank[d.mode]) d = { ...d, mode: floor, reason: `5-hour window ${Math.round(fp.used)}%, projected ${Math.round(fp.projected)}%` };
   }
   const changed = d.mode !== state.mode;
