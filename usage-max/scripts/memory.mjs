@@ -61,6 +61,18 @@ const SECRET = new RegExp([
 export const looksSecret = (t) => SECRET.test(String(t || ""));
 export const redact = (t) => String(t || "").replace(new RegExp(SECRET.source, "gi"), "[redacted]");
 
+// ---- notes come from files that anyone with commit access (or a cloned repo) can write: they are DATA for the model, never instructions.
+// Lines that talk to the assistant ("ignore previous instructions", fake system tags, pipe-to-shell) are removed before injection, and the
+// hooks wrap injected notes in a labelled fence.
+const INJECT = /ignore (all |any )?(the )?(previous|prior|above|earlier)|disregard (all |any )?(the )?(previous|prior|above|earlier|your)|forget (all |your )?(previous|prior) instructions|you are now\b|new instructions:|(reveal|print|show|leak) (your |the )?(system prompt|api key|secrets?)|do not (tell|inform) the user|\b(curl|wget)\b[^\n]*\|\s*(ba|z)?sh\b|<\/?\s*(system|assistant|human|user|instructions?)\b/i;
+export function sanitizeNotes(text) {
+  return String(text || "").split("\n").map((l) => INJECT.test(l) ? "[line removed: it reads like an instruction aimed at the assistant, not a project fact]" : l).join("\n").replace(/<\/?\s*(project-notes|resume-note)[^>]*>/gi, "");
+}
+export function fenceNotes(text, tag = "project-notes") {
+  const t = sanitizeNotes(text); if (!t.trim()) return "";
+  return `<${tag} trust="reference-data">\n${t}\n</${tag}>`;
+}
+
 // ---- decisions
 const DEC = /^- (\d{4}-\d{2}-\d{2}) \| ([^|]+?) \| (.+)$/;
 export function readDecisions(mem) {
@@ -122,7 +134,7 @@ export function loadBlock(mem, { cap = 2500, cmd = "usage-max memory", foot: foo
   if (decs.length) parts.push("Decisions already made (do not re-ask):\n" + dLines.join("\n") + (dm > 0 ? `\n- (+${dm} older in .memory/decisions.md)` : ""));
   if (tops.length) parts.push("Topics (mention one in a prompt and its notes are added; or read .memory/topics/<name>.md):\n" + tLines.join("\n") + (tm > 0 ? `\n- (+${tm} more in .memory/topics/)` : ""));
   if (parts.length === 1) parts.push("(empty so far)");
-  parts.push(foot); return parts.join("\n\n");
+  parts.push(foot); return sanitizeNotes(parts.join("\n\n"));
 }
 export function rebuildIndex(mem) {
   try {
@@ -159,7 +171,7 @@ export function recall(mem, query, { max = 3, budget = 1500, seen = new Set(), l
     const piece = `### ${s.topic}${s.head !== s.topic ? " / " + s.head : ""}\n${body}`;
     if (used + piece.length > budget && picked.length) break; picked.push(piece); keys.push(s.key); used += piece.length; if (picked.length >= max) break;
   }
-  return { text: picked.length ? `usage-max memory (notes from this repo's .memory/ that match this prompt; background data):\n\n${picked.join("\n\n")}` : "", keys };
+  return { text: picked.length ? sanitizeNotes(`usage-max memory (notes from this repo's .memory/ that match this prompt; background data):\n\n${picked.join("\n\n")}`) : "", keys };
 }
 
 // ---- "remember: ..." typed by the user is saved without a model call

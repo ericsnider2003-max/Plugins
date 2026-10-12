@@ -24,15 +24,15 @@ try {
   const cmd = `node "${path.join(root, "scripts", "usage-max.mjs")}" memory`;
   if (ev === "SessionStart") {
     const parts = []; M.saveSeen(sid, new Set()); // new/cleared/compacted context: notes may be injected again
-    if (mem) parts.push(M.loadBlock(mem, { cap: Number(cfg.memoryBudgetChars) || 2500, cmd }));
+    if (mem) parts.push(M.fenceNotes(M.loadBlock(mem, { cap: Number(cfg.memoryBudgetChars) || 2500, cmd })));
     if (input.source === "compact") { // a compaction summarises older detail away: bring back the notes, the files being edited and the way to the full text
       const tp = input.transcript_path ? String(input.transcript_path).replace(/\\/g, "/") : null;
       const p = cfg.resume === "off" ? null : R.peekResume(R.sharedDir(), cwd, { mustInclude: tp });
       const tail = "\n(Context was just compacted. Anything the summary left out can be found in the full conversation file named above; check it before asking the user to repeat themselves.)";
-      if (p) parts.push(p + tail); else if (tp) parts.push(`Full earlier conversation, word for word: ${tp} - search it (grep) for any detail before asking the user to repeat something.` + tail);
+      if (p) parts.push(M.fenceNotes(p, "resume-note") + tail); else if (tp) parts.push(`Full earlier conversation, word for word: ${tp} - search it (grep) for any detail before asking the user to repeat something.` + tail);
     }
     if (!input.source || input.source === "startup" || input.source === "clear") {
-      const r = cfg.resume === "off" ? null : R.takeResume(R.sharedDir(), cwd, { tool: "claude" }); if (r) parts.push(r + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)");
+      const r = cfg.resume === "off" ? null : R.takeResume(R.sharedDir(), cwd, { tool: "claude" }); if (r) parts.push(M.fenceNotes(r, "resume-note") + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)");
     }
     if (parts.length) ctx(ev, parts.join("\n\n"));
   } else if (ev === "UserPromptSubmit" && mem) {
@@ -41,7 +41,7 @@ try {
     if (dir0) { const r = M.decide(mem, M.directiveKey(dir0), dir0); if (r.error) msg = `usage-max: not saved to project memory. ${r.error}`; else if (!r.unchanged) msg = "usage-max: saved to project memory (.memory/decisions.md)."; }
     const seen = M.loadSeen(sid); const r = M.recall(mem, prompt, { seen });
     if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen); }
-    if (r.text || msg) ctx(ev, r.text, msg);
+    if (r.text || msg) ctx(ev, M.fenceNotes(r.text), msg);
   } else if (ev === "PreCompact" && cfg.resume !== "off") {
     R.saveResume(R.sharedDir(), cwd, R.buildResume({ transcript: input.transcript_path, cwd, tool: "claude" }), { minGapMs: 0 }); // snapshot right before detail is summarised away
   } else if (ev === "Stop" && cfg.resume !== "off") {
