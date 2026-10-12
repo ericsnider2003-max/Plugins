@@ -36,4 +36,15 @@ await t("BUG-006", "watchers and dev servers are never wrapped by the trimmer", 
   const CH = await imp("codex/scripts/codex-hook.mjs"); for (const c of ["npm run dev", "npx jest --watch", "npm run test:watch"]) assert.equal(CH.rewrite(c, "/x/run.mjs", "linux"), null, "codex: " + c); assert.ok(CH.rewrite("npm test", "/x/run.mjs", "linux"), "codex still trims npm test");
 });
 
+await t("BUG-007", "loop guard ignores polling and file-changing commands, and long commands that differ", async () => {
+  const G = await imp("scripts/guard.mjs"), CG = await imp("codex/scripts/codex-guards.mjs"); const dir = tmp();
+  for (let i = 0; i < 8; i++) assert.equal(G.loopCheck(dir, "s", "Bash", { command: "gh run view 123 --json status" }), null, "polling is waiting");
+  const long = "echo " + "x".repeat(700);
+  for (let i = 0; i < 4; i++) assert.equal(G.loopCheck(dir, "s2", "Bash", { command: long + i }), null, "different tails are different calls");
+  let w = null; for (let i = 0; i < 3; i++) w = G.loopCheck(dir, "s3", "Bash", { command: "npm test -- foo" }); assert.ok(w && w.additionalContext, "a real repeat still warns");
+  const d2 = tmp(); for (let i = 0; i < 6; i++) assert.equal(CG.loopNote(d2, "c", "gh run view 123"), null, "codex polling");
+  let n3 = null; for (let i = 0; i < 6; i++) n3 = CG.loopNote(d2, "c2", "npm install left-pad"); assert.equal(n3, null, "a command that changes files is progress, not a loop");
+  let n4 = null; for (let i = 0; i < 3; i++) n4 = CG.loopNote(d2, "c3", "npm test -- foo"); assert.ok(n4, "a real repeat still warns");
+});
+
 console.log(`${n} passing`);

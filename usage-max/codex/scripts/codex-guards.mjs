@@ -8,10 +8,14 @@ const wj = (f, o) => { try { fs.mkdirSync(path.dirname(f), { recursive: true });
 const q = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
 export const BIG_BYTES = 40000, HEAD_LINES = 200;
 function stat(dir, name) { const f = path.join(dir, "guard-stats.json"), s = rj(f, {}); s[name] = (s[name] || 0) + 1; wj(f, s); }
+// A command that changes files is progress (the next identical run can give a different answer); status/polling commands are expected to repeat.
+const MUTATES = /\bsed\s+(-[a-z]*i|--in-place)|\bgit\s+(apply|checkout|restore|stash|commit|merge|rebase|reset|cherry-pick|pull)\b|\bpatch\b|\btee\b|\b(mv|cp|rm|touch|mkdir)\b|\b(npm|pnpm|yarn)\s+(install|i|add|remove|update)\b|\bpip3?\s+install\b|(^|[^>0-9&])>{1,2}\s*[^\s&]/;
+const POLLING_CMD = /^\s*(gh\s+(run|pr|workflow|api|issue)\b|git\s+(status|fetch|log|diff|ls-remote)\b|kubectl\s+(get|describe|logs|rollout)\b|docker\s+(ps|logs|inspect)\b|systemctl\s+(status|is-active)\b|sleep\b|tail\b|curl\b|ls\b|pgrep\b|ps\b)/;
 export function loopNote(dir, sid, cmd, { n = 3 } = {}) {
   if (typeof cmd !== "string" || cmd.trim().length < 8) return null;
+  if (POLLING_CMD.test(cmd)) return null;
   const f = path.join(dir, "guard-loop.json"), all = rj(f, {}), h = crypto.createHash("sha1").update(cmd.trim()).digest("hex").slice(0, 10), s = all[sid] || { h: null, c: 0 };
-  s.c = s.h === h ? s.c + 1 : 1; s.h = h; all[sid] = s; const keys = Object.keys(all); if (keys.length > 50) for (const k of keys.slice(0, keys.length - 30)) delete all[k]; wj(f, all);
+  s.c = s.h === h && !MUTATES.test(cmd) ? s.c + 1 : 1; s.h = h; all[sid] = s; const keys = Object.keys(all); if (keys.length > 50) for (const k of keys.slice(0, keys.length - 30)) delete all[k]; wj(f, all);
   if (s.c < n) return null; stat(dir, "loopNotes");
   return `[usage-max: this exact command has now run ${s.c} times in a row. If the result is not changing, stop and change something (read the error, try another approach, ask the user) instead of running it again.]`;
 }
