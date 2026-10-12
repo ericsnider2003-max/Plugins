@@ -15,7 +15,8 @@ export function writeSelf(self, entry) {
     const tmp = `${file()}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(all, null, 2));
     fs.renameSync(tmp, file());
-  } catch {}
+    return true;
+  } catch (e) { return false; } // the other side just sees an older entry; nothing depends on this write succeeding
 }
 export const readOther = (other) => read()[other] || null;
 // `updatedAt` is when the entry was written; `dataAt` (when present) is when the plan reading behind it was taken. A governor that re-writes
