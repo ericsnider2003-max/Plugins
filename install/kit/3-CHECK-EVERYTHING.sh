@@ -4,7 +4,7 @@ if ! command -v node >/dev/null 2>&1; then echo "Node.js not found. Install it f
 chk="$here/usage-max/scripts/usage-max.mjs"
 if [ ! -f "$chk" ]; then
   chk=""
-  for d in "$HOME"/.claude/plugins/cache/eric-plugins/usage-max/*; do [ -f "$d/scripts/usage-max.mjs" ] && chk="$d/scripts/usage-max.mjs"; done
+  for d in $(ls -td "$HOME"/.claude/plugins/cache/eric-plugins/usage-max/*/ 2>/dev/null); do [ -z "$chk" ] && [ -f "${d}scripts/usage-max.mjs" ] && chk="${d}scripts/usage-max.mjs"; done
 fi
 if [ -z "$chk" ]; then echo "Could not find usage-max. Extract the zip first."; exit 1; fi
 node "$chk" doctor --fix

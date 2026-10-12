@@ -6,7 +6,8 @@ if errorlevel 1 goto nonode
 set "CHK=%~dp0usage-max\scripts\usage-max.mjs"
 if exist "%CHK%" goto run
 set "CHK="
-for /d %%D in ("%USERPROFILE%\.claude\plugins\cache\eric-plugins\usage-max\*") do if exist "%%D\scripts\usage-max.mjs" set "CHK=%%D\scripts\usage-max.mjs"
+set "CACHE=%USERPROFILE%\.claude\plugins\cache\eric-plugins\usage-max"
+for /f "delims=" %%D in ('dir /b /ad /o-d "%CACHE%"') do if not defined CHK if exist "%CACHE%\%%D\scripts\usage-max.mjs" set "CHK=%CACHE%\%%D\scripts\usage-max.mjs"
 if defined CHK goto run
 goto notfound
 

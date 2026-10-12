@@ -27,7 +27,7 @@ with zipfile.ZipFile(kit_zip, 'w') as z:
     for n in sorted(os.listdir(kit_dir)):
         raw = open(os.path.join(kit_dir, n), 'rb').read().replace(b'@VERSION@', ver.encode())
         win = n.endswith('.cmd') or n.endswith('.txt')
-        add(z, f'usage-max-desktop/{n}', raw.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n') if win else raw, 0o644 if win else 0o755)
+        add(z, f'usage-max-desktop/{n}', raw.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n') if win else raw.replace(b'\r\n', b'\n'), 0o644 if win else 0o755)  # .sh must be LF whatever the checkout did
     for f in plugin_files: add(z, f'usage-max-desktop/{f}', open(os.path.join(repo, f), 'rb').read())
     add(z, f'usage-max-desktop/usage-max-plugin-{ver}.zip', open(plugin_zip, 'rb').read())
 print(f'built {plugin_zip} ({os.path.getsize(plugin_zip)} bytes) and {kit_zip} ({os.path.getsize(kit_zip)} bytes) for version {ver}')

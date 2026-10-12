@@ -6,7 +6,8 @@ if errorlevel 1 goto nonode
 set "INST=%~dp0usage-max\codex\scripts\install.mjs"
 if exist "%INST%" goto run
 set "INST="
-for /d %%D in ("%USERPROFILE%\.claude\plugins\cache\eric-plugins\usage-max\*") do if exist "%%D\codex\scripts\install.mjs" set "INST=%%D\codex\scripts\install.mjs"
+set "CACHE=%USERPROFILE%\.claude\plugins\cache\eric-plugins\usage-max"
+for /f "delims=" %%D in ('dir /b /ad /o-d "%CACHE%"') do if not defined INST if exist "%CACHE%\%%D\codex\scripts\install.mjs" set "INST=%CACHE%\%%D\codex\scripts\install.mjs"
 if defined INST goto run
 goto notfound
 

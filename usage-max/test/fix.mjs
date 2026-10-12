@@ -232,4 +232,19 @@ await t("BUG-012", "the Codex launcher never passes model=null", async () => {
   assert.deepEqual(L.leanArgs(["exec", "x"], { model: null, effort: "low" }, true).slice(0, 3), ["exec", "-c", "model_reasoning_effort=low"]);
 });
 
+await t("BUG-013", "kit scripts pick the newest installed plugin folder, and the built kit's .sh files are LF", async () => {
+  const home = tmp(); const base = path.join(home, ".claude/plugins/cache/eric-plugins/usage-max");
+  for (const [v, age] of [["0.9.0", 0], ["0.17.1", 100]]) { const d = path.join(base, v, "codex/scripts"); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, "install.mjs"), `console.log("PICKED ${v}")`); const tt = new Date(Date.now() - (200 - age) * 1000); fs.utimesSync(path.join(base, v), tt, tt); }
+  // 0.17.1 is the newer folder but sorts BEFORE 0.9.0 alphabetically
+  const kit = path.join(root, "..", "install/kit"); const runDir = tmp("umkit-"); fs.copyFileSync(path.join(kit, "2-INSTALL-CODEX.sh"), path.join(runDir, "2-INSTALL-CODEX.sh"));
+  const r = spawnSync("sh", [path.join(runDir, "2-INSTALL-CODEX.sh")], { env: { ...process.env, HOME: home }, encoding: "utf8" }); assert.match(r.stdout, /PICKED 0\.17\.1/, r.stdout + r.stderr);
+  for (const f of ["0-DO-EVERYTHING.cmd", "2-INSTALL-CODEX.cmd", "3-CHECK-EVERYTHING.cmd", "4-CALIBRATE-CLAUDE.cmd"]) assert.match(fs.readFileSync(path.join(kit, f), "utf8"), /dir \/b \/ad \/o-d/, f + " takes the newest folder");
+  // build the kit from a copy whose .sh file was checked out with CRLF
+  const copy = tmp("umrepo-"); const cl = spawnSync("git", ["clone", "-q", path.join(root, ".."), copy], { encoding: "utf8" }); assert.equal(cl.status, 0, cl.stderr);
+  fs.copyFileSync(path.join(root, "..", "install/build-kit.py"), path.join(copy, "install/build-kit.py")); // the version under test, not the last commit
+  for (const f of fs.readdirSync(path.join(copy, "install/kit"))) if (f.endsWith(".sh")) fs.writeFileSync(path.join(copy, "install/kit", f), fs.readFileSync(path.join(copy, "install/kit", f), "utf8").replace(/\n/g, "\r\n"));
+  const out = tmp("umout-"); const b = spawnSync("python3", [path.join(copy, "install/build-kit.py"), "--out", out], { encoding: "utf8" }); assert.equal(b.status, 0, b.stderr);
+  const zl = spawnSync("unzip", ["-p", path.join(out, "usage-max-desktop.zip"), "usage-max-desktop/2-INSTALL-CODEX.sh"], { encoding: "buffer" }); assert.ok(zl.stdout.length > 50 && !zl.stdout.includes(13), "no carriage returns in the .sh inside the kit");
+});
+
 console.log(`${n} passing`);
