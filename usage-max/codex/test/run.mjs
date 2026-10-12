@@ -5,6 +5,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "umc-")); const env = { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: "" }; delete env.CODEX_HOME;
 const g = (...a) => spawnSync("node", [path.join(root, "scripts/codex-governor.mjs"), ...a], { env, encoding: "utf8" });
 let n = 0; const t = (name, f) => { f(); n++; console.log("ok -", name); };
+const tp = (name, f) => { if (process.platform === "win32") { console.log("skip (needs a POSIX shell) -", name); return; } t(name, f); }; // tests that drive sh / cat / a shell-script stand-in for codex
 const ch = path.join(home, ".codex"); const day = path.join(ch, "sessions/2026/10/07"); fs.mkdirSync(day, { recursive: true });
 const now = Date.now(); const L = [];
 L.push({ timestamp: new Date(now - 36e5).toISOString(), type: "turn_context", payload: { model: "gpt-6.1-sol" } });
@@ -49,7 +50,7 @@ console.log(`${n} passing (incl. diet)`);
   t("installer merges hooks.json preserving others", () => { fs.writeFileSync(path.join(ch, "hooks.json"), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "echo mine" }] }] } })); for (let i = 0; i < 2; i++) spawnSync("node", [path.join(root, "scripts/install.mjs")], { env }); const h = JSON.parse(fs.readFileSync(path.join(ch, "hooks.json"), "utf8")); assert.equal(h.hooks.Stop.length, 2); assert.ok(JSON.stringify(h).includes("echo mine")); for (const e of ["SessionStart", "UserPromptSubmit", "Stop", "PreToolUse"]) assert.equal(JSON.stringify(h.hooks[e]).split("codex-hook.mjs").length, 2, e); });
   t("models command lists seen models", () => { const r = g("models"); assert.match(r.stdout, /gpt-6\.1-sol/); });
   t("profiles carry plan_mode effort + doc cap", () => { const c = fs.readFileSync(path.join(ch, "usage-max-red.config.toml"), "utf8"); assert.match(c, /plan_mode_reasoning_effort = "medium"/); assert.doesNotMatch(c, /project_doc_max_bytes|tool_output_token_limit|model_auto_compact_token_limit/, "profiles no longer shrink what Codex can see"); });
-  t("codex-lean passes mode -c overrides, defers in RED", () => { const bin = path.join(home, "bin"); fs.mkdirSync(bin, { recursive: true }); const fake = path.join(bin, process.platform === "win32" ? "codex.cmd" : "codex"); fs.writeFileSync(fake, process.platform === "win32" ? "@echo ARGS:%*\r\n" : "#!/bin/sh\necho ARGS:$@\n", { mode: 0o755 }); const e2 = { ...env, PATH: bin + path.delimiter + process.env.PATH }; const lean = (...a) => spawnSync("node", [path.join(root, "scripts/codex-lean.mjs"), ...a], { env: e2, encoding: "utf8" }); g("mode", "green"); const o = lean("--bare", "exec", "do it").stdout; assert.match(o, /exec/); assert.match(o, /model_reasoning_effort=medium/); assert.match(o, /--ignore-user-config --ignore-rules/); g("mode", "red"); assert.equal(lean("--hold-red", "exec", "x").status, 75); g("mode", "auto"); });
+  tp("codex-lean passes mode -c overrides, defers in RED", () => { const bin = path.join(home, "bin"); fs.mkdirSync(bin, { recursive: true }); const fake = path.join(bin, process.platform === "win32" ? "codex.cmd" : "codex"); fs.writeFileSync(fake, process.platform === "win32" ? "@echo ARGS:%*\r\n" : "#!/bin/sh\necho ARGS:$@\n", { mode: 0o755 }); const e2 = { ...env, PATH: bin + path.delimiter + process.env.PATH }; const lean = (...a) => spawnSync("node", [path.join(root, "scripts/codex-lean.mjs"), ...a], { env: e2, encoding: "utf8" }); g("mode", "green"); const o = lean("--bare", "exec", "do it").stdout; assert.match(o, /exec/); assert.match(o, /model_reasoning_effort=medium/); assert.match(o, /--ignore-user-config --ignore-rules/); g("mode", "red"); assert.equal(lean("--hold-red", "exec", "x").status, 75); g("mode", "auto"); });
 }
 console.log(`${n} passing (incl. hooks)`);
 // reset rollover, null models, placeholders, throttle
@@ -195,7 +196,7 @@ const withHome = (h, f) => { const old = process.env.USAGE_MAX_HOME; process.env
   const stats = () => JSON.parse(fs.readFileSync(path.join(X.sd, "trim-stats.json"), "utf8"));
   const noisy = fs.mkdtempSync(path.join(os.tmpdir(), "umnoisy-")); fs.writeFileSync(path.join(noisy, "n.mjs"), "for(let i=0;i<400;i++)console.log('SECRETCMD line '+i);\n"); fs.writeFileSync(path.join(noisy, "e.mjs"), "console.log('out');console.error('errtext');process.exitCode=3;\n");
   t("run-trimmed: exit codes 0/3/127 forwarded, stderr captured, short output unchanged", () => {
-    let r = run("echo hi"); assert.equal(r.status, 0); assert.equal(r.stdout, "hi\n");
+    let r = run("echo hi"); assert.equal(r.status, 0); assert.equal(r.stdout.replace(/\r\n/g, "\n"), "hi\n");
     r = run("node e.mjs", noisy); assert.equal(r.status, 3); assert.match(r.stdout, /out/); assert.match(r.stdout, /errtext/);
     r = run("definitely-not-a-command-xyz"); assert.equal(r.status, 127);
   });
@@ -208,7 +209,7 @@ const withHome = (h, f) => { const old = process.env.USAGE_MAX_HOME; process.env
     const marker = path.join(noisy, "pwned.txt");
     for (const args of [[], ["run"], ["echo", "hi"], ["run", "echo", "hi;", "touch", marker], ["run", "echo", "$(touch", marker + ")"], ["run", "echo", "a|b"], ["run", 'echo "x"'], ["run", "echo", "a>b"], ["6e706d2074657374"]]) { const r = spawnSync("node", [RT, ...args], { env: X.e, encoding: "utf8" }); assert.equal(r.status, 2, JSON.stringify(args)); assert.match(r.stderr, /nothing run/); }
     assert.equal(fs.existsSync(marker), false); });
-  t("selftest-trim passes under sh, writes trim-ok.json; doctor reports", () => {
+  tp("selftest-trim passes under sh, writes trim-ok.json; doctor reports", () => {
     const r = gg(X.e, "selftest-trim"); assert.equal(r.status, 0, r.stdout + r.stderr); assert.match(r.stdout, /PASS sh/); const ok = JSON.parse(fs.readFileSync(path.join(X.sd, "trim-ok.json"), "utf8")); assert.equal(ok.ok, true); assert.deepEqual(ok.shells, ["sh"]);
     assert.match(gg(X.e, "doctor").stdout, /ok\s+output trimming self-test passed \(sh\)/); assert.match(gg(X.e, "doctor").stdout, /trim stats:/);
   });
@@ -299,7 +300,7 @@ t("SAFE BY DEFAULT: SessionStart hands back the compaction/output/AGENTS.md limi
   fs.writeFileSync(path.join(Z.h, ".usage-max-codex", "config.json"), JSON.stringify({ tuning: { tool_output_token_limit: 12000 } })); spawnSync("node", [path.join(root, "scripts/codex-governor.mjs"), "mode", "amber"], { env: Z.e, encoding: "utf8" });
   assert.match(fs.readFileSync(path.join(Z.ch, "config.toml"), "utf8"), /^tool_output_token_limit = 12000$/m, "a limit you ask to be managed is still honoured");
 });
-t("Codex trimming keeps the complete output on disk and says where", () => {
+tp("Codex trimming keeps the complete output on disk and says where", () => {
   const Z = mkHome(); const big = Array.from({ length: 300 }, (_, i) => "row " + i).join("\n"); const f = path.join(Z.h, "big.txt"); fs.writeFileSync(f, big + "\n");
   const o = spawnSync("node", [path.join(root, "scripts/run-trimmed.mjs"), "run", "cat", f.replace(/\\/g, "/")], { env: Z.e, encoding: "utf8" }); assert.match(o.stdout, /lines trimmed/);
   const p = o.stdout.match(/complete output is saved at (\S+)\]/); assert.ok(p && fs.readFileSync(p[1], "utf8").includes("row 150"), "the trimmed middle is recoverable");

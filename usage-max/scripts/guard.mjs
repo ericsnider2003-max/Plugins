@@ -76,7 +76,7 @@ export const bashMutates = (input) => typeof (input && input.command) === "strin
 const MUTATING = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 export const callHash = (tool, input) => { let h = 2166136261; for (const c of `${tool}\0${JSON.stringify(input || {})}`) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16); };
 // Calls whose answer changes over time (waiting on notifications, tasks, CI, PR state) are polling, not a loop: never count them.
-export const POLLING = /^(ReadNotifications|TaskList|TaskGet|TaskOutput|Monitor|CronList)$|^mcp__.*__(\w*_read|get_\w+|list_\w+)$/;
+export const POLLING = /^(ReadNotifications|TaskList|TaskGet|TaskOutput|Monitor|CronList)$|^mcp__.*__(\w*_read|\w*_get|\w*_list|get_\w+|list_\w+|read_\w+|search_\w+|\w*_status)$/;
 // Shell commands that ask "what is the state now?": the answer is expected to change, so repeating them is waiting, not looping.
 export const POLLING_BASH = /^\s*(gh\s+(run|pr|workflow|api|issue)\b|git\s+(status|fetch|log|diff|ls-remote)\b|kubectl\s+(get|describe|logs|rollout)\b|docker\s+(ps|logs|inspect)\b|systemctl\s+(status|is-active)\b|sleep\b|tail\b|curl\b|ls\b|pgrep\b|ps\b)/;
 export function loopCheck(dir, sid, tool, input, { now = Date.now() } = {}) {

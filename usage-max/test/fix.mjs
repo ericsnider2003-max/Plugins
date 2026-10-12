@@ -39,6 +39,7 @@ await t("BUG-006", "watchers and dev servers are never wrapped by the trimmer", 
 await t("BUG-007", "loop guard ignores polling and file-changing commands, and long commands that differ", async () => {
   const G = await imp("scripts/guard.mjs"), CG = await imp("codex/scripts/codex-guards.mjs"); const dir = tmp();
   for (let i = 0; i < 8; i++) assert.equal(G.loopCheck(dir, "s", "Bash", { command: "gh run view 123 --json status" }), null, "polling is waiting");
+  for (const tool of ["mcp__github__actions_list", "mcp__github__get_job_logs", "mcp__x__search_things"]) for (let i = 0; i < 8; i++) assert.equal(G.loopCheck(dir, "sp", tool, { a: 1 }), null, tool + " is polling");
   const long = "echo " + "x".repeat(700);
   for (let i = 0; i < 4; i++) assert.equal(G.loopCheck(dir, "s2", "Bash", { command: long + i }), null, "different tails are different calls");
   let w = null; for (let i = 0; i < 3; i++) w = G.loopCheck(dir, "s3", "Bash", { command: "npm test -- foo" }); assert.ok(w && w.additionalContext, "a real repeat still warns");
