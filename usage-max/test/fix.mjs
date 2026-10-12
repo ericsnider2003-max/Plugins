@@ -338,4 +338,15 @@ await t("BUG-024", "small edge cases: suggest keys, topic creation race, resume 
   fs.writeFileSync(dec, "\uFEFF- 2026-02-02 | ci | github\r\n"); assert.deepEqual(M.readDecisions(m2).map((d) => [d.key, d.value]), [["ci", "github"]], "BOM + CRLF: no stray CR in the value");
 });
 
+await t("BUG-025", "with no inputs named, the result cache notices a changed file instead of replaying for a month", async () => {
+  const home = tmp(), repo = path.join(home, "r"); fs.mkdirSync(repo); const GE = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "safe.directory", GIT_CONFIG_VALUE_0: "*" }; /* the test harness may run in a user namespace where the temp folder looks foreign to git */ const sh = (a, c = repo) => spawnSync(a[0], a.slice(1), { cwd: c, encoding: "utf8", env: { ...process.env, ...GE } });
+  sh(["git", "init", "-q"]); sh(["git", "config", "user.email", "t@t"]); sh(["git", "config", "user.name", "t"]); fs.writeFileSync(path.join(repo, "a.txt"), "one\n"); sh(["git", "add", "-A"]); sh(["git", "-c", "commit.gpgsign=false", "commit", "-qm", "init"]);
+  const run = () => spawnSync("node", [path.join(root, "scripts/eval-cache.mjs"), "--", "node", "-e", "console.log('RAN ' + require('fs').readFileSync('a.txt','utf8').trim())"], { cwd: repo, env: { ...process.env, ...GE, USAGE_MAX_HOME: home }, encoding: "utf8" });
+  const r1 = run(); assert.match(r1.stdout, /RAN one/); const r2 = run(); assert.match(r2.stderr, /HIT/, "unchanged project: cached"); 
+  fs.writeFileSync(path.join(repo, "a.txt"), "two\n"); const r3 = run(); assert.match(r3.stdout, /RAN two/, "a changed file re-runs"); assert.doesNotMatch(r3.stderr, /HIT/);
+  fs.writeFileSync(path.join(repo, "new.txt"), "x"); assert.doesNotMatch(run().stderr, /HIT/, "a new untracked file re-runs");
+  const plain = path.join(home, "plain"); fs.mkdirSync(plain); const p1 = spawnSync("node", [path.join(root, "scripts/eval-cache.mjs"), "--", "node", "-e", "console.log('X')"], { cwd: plain, env: { ...process.env, ...GE, USAGE_MAX_HOME: home }, encoding: "utf8" }); const p2 = spawnSync("node", [path.join(root, "scripts/eval-cache.mjs"), "--", "node", "-e", "console.log('X')"], { cwd: plain, env: { ...process.env, ...GE, USAGE_MAX_HOME: home }, encoding: "utf8" });
+  assert.doesNotMatch(p2.stderr, /HIT/, "outside git with no key: never cached"); assert.match(p2.stderr, /without the cache/);
+});
+
 console.log(`${n} passing`);

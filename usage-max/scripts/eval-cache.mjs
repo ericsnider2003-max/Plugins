@@ -22,7 +22,16 @@ export function hashPaths(paths, h = crypto.createHash("sha256")) {
   };
   for (const p of paths) visit(p); return h;
 }
-export function keyFor({ keys, salt = "", cmd }) { const h = hashPaths(keys); h.update("salt:" + salt); h.update("cmd:" + cmd.join("\u0000")); return h.digest("hex").slice(0, 32); }
+// With no --key the inputs are "the project as it is now": the git HEAD plus every uncommitted and untracked change. Outside git there is no
+// way to know what the command reads, so it is not cached at all (a cache that cannot notice changes would replay old output for weeks).
+export function gitState(cwd = process.cwd()) {
+  const g = (...a) => { const r = spawnSync("git", a, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }); return r.status === 0 ? r.stdout : null; };
+  const head = g("rev-parse", "HEAD"); if (head === null) return null;
+  const h = crypto.createHash("sha256"); h.update(head); h.update(g("diff", "HEAD") || "");
+  for (const f of (g("ls-files", "-o", "--exclude-standard") || "").split("\n").filter(Boolean).sort()) { h.update("u:" + f); try { const fp = path.join(cwd, f), st = fs.statSync(fp); if (st.size > 5e6) h.update(`big:${st.size}:${st.mtimeMs}`); else h.update(fs.readFileSync(fp)); } catch (e) { h.update("unreadable"); } }
+  return h.digest("hex");
+}
+export function keyFor({ keys, salt = "", cmd, git = null }) { const h = hashPaths(keys); if (git) h.update("git:" + git); h.update("salt:" + salt); h.update("cmd:" + cmd.join("\u0000")); return h.digest("hex").slice(0, 32); }
 
 function main() {
   const argv = process.argv.slice(2); const sub = argv[0];
@@ -38,7 +47,9 @@ function main() {
   const keys = (flag("key", "") || "").split(",").filter(Boolean), salt = flag("salt", ""), ttl = Number(flag("ttl-days", 30)) * 864e5, art = flag("artifacts");
   const run = () => { const r = spawnSync(q(cmd[0]), cmd.slice(1).map(q), { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, shell: process.platform === "win32" }); process.stdout.write(r.stdout || ""); process.stderr.write(r.stderr || ""); return { code: r.status ?? 1, stdout: r.stdout || "", stderr: r.stderr || "" }; };
   if (process.env.USAGE_MAX_EVAL_CACHE === "off") return run().code;
-  const key = keyFor({ keys, salt, cmd }), file = path.join(cacheDir(), key + ".json"); let e = null;
+  let git = null;
+  if (!keys.length) { git = gitState(); if (!git) { console.error("[eval-cache] no --key given and this is not a git folder, so nothing can tell when the inputs change: running without the cache"); return run().code; } }
+  const key = keyFor({ keys, salt, cmd, git }), file = path.join(cacheDir(), key + ".json"); let e = null;
   try { e = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
   if (e && !opt.includes("--force") && Date.now() - e.at < ttl) {
     process.stdout.write(e.stdout || ""); process.stderr.write(e.stderr || "");
