@@ -367,4 +367,10 @@ await t("BUG-026", "small status files are written atomically", async () => {
   assert.ok(JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/hook-seen.json"), "utf8")).Stop, "hook-seen written"); assert.deepEqual(fs.readdirSync(path.join(home, ".usage-max-codex")).filter((x) => x.endsWith(".tmp")), []);
 });
 
+await t("BUG-027", "the calibrate launcher never lets typed text run as a command", async () => {
+  const c = fs.readFileSync(path.join(root, "..", "install/kit/4-CALIBRATE-CLAUDE.cmd"), "utf8");
+  assert.match(c, /setlocal EnableDelayedExpansion/); assert.match(c, /findstr \/r \/x "\[0-9\]\[0-9\]\*/, "the percent must be a plain number"); assert.match(c, /calibrate "!PCT!" --resets "!RST!"/, "typed values are expanded late and quoted");
+  assert.doesNotMatch(c, /calibrate %PCT%/, "no unquoted use of what was typed");
+});
+
 console.log(`${n} passing`);

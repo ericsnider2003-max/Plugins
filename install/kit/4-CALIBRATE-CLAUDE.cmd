@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 rem usage-max: tell it your Claude plan numbers once. Needed when you use the Claude desktop app or cloud sessions (no status line there).
 where node >nul 2>nul
 if errorlevel 1 goto nonode
@@ -20,7 +20,10 @@ set /p PCT=Weekly percent used, for example 67:
 set /p RST=Reset date and time, for example Oct 11 2026 11:00 AM: 
 if not defined PCT goto bad
 if not defined RST goto bad
-node "%CHK%" budget calibrate %PCT% --resets "%RST%"
+rem what you typed is only ever read with !delayed! expansion (never re-parsed as commands); the percent must be a plain number, and no quote marks are allowed in the date
+echo(!PCT!| findstr /r /x "[0-9][0-9]*\.*[0-9]*" >nul || goto bad
+if not "!RST!"=="!RST:"=!" goto bad
+node "%CHK%" budget calibrate "!PCT!" --resets "!RST!"
 echo.
 echo Done. Run this again whenever you look at Settings, Usage. Two readings a few hours apart give a real burn rate.
 pause
