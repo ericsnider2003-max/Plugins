@@ -258,4 +258,16 @@ await t("BUG-017", "an old or missing plan reading is shown as old/unknown, neve
   const G = await imp("scripts/governor.mjs"); const e = G.estimate({ calib: { pct: 0, at: now, cumAt: 0, resetsAt: Math.floor((now + 864e5) / 1000), source: "rolled" }, snaps: [] }, { cum: 0 }, now); assert.ok(e.note, "a rolled window says it has no reading yet");
 });
 
+await t("BUG-018", "a mistyped reset time is rejected or normalised, never stored", async () => {
+  const home = tmp(); const env = { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: path.join(home, ".codex") };
+  const bad = spawnSync("node", [path.join(root, "codex/scripts/codex-governor.mjs"), "calibrate", "40", "--resets", "not a date"], { env, encoding: "utf8" }); assert.notEqual(bad.status, 0); assert.ok(!fs.existsSync(path.join(home, ".usage-max-codex/governor.json")) || !JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/governor.json"), "utf8")).calib, "nothing stored");
+  const bc = spawnSync("node", [path.join(root, "scripts/governor.mjs"), "calibrate", "40", "--resets", "99999999999999"], { env, encoding: "utf8" }); assert.match(bc.stdout, /not calibrated/);
+  const { parseResetTime: P } = await imp("scripts/resettime.mjs"); assert.equal(fs.readFileSync(path.join(root, "scripts/resettime.mjs"), "utf8"), fs.readFileSync(path.join(root, "codex/scripts/resettime.mjs"), "utf8"), "identical Codex copy");
+  const now = Date.parse("2026-10-12T00:00:00Z"), day = 864e5;
+  assert.ok(P("garbage", now).error); assert.ok(P("", now).error); assert.ok(P("2026-10-01T00:00:00Z", now).error, "past"); assert.ok(P("2026-12-01T00:00:00Z", now).error, "more than 8 days");
+  assert.equal(P(String(Math.floor((now + 3 * day) / 1000)), now).ms, Math.floor((now + 3 * day) / 1000) * 1000, "seconds");
+  assert.equal(P(String(now + 3 * day), now).ms, now + 3 * day, "milliseconds are normalised, not read as seconds in the year 50000"); assert.match(P(String(now + 3 * day), now).note, /milliseconds/);
+  const z = P("2026-10-15T20:00:00", now); assert.ok(z.ms && /time zone/.test(z.note), "zone-less time is accepted but says how it was read"); assert.ok(P("2026-10-15T20:00:00-04:00", now).ms === Date.parse("2026-10-15T20:00:00-04:00"));
+});
+
 console.log(`${n} passing`);

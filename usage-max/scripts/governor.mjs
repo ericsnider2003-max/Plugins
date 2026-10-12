@@ -14,6 +14,7 @@ import { pace } from "./lib.mjs";
 import { writeSelf } from "./shared.mjs";
 import { ownedSet, ownedUnset, ownedRestore, loadApplied, saveApplied } from "./owned.mjs";
 import { withLock } from "./safefile.mjs";
+import { parseResetTime } from "./resettime.mjs";
 import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap, writeFailures } from "./meter.mjs";
 
 export const DEFAULT_CONFIG = {
@@ -268,7 +269,7 @@ async function cli() {
     const pct = Number(String(rest[0] || "").replace(/%/g, "").trim());
     if (!Number.isFinite(pct)) { console.log("usage: calibrate <weekly % from Settings > Usage> [--resets <ISO date or epoch seconds>]"); process.exit(1); }
     let resetsAt = flag("resets");
-    if (resetsAt) resetsAt = /^\d+$/.test(resetsAt) ? Number(resetsAt) : Math.floor(Date.parse(resetsAt) / 1000);
+    if (resetsAt) { const pr = parseResetTime(resetsAt); if (pr.error) { console.log("not calibrated: " + pr.error); process.exit(1); } if (pr.note) console.log("note: " + pr.note); resetsAt = Math.floor(pr.ms / 1000); }
     const lim = readJson(files().limits, null);
     if (!resetsAt && lim && lim.seven_day && lim.seven_day.resets_at * 1000 > Date.now()) resetsAt = lim.seven_day.resets_at;
     if (!resetsAt) { console.log("need --resets <when the weekly limit resets> (shown in Settings > Usage)"); process.exit(1); }

@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { binDir } from "./sync.mjs";
 import { editText, writeAtomic, withLock } from "./safefile.mjs";
+import { parseResetTime } from "./resettime.mjs";
 import { writeSelf, readOther, isFresh } from "./shared.mjs";
 
 export const HOME = () => process.env.USAGE_MAX_HOME || os.homedir();
@@ -286,7 +287,7 @@ if (isMain) {
   if (cmd === "doctor") { console.log("usage-max codex doctor:\n" + doctor()); process.exit(0); }
   if (EXT.has(cmd)) extCli(cmd, a, flag).then((c) => process.exit(c), (e) => { console.error(e.message); process.exit(1); }); else {
   if (cmd === "models") { const m = modelsSeen(); console.log(Object.keys(m).length ? "models seen in your Codex sessions (set config.json modes to ones your plan has):\n" + Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `  ${k}  (${v})`).join("\n") : "no sessions found under " + codexHome()); process.exit(0); }
-  if (cmd === "calibrate") { const pct = Number(a[0]); const r = flag("--resets"); if (!(pct >= 0) || !r) { console.error("usage: calibrate <pct from /status or chatgpt.com/codex/settings/usage> --resets <ISO>"); process.exit(2); } calibrate(pct, r); }
+  if (cmd === "calibrate") { const pct = Number(a[0]); const r = flag("--resets"); if (!(pct >= 0 && pct <= 100) || !r) { console.error("usage: calibrate <pct 0-100 from /status or chatgpt.com/codex/settings/usage> --resets <ISO time with zone>"); process.exit(2); } const pr = parseResetTime(r); if (pr.error) { console.error("not calibrated: " + pr.error); process.exit(2); } if (pr.note) console.log("note: " + pr.note); calibrate(pct, new Date(pr.ms).toISOString()); }
   if (cmd === "mode") { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.override = a[0] === "auto" ? null : a[0]; wj(sf, st); }
   const { mode, surplus, e, st, cfg } = evaluate(Date.now(), true);
   if ((cmd === "mode" || cmd === "calibrate") && writeFailures.length) { console.error(`could not save (${[...new Set(writeFailures)].join(", ")}): this shell is read-only (Codex sandbox?). Run the same command from a normal terminal.`); process.exit(1); }
