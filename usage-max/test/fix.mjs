@@ -560,7 +560,7 @@ await t("BUG-046", "trimmed output is never printed without a saved copy: when t
     const ok = run(sc, tmp(), big).stdout; assert.match(ok, /output was trimmed; the complete output is saved at /, sc); assert.ok(ok.length < big.length);
   }
   const gen = path.join(blocked, "gen.js"); fs.writeFileSync(gen, "for (let i = 0; i < 400; i++) console.log('line ' + i);\n");
-  const rt = spawnSync(process.execPath, [path.join(root, "codex/scripts/run-trimmed.mjs"), "run", "node", gen.replace(/\\/g, "/")], { encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: notDir, CODEX_HOME: path.join(blocked, ".codex") } });
+  const rt = spawnSync(process.execPath, [path.join(root, "codex/scripts/run-trimmed.mjs"), "run", "node", "gen.js"], { encoding: "utf8", cwd: blocked, env: { ...process.env, USAGE_MAX_HOME: notDir, CODEX_HOME: path.join(blocked, ".codex") } });
   assert.ok(rt.stdout.replace(/\r\n/g, "\n") === big, `run-trimmed: whole output when it cannot be saved (got ${rt.stdout.length} chars; status ${rt.status}; stderr ${JSON.stringify(String(rt.stderr).slice(0, 200))}; start ${JSON.stringify(rt.stdout.slice(0, 60))})`);
 });
 
