@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+const INSTRUCTION_LINES = 200, LONG_PLUGIN_LIST = 10, LONG_MCP_LIST = 6; // review thresholds: a long list is a prompt to look, not a proven problem
 const TOK = (chars) => Math.round(chars / 3.6);
 const read = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return ""; } };
 const jread = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return d; } };
@@ -142,9 +143,18 @@ export function diet({ home = os.homedir(), cwd = process.cwd(), days = 30, nowM
   for (const r of rows) {
     if (r.kind === "plugin" && r.uses === 0 && r.tokens >= 300) advice.push({ id: r.id, action: "disable", saves: r.tokens, why: `0 uses in ${days}d, ~${r.tokens} tokens in every session` });
     if (r.kind === "plugin(synced)" && r.uses === 0 && (r.tokens >= 300 || r.mcp >= 3)) advice.push({ id: r.id, action: `disable (claude plugin disable ${r.id}@synced --scope user; or in claude.ai > Settings > Plugins)`, saves: r.tokens, why: `0 uses in ${days}d, ~${r.tokens} tokens of descriptions${r.mcp ? ` + ${r.mcp} MCP server(s) whose tool definitions also load` : ""} in every session` });
-    if (r.kind === "CLAUDE.md" && r.tokens > 700) advice.push({ id: r.id, action: "trim", saves: r.tokens - 500, why: `${r.tokens} tokens (${r.lines} lines); keep <500, move workflows to skills / path-scoped rules` });
+    if (r.kind === "CLAUDE.md" && (r.tokens > 700 || r.lines > INSTRUCTION_LINES)) advice.push({ id: r.id, action: "trim", saves: Math.max(0, r.tokens - 500), why: `${r.tokens} tokens (${r.lines} lines${r.lines > INSTRUCTION_LINES ? `, over the ~${INSTRUCTION_LINES}-line guideline` : ""}); keep <500, move workflows to skills / path-scoped rules` });
     if (r.kind === "mcp" && r.uses === 0) advice.push({ id: r.id, action: "disable via /mcp", saves: null, why: `0 calls in ${days}d (tool names still enter context)` });
   }
+  // Checks that need nothing but files on disk. AGENTS.md is only measured (not added to the always-loaded total): whether a session loads it depends on the tool and on @-imports.
+  for (const f of [...new Set([path.join(cwd, "AGENTS.md"), path.join(claudeDir, "AGENTS.md")])]) {
+    const t = read(f), lines = t ? t.split("\n").length : 0;
+    if (lines > INSTRUCTION_LINES) advice.push({ id: f, action: "review", saves: null, why: `AGENTS.md is ${lines} lines (over the ~${INSTRUCTION_LINES}-line guideline for instruction files); shorter files are cheaper wherever they are loaded (\`usage-max context\` shows which files load here)` });
+  }
+  const enabledCount = Object.values(settings.enabledPlugins || {}).filter(Boolean).length;
+  if (enabledCount >= LONG_PLUGIN_LIST) advice.push({ id: "enabled plugins", action: "review", saves: null, why: `${enabledCount} plugins are switched on in settings.json (list above with their uses); each one's skill/command/agent descriptions are listed in every session, so switch off the ones with 0 uses` });
+  const mcpCount = rows.filter((r) => r.kind === "mcp").length;
+  if (mcpCount >= LONG_MCP_LIST) advice.push({ id: "MCP servers", action: "review", saves: null, why: `${mcpCount} MCP servers are configured (list above with their calls); each one's tool names enter context, so remove the ones you do not call` });
   const total = rows.reduce((a, r) => a + (r.tokens || 0), 0);
   return { days, sessionsScanned: counts.sessions, measuredStartupTokens: measuredStartup(claudeDir, days, nowMs), alwaysLoadedTokens: total, rows, advice, savings: advice.reduce((a, x) => a + (x.saves || 0), 0) };
 }

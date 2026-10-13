@@ -9,21 +9,25 @@ import { priceFor, turnCost } from "./pricing.mjs";
 
 const SONNET = "claude-sonnet-5-5";
 const usd = (x) => `$${x.toFixed(x >= 100 ? 0 : 2)}`;
+const LP = (x) => `${usd(x)} list-price`; // every dollar figure says what it is: published list prices applied to measured tokens, not a bill
 
 export async function claudeSavings({ dir, days = 7, now = Date.now() } = {}) {
-  const lo = now - days * 864e5; const byModel = {}; const hub = {}; let subCost = 0, hubCost = 0, turns = 0, subTurns = 0; const subTurnList = [];
+  const lo = now - days * 864e5, lo7 = Math.min(lo, now - 7 * 864e5); const byModel = {}; const hub = {}; let subCost = 0, hubCost = 0, turns = 0, subTurns = 0; const subTurnList = [];
   const dedupe = createDeduper(); // one message repeated across files counts once, at its largest output
   for (const file of await listJsonlFiles(dir)) {
-    const isSub = file.includes(`${path.sep}subagents${path.sep}`) || file.includes("/subagents/"); let text; try { if (fs.statSync(file).mtimeMs < lo) continue; text = fs.readFileSync(file, "utf8"); } catch { continue; }
+    const isSub = file.includes(`${path.sep}subagents${path.sep}`) || file.includes("/subagents/"); let text; try { if (fs.statSync(file).mtimeMs < lo7) continue; text = fs.readFileSync(file, "utf8"); } catch { continue; }
     for (const line of text.split("\n")) {
       if (!line.includes('"assistant"')) continue; let r; try { r = JSON.parse(line); } catch { continue; }
       const m = r && r.message; if (r.type !== "assistant" || !m || !m.model || m.model === "<synthetic>") continue;
       dedupe.add(m, { m, t: parseTimestamp(r.timestamp), side: isSub || r.isSidechain === true });
     }
   }
+  let cost24 = 0, cost7 = 0, firstT = 0; const unknownModels = new Set();
   for (const { m, t, side } of dedupe.items()) {
+    const u0 = normalizeUsage(m.usage), p0 = priceFor(m.model, u0.input + u0.created + u0.read);
+    if (t && p0 && t >= now - 7 * 864e5 && t <= now) { const c0 = turnCost(u0, p0).total; cost7 += c0; if (t >= now - 864e5) cost24 += c0; if (!firstT || t < firstT) firstT = t; } // recent pace: always the last 24h vs the last 7 days
     if (t && (t < lo || t > now)) continue;
-    const u = normalizeUsage(m.usage); const ctx = u.input + u.created + u.read; const p = priceFor(m.model, ctx); if (!p) continue;
+    const u = u0, ctx = u.input + u.created + u.read, p = p0; if (!p) continue; if (p.fallback) unknownModels.add(m.model);
     const c = turnCost(u, p).total;
     const b = (byModel[m.model] = byModel[m.model] || { turns: 0, cost: 0, sub: 0 }); b.turns++; b.cost += c; turns++;
     if (side) { subCost += c; subTurns++; b.sub += c; subTurnList.push({ u, ctx }); } else { hubCost += c; hub[m.model] = (hub[m.model] || 0) + c; }
@@ -32,21 +36,25 @@ export async function claudeSavings({ dir, days = 7, now = Date.now() } = {}) {
   let counterfactual = null;
   if (hubModel && subTurns) { let c = 0; for (const s of subTurnList) { const p = priceFor(hubModel, s.ctx); if (p) c += turnCost(s.u, p).total; } counterfactual = { hubModel, ifOnHub: c, saved: Math.max(0, c - subCost) }; }
   const whatIfSonnet = hubModel && !/sonnet|haiku/.test(hubModel) ? { model: SONNET, pricePerMTokOutput: priceFor(SONNET).output, hubOutputPrice: priceFor(hubModel).output } : null;
-  return { window: { days, from: new Date(lo).toISOString(), to: new Date(now).toISOString() }, turns, subTurns, total, hubCost, subCost, hubModel, byModel, counterfactual, whatIfSonnet };
+  return { window: { days, from: new Date(lo).toISOString(), to: new Date(now).toISOString() }, turns, subTurns, total, hubCost, subCost, hubModel, byModel, counterfactual, whatIfSonnet, unknownModels: [...unknownModels],
+    pace: { perHour24h: cost24 / 24, perHour7d: cost7 / 168, cost24h: cost24, cost7d: cost7, historyDays: firstT ? Math.min(7, (now - firstT) / 864e5) : 0, basis: "list-price equivalent per calendar hour" } };
 }
 
 export function formatClaude(r) {
   const o = []; const M = (s) => o.push(`measured  ${s}`), E = (s) => o.push(`estimate  ${s}`), W = (s) => o.push(`what-if   ${s}`);
   o.push(`CLAUDE (${r.window.days} days, local transcripts, list-price proxy for plan use; read-only)`);
+  o.push("  basis: measured = counted from your transcripts; list-price = published API prices applied to measured tokens (a yardstick, not your subscription bill); estimate = a stated counterfactual; what-if = a lever, not a saving.");
   if (!r.turns) { o.push("  no Claude transcripts in this window (cloud sessions start empty; run this on the PC where you work)."); return o.join("\n"); }
-  M(`${r.turns} turns, ${usd(r.total)} at list price; main loop ${usd(r.hubCost)}, subagents ${usd(r.subCost)} (${r.subTurns} turns, ${Math.round(100 * r.subCost / (r.total || 1))}% of spend)`);
-  for (const [k, v] of Object.entries(r.byModel).sort((a, b) => b[1].cost - a[1].cost)) M(`${k}: ${v.turns} turns, ${usd(v.cost)} (${Math.round(100 * v.cost / (r.total || 1))}%)`);
-  if (r.counterfactual) E(`delegation: the subagent work cost ${usd(r.subCost)}; the same tokens on the main model (${r.counterfactual.hubModel}) would have cost ~${usd(r.counterfactual.ifOnHub)}, so ~${usd(r.counterfactual.saved)} saved (assumes the main model would have used the same tokens; real savings depend on that)`);
+  M(`${r.turns} turns (counted); ${LP(r.total)} (measured tokens priced at list); main loop ${LP(r.hubCost)}, subagents ${LP(r.subCost)} (${r.subTurns} turns, ${Math.round(100 * r.subCost / (r.total || 1))}% of list-price spend)`);
+  if (r.pace && r.pace.perHour7d > 0) { const x = r.pace.perHour24h / r.pace.perHour7d; M(`recent pace: last 24 hours ${usd(r.pace.perHour24h)}/hour list-price vs ${usd(r.pace.perHour7d)}/hour averaged over 7 days (${x.toFixed(1)}x; calendar hours, idle hours included${r.pace.historyDays < 6.5 ? `; only ${r.pace.historyDays.toFixed(1)} days of history found, so the average is understated` : ""})`); }
+  if (r.unknownModels && r.unknownModels.length) E(`${r.unknownModels.join(", ")} not in the price table: those turns are priced like the nearest model family, so dollar figures are approximate`);
+  for (const [k, v] of Object.entries(r.byModel).sort((a, b) => b[1].cost - a[1].cost)) M(`${k}: ${v.turns} turns, ${LP(v.cost)} (${Math.round(100 * v.cost / (r.total || 1))}% of list-price spend)`);
+  if (r.counterfactual) E(`delegation: the subagent work cost ${LP(r.subCost)}; the same tokens on the main model (${r.counterfactual.hubModel}) would have cost ~${LP(r.counterfactual.ifOnHub)}, so ~${LP(r.counterfactual.saved)} saved (assumes the main model would have used the same tokens; real savings depend on that)`);
   else E("delegation: no subagent turns in this window, so routing has saved nothing measurable yet");
-  if (r.whatIfSonnet) W(`main model is ${r.hubModel} (output $${r.whatIfSonnet.hubOutputPrice}/M vs Sonnet $${r.whatIfSonnet.pricePerMTokOutput}/M): main-loop spend is ${usd(r.hubCost)}; moving routine turns to Sonnet is the biggest lever left (not a saving until you do it)`);
+  if (r.whatIfSonnet) W(`main model is ${r.hubModel} (published output list price $${r.whatIfSonnet.hubOutputPrice}/M tokens vs Sonnet $${r.whatIfSonnet.pricePerMTokOutput}/M): main-loop spend is ${LP(r.hubCost)} (measured tokens); moving routine turns to Sonnet is the biggest lever left (not a saving until you do it)`);
   try { const c = (JSON.parse(fs.readFileSync(path.join(process.env.USAGE_MAX_HOME || os.homedir(), ".claude", "usage-max", "events.json"), "utf8")).counts) || {}; if (c.offloadJobs) E(`local model: ${c.offloadJobs} jobs run on your own machine, ~${Math.round((c.offloadInputChars || 0) / 4).toLocaleString("en-US")} input tokens that never touched your plan (chars/4; the plan would also have paid for the output and for re-reading it)`); } catch {}
   const share = r.subCost / (r.total || 1);
-  o.push(share < 0.25 ? "  more: only " + Math.round(100 * share) + "% of spend is delegated. Send reading/searching/web/formatting to usage-max-scout and edits/tests to usage-max-worker; compare again next week." : "  more: delegation is already a healthy share; remaining levers are context size (`usage-max context`, `usage-max diet`) and cold-cache gaps (`usage-max diagnose`).");
+  o.push(share < 0.25 ? "  more: only " + Math.round(100 * share) + "% of list-price spend is delegated. Send reading/searching/web/formatting to usage-max-scout and edits/tests to usage-max-worker; compare again next week." : "  more: delegation is already a healthy share; remaining levers are context size (`usage-max context`, `usage-max diet`) and cold-cache gaps (`usage-max diagnose`).");
   return o.join("\n");
 }
 
