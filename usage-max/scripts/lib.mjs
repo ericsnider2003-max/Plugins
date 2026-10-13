@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { recordCost } from "./pricing.mjs";
+import { modelVersion } from "./ceiling.mjs";
 
 export function asNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -99,20 +100,15 @@ export function weeklyStart(now = new Date(), spec = { day: 0, hour: 7, minute: 
 
 // Ceiling: Opus 5.5. Returns "ok" | "above" | "unknown".
 export const CEILING = { family: "opus", version: 5.5 };
-export function modelVersion(model) {
-  const m = String(model || "").toLowerCase().match(/(?:opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
-  if (!m) return null;
-  return Number(m[1]) + (m[2] ? Number(m[2]) / 10 : 0);
-}
+export { modelVersion };
 export function ceilingStatus(model) {
   const family = modelFamily(model);
   if (family === "synthetic") return "ok";
   if (family === "fable") return "above";
-  if (family === "haiku" || family === "sonnet") return "ok";
-  if (family === "opus") {
+  if (family === "haiku" || family === "sonnet" || family === "opus") {
     const v = modelVersion(model);
-    if (v === null) return "unknown";
-    return v <= CEILING.version ? "ok" : "above";
+    if (v === null) return "unknown"; // an id whose version cannot be read is never "ok" by accident
+    return family !== "opus" || v <= CEILING.version ? "ok" : "above";
   }
   return "unknown";
 }

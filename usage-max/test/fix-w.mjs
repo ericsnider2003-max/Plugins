@@ -67,4 +67,22 @@ await t("BUG-043", "an old status.json is not shown as current; the governor est
   age(40 * 24); const old = line(); assert.ok(!/opus 77|\/day/.test(old), "40-day-old summary hidden: " + old); assert.match(old, /wk ~42% \(est\.\)/);
 });
 
+await t("SEC-005", "the Opus 5.5 ceiling reads the version wherever it sits in the model id", async () => {
+  sandbox();
+  const L = await imp("scripts/lib.mjs"), C = await imp("scripts/ceiling.mjs");
+  const table = {
+    "claude-opus-5-5": "ok", "claude-opus-5": "ok", "claude-opus-4-8": "ok", "claude-opus-5-5-20260101": "ok", "claude-opus-4-20250514": "ok", "claude-opus-4-1-20250805": "ok",
+    "claude-sonnet-5-5": "ok", "claude-sonnet-5-5-20260101": "ok", "claude-haiku-5-5": "ok", "claude-haiku-4-5-20251001": "ok", "claude-3-5-sonnet-20241022": "ok", "<synthetic>": "ok",
+    "claude-opus-5-6": "above", "claude-opus-6": "above", "claude-fable-5": "above",
+    "claude-opus-6[1m]": "above", "claude-opus-6-latest": "above", "us.anthropic.claude-opus-6-v1:0": "above", "claude-opus-6@20260101": "above", "global.anthropic.claude-opus-6-20260101-v1:0": "above", "claude-opus-5-6[1m]": "above",
+    "claude-opus-5-5[1m]": "ok", "claude-opus-5-5-latest": "ok", "anthropic.claude-opus-5-5-v1:0": "ok", "claude-opus-5-5@20260101": "ok", "claude-sonnet-5-5[1m]": "ok", "claude-haiku-4-5@20251001": "ok",
+    "opus": "unknown", "claude-opus-next": "unknown", "claude-opus-latest": "unknown", "claude-sonnet-latest": "unknown", "claude-haiku-x": "unknown", "some-new-model": "unknown"
+  };
+  for (const [id, want] of Object.entries(table)) {
+    assert.equal(L.ceilingStatus(id), want, "ceilingStatus " + id);
+    if (want !== "unknown") assert.equal(C.aboveCeiling(id), want === "above", "aboveCeiling " + id);
+  }
+  for (const id of ["opus", "claude-opus-next"]) assert.equal(C.aboveCeiling(id), false, "an alias is not blocked: " + id);
+});
+
 console.log(`${n} passing`);
