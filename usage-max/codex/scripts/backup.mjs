@@ -2,7 +2,14 @@
 import fs from "node:fs"; import path from "node:path"; import crypto from "node:crypto";
 import { HOME, codexHome, dataDir } from "./codex-governor.mjs"; import { binDir } from "./sync.mjs";
 const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
-const target = (rel) => { const [top, ...r] = rel.split("/"); const n = r.join("/"); if (!n || n.split("/").some((x) => x === ".." || x === "")) return null; return top === "codex" ? path.join(codexHome(), n) : top === "data" ? path.join(dataDir(), n) : null; };
+// Where a backed-up file goes back to, or null. A manifest can come from a folder you did not make, so only plain relative names under codex/ or data/ are
+// accepted: no backslashes, drive letters, absolute paths, "." / ".." pieces or empty pieces, and the result must stay inside its base folder on every OS.
+export const target = (rel) => {
+  if (typeof rel !== "string" || /[\\:\0]/.test(rel) || rel.startsWith("/")) return null;
+  const [top, ...r] = rel.split("/"); if (!r.length || r.some((x) => x === ".." || x === "." || x === "")) return null;
+  const base = top === "codex" ? codexHome() : top === "data" ? dataDir() : null; if (!base) return null;
+  const t = path.join(base, ...r), rr = path.relative(base, t); return rr && !rr.startsWith("..") && !path.isAbsolute(rr) ? t : null;
+};
 function sources() {
   const out = []; const ver = path.join(binDir(), "VERSION"); out.push(["bin/VERSION", ver]);
   let names = []; try { names = fs.readdirSync(codexHome()); } catch {}

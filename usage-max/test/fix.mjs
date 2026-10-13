@@ -615,4 +615,11 @@ await t("BUG-053", "syncing notes into AGENTS.md keeps its line endings and enco
   const again = Mem.syncFile(mem, f, {}); assert.equal(again.changed, false, "second sync is a no-op");
 });
 
+await t("SEC-008", "a backup manifest cannot send a file outside the Codex or data folder", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const B = await imp("codex/scripts/backup.mjs"); const ok = B.target("codex/config.toml"); assert.ok(ok && ok.startsWith(process.env.CODEX_HOME), "a normal path still works: " + ok);
+  assert.ok(B.target("data/governor.json"));
+  for (const bad of ["codex/..\\..\\AppData\\Roaming\\Startup\\x.cmd", "codex/C:\\evil.txt", "codex/C:evil.txt", "codex/../x", "codex/a/../../x", "/etc/passwd", "codex//x", "codex/./x", "codex/", "codex", "other/x", "codex/a\0b", "data\\x", 5, null]) assert.equal(B.target(bad), null, "refused: " + JSON.stringify(bad));
+});
+
 console.log(`${n} passing`);
