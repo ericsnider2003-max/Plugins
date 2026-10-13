@@ -506,4 +506,31 @@ await t("BUG-037", "Codex: no extra effort from a days-old reading, and an ended
   const m = { hours: {}, fine: {}, limits: { ts: now, primary: { used_percent: 90, window_minutes: 300, resets_at: Math.floor((now - 36e5) / 1000) } } }; const st = {}; C.absorbLimits(st, m, now); assert.equal(st.five, null, "ended window is not current");
 });
 
+await t("BUG-044", "two sessions at once cannot lose a pinned mode or the other plan's shared status", async () => {
+  const { spawn } = await import("node:child_process");
+  const run = (args, env, code) => new Promise((res) => { const c = spawn(process.execPath, code ? ["--input-type=module", "-e", code] : args, { env: { ...process.env, ...env }, stdio: "ignore" }); c.on("close", res); });
+  const home = tmp(); const env = { USAGE_MAX_HOME: home, USAGE_MAX_LIMITS_PATH: path.join(home, "none.json"), CODEX_HOME: path.join(home, ".codex") };
+  const gov = path.join(root, "scripts/governor.mjs"), ud = path.join(home, ".claude", "usage-max"); fs.mkdirSync(ud, { recursive: true });
+  let lost = 0;
+  for (let r = 0; r < 4; r++) {
+    fs.writeFileSync(path.join(ud, "governor.json"), JSON.stringify({ mode: "green", override: null, history: [], snaps: [] }));
+    await Promise.all([...Array(5).fill(0).map(() => run([gov, "status"], env)), run([gov, "mode", "red"], env), ...Array(5).fill(0).map(() => run([gov, "status"], env))]);
+    if (JSON.parse(fs.readFileSync(path.join(ud, "governor.json"), "utf8")).override !== "red") lost++;
+  }
+  assert.equal(lost, 0, "the pinned mode survived every round");
+  const cg = path.join(root, "codex/scripts/codex-governor.mjs"), cd = path.join(home, ".usage-max-codex"); fs.mkdirSync(cd, { recursive: true }); let clost = 0;
+  for (let r = 0; r < 4; r++) {
+    fs.writeFileSync(path.join(cd, "governor.json"), JSON.stringify({ mode: "green", override: null, calib: null, k: null }));
+    await Promise.all([...Array(5).fill(0).map(() => run([cg, "status"], env)), run([cg, "mode", "red"], env), ...Array(5).fill(0).map(() => run([cg, "status"], env))]);
+    if (JSON.parse(fs.readFileSync(path.join(cd, "governor.json"), "utf8")).override !== "red") clost++;
+  }
+  assert.equal(clost, 0, "Codex: the pinned mode survived every round");
+  const sh = pathToFileURL(path.join(root, "scripts/shared.mjs")).href, shc = pathToFileURL(path.join(root, "codex/scripts/shared.mjs")).href;
+  for (let r = 0; r < 3; r++) {
+    fs.rmSync(path.join(home, ".usage-max", "shared.json"), { force: true });
+    await Promise.all([...Array(6).fill(0).map((_, i) => run(null, env, `import {writeSelf} from "${sh}"; for (let i=0;i<6;i++) writeSelf("claude",{mode:"green",n:i});`)), ...Array(6).fill(0).map(() => run(null, env, `import {writeSelf} from "${shc}"; for (let i=0;i<6;i++) writeSelf({mode:"green",n:i});`))]);
+    const all = JSON.parse(fs.readFileSync(path.join(home, ".usage-max", "shared.json"), "utf8")); assert.ok(all.claude && all.codex, "both plans' entries survive: " + Object.keys(all));
+  }
+});
+
 console.log(`${n} passing`);

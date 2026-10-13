@@ -124,12 +124,16 @@ export async function apply({ write = false, home = homeDir(), root = pluginRoot
 // For `usage-max safety --fix` and SessionStart: only the hand-back, nothing else. Returns the keys given back.
 export function handBack(home = homeDir()) {
   try {
-    const file = path.join(home, ".claude", "settings.json"), s = readJson(file, null); if (!s) return [];
-    const af = path.join(dataDir(home), "applied.json"), applied = loadApplied(af), done = [];
-    for (const k of HAND_BACK) if (ownedUnset(s, k, applied)) done.push(k);
-    if (done.length) { writeJsonAtomic(file, s); saveApplied(af, applied); }
-    return done;
-  } catch { return []; }
+    const file = path.join(home, ".claude", "settings.json");
+    const r = withLock(file, () => { // read -> change -> write as one locked step
+      const s = readJson(file, null); if (!s) return [];
+      const af = path.join(dataDir(home), "applied.json"), applied = loadApplied(af), done = [];
+      for (const k of HAND_BACK) if (ownedUnset(s, k, applied)) done.push(k);
+      if (done.length) { writeJsonAtomic(file, s); saveApplied(af, applied); }
+      return done;
+    });
+    return r.ok ? r.value : []; // busy: it is handed back at the next session start
+  } catch (e) { return []; }
 }
 export function autoApplyEnabled(home = homeDir()) {
   if (process.env.USAGE_MAX_AUTOAPPLY === "off") return false;

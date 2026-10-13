@@ -54,6 +54,15 @@ export function saveState(s) {
   try { writeJsonAtomic(files().state, s); } catch (e) { writeFailures.push(`governor.json: ${e.code || e.message}`); } // read-only sandbox: keep going
 }
 
+// load -> change -> save of governor.json as one locked step: a hook's evaluation and a typed command (mode, calibrate) used to overwrite each other,
+// so a pinned mode could vanish. -> { ok: true, value }, or { ok: false, busy } when the lock could not be taken; an unwritable folder (read-only sandbox) runs unlocked as before.
+export function withState(fn) {
+  const run = () => { const st = loadState(); const value = fn(st); saveState(st); return value; };
+  const r = withLock(files().state, run);
+  if (r.ok || r.busy) return r;
+  return { ok: true, value: run() };
+}
+
 // Pure decision function (tested).
 export function decide({ estPct, hoursLeft, ratePerHour, prevMode, config }) {
   const c = config || DEFAULT_CONFIG;
@@ -187,11 +196,15 @@ export function patchLean(s, mode, applied = {}, { lean = false } = {}) {
 export function releaseLean(config = loadConfig()) {
   try {
     if (!config.manageSettings || config.lean === true) return false;
-    const file = files().settings, s = readJson(file, null); if (!s) return false;
-    const af = path.join(dataDir(), "applied.json"), applied = loadApplied(af);
-    const changed = patchLean(s, "green", applied, { lean: false }); if (!changed) return false;
-    saveApplied(af, applied); writeJsonAtomic(file, s); return true;
-  } catch { return false; }
+    const file = files().settings;
+    const r = withLock(file, () => { // read -> change -> write as one locked step, like applySettings
+      const s = readJson(file, null); if (!s) return false;
+      const af = path.join(dataDir(), "applied.json"), applied = loadApplied(af);
+      const changed = patchLean(s, "green", applied, { lean: false }); if (!changed) return false;
+      saveApplied(af, applied); writeJsonAtomic(file, s); return true;
+    });
+    return r.ok ? r.value : false; // busy: it is handed back at the next session start
+  } catch (e) { writeFailures.push("settings.json: " + (e.code || e.message)); return false; }
 }
 // Hours until the plan hits 100% at the current burn, only from real data and only when that happens before the reset.
 export function timeToEmpty(l) {
@@ -240,9 +253,12 @@ export function readingNote(pct, at, source, now = Date.now()) {
 
 // One evaluation pass: absorb snapshot, estimate, decide, enforce on change. Returns the new state.
 export function evaluate({ meter, nowMs = Date.now() } = {}) {
-  const config = loadConfig();
-  const state = loadState();
   meter = meter || loadMeter();
+  const r = withState((state) => { evaluateOn(state, meter, nowMs); return state; });
+  return r.ok ? r.value : loadState(); // busy: another process is updating the state right now; its result stands and the next hook evaluates again
+}
+function evaluateOn(state, meter, nowMs) {
+  const config = loadConfig();
   absorbSnapshot(state, readJson(files().limits, null), meter.cum, { meter, nowMs });
   if (rollWindow(state, meter, nowMs)) state.mode = "green"; // new week: no hysteresis from last week's mode
   const est = estimate(state, meter, nowMs, config);
@@ -279,7 +295,6 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   }
   const fp5 = (readJson(files().limits, null) || {}).five_hour;
   writeSelf("claude", { ...(state.calib ? { readingPct: state.calib.pct, readingAt: state.calib.at } : {}), dataAt: state.calib && state.calib.at ? new Date(state.calib.at).toISOString() : null, mode: state.mode, surplus: Boolean(state.surplus), estPct: est.estPct, hoursLeft: est.hoursLeft, fivePct: fp5 && typeof fp5.used_percentage === "number" ? fp5.used_percentage : null });
-  saveState(state);
   return state;
 }
 
@@ -299,29 +314,30 @@ async function cli() {
     if (!resetsAt) { console.log("need --resets <when the weekly limit resets> (shown in Settings > Usage)"); process.exit(1); }
     const projects = flag("projects-dir") || path.join(process.env.USAGE_MAX_HOME || os.homedir(), ".claude", "projects");
     const { meter, windowSpend } = await bootstrap(projects, resetsAt * 1000 - 7 * 86400000);
-    const state = loadState();
     const now = Date.now();
-    // Every manual reading also becomes a plan-% snapshot, so two readings a few hours apart give a real burn rate.
-    state.snaps = [...(state.snaps || []).filter((x) => x.resetsAt === resetsAt).slice(-199), { at: now, pct, resetsAt }];
-    if (windowSpend > 0) {
-      saveMeter(meter);
-      const lk = kFromCalibration(state.k, pct, windowSpend); state.k = lk.k;
-      state.calib = { pct, at: now, cumAt: 0, resetsAt, source: "manual" };
-      state.kBase = { pct, cumAt: 0, resetsAt };
-      saveState(state);
-      console.log(`calibrated: ${pct}% of the week${lk.learned ? ` = $${windowSpend.toFixed(2)} local list-price spend → k=${state.k.toFixed(4)} %/$` : `; only $${windowSpend.toFixed(2)} of local spend, too little to learn from, so the conversion rate stays ${state.k ? state.k.toFixed(4) + " %/$" : "unset"}`} (resets ${new Date(resetsAt * 1000).toString()})`);
-    } else {
-      // No local Claude Code history here (cloud/desktop sessions). Still useful: remember the reading and the reset time.
-      state.calib = { pct, at: now, cumAt: loadMeter().cum || 0, resetsAt, source: "manual" };
-      saveState(state);
-      console.log(`saved: ${pct}% used, resets ${new Date(resetsAt * 1000).toString()}. There is no local usage history on this machine, so the estimate will not grow between readings: re-run this whenever you look at Settings > Usage (two readings a few hours apart also give a real burn rate).`);
-    }
+    const lines = [];
+    const w = withState((state) => {
+      // Every manual reading also becomes a plan-% snapshot, so two readings a few hours apart give a real burn rate.
+      state.snaps = [...(state.snaps || []).filter((x) => x.resetsAt === resetsAt).slice(-199), { at: now, pct, resetsAt }];
+      if (windowSpend > 0) {
+        saveMeter(meter);
+        const lk = kFromCalibration(state.k, pct, windowSpend); state.k = lk.k;
+        state.calib = { pct, at: now, cumAt: 0, resetsAt, source: "manual" };
+        state.kBase = { pct, cumAt: 0, resetsAt };
+        lines.push(`calibrated: ${pct}% of the week${lk.learned ? ` = $${windowSpend.toFixed(2)} local list-price spend → k=${state.k.toFixed(4)} %/$` : `; only $${windowSpend.toFixed(2)} of local spend, too little to learn from, so the conversion rate stays ${state.k ? state.k.toFixed(4) + " %/$" : "unset"}`} (resets ${new Date(resetsAt * 1000).toString()})`);
+      } else {
+        // No local Claude Code history here (cloud/desktop sessions). Still useful: remember the reading and the reset time.
+        state.calib = { pct, at: now, cumAt: loadMeter().cum || 0, resetsAt, source: "manual" };
+        lines.push(`saved: ${pct}% used, resets ${new Date(resetsAt * 1000).toString()}. There is no local usage history on this machine, so the estimate will not grow between readings: re-run this whenever you look at Settings > Usage (two readings a few hours apart also give a real burn rate).`);
+      }
+    });
+    if (!w.ok) { console.error("not saved: the budget file is being updated by another session. Run the same command again in a moment."); process.exit(1); }
+    for (const l of lines) console.log(l);
   } else if (cmd === "mode") {
     const m = rest[0];
     if (!["auto", "green", "amber", "red"].includes(m)) { console.log("usage: mode <auto|green|amber|red>"); process.exit(1); }
-    const state = loadState();
-    state.override = m === "auto" ? null : m;
-    saveState(state);
+    const w = withState((state) => { state.override = m === "auto" ? null : m; });
+    if (!w.ok) { console.error("not saved: the budget file is being updated by another session. Run the same command again in a moment."); process.exit(1); }
     console.log(m === "auto" ? "mode override cleared (automatic)" : `mode pinned to ${m} until 'mode auto'`);
   }
   const s = evaluate();
