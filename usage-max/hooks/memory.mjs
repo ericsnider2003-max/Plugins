@@ -4,7 +4,7 @@
 //   SessionStart      memory block (decisions + topic list) and, for a fresh/cleared session, the last resume point of this folder
 //   UserPromptSubmit  "remember: ..." is saved without a model call; notes whose topic the prompt mentions are added (once per session each)
 //   PreCompact        save the resume point right before older detail is summarised away; SessionStart(compact) shows it again
-//   Stop              save the resume point (throttled to once a minute; no model tokens)
+//   Stop              save the resume point (throttled to once a minute; no model tokens) and append new requests to the session log (scripts/sessionlog.mjs)
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { dataDir, readJson } from "../scripts/meter.mjs";
@@ -34,6 +34,9 @@ try {
     if (!input.source || input.source === "startup" || input.source === "clear") {
       const r = cfg.resume === "off" ? null : R.takeResume(R.sharedDir(), cwd, { tool: "claude" }); if (r) parts.push(M.fenceNotes(r, "resume-note") + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)");
     }
+    if (mem && cfg.memorySuggestions !== "off" && (!input.source || input.source === "startup" || input.source === "clear")) { // at most ONE short line, only when unreviewed candidates exist, once per set
+      try { const SG = await import("../scripts/session-suggest.mjs"), SL = await import("../scripts/sessionlog.mjs"); const line = SG.announce(SL.projectRoot(cwd), { mem, scriptsDir: path.join(root, "scripts") }); if (line) parts.push(line); } catch (e) { void e; }
+    }
     if (parts.length) ctx(ev, parts.join("\n\n"));
   } else if (ev === "UserPromptSubmit" && mem) {
     const prompt = String(input.prompt || ""); let msg = null;
@@ -47,5 +50,6 @@ try {
   } else if (ev === "Stop" && cfg.resume !== "off") {
     R.saveResume(R.sharedDir(), cwd, () => R.buildResume({ transcript: input.transcript_path, cwd, tool: "claude" }));
   }
+  if (ev === "Stop") { try { (await import("../scripts/sessionlog.mjs")).recordStop({ cwd, sessionId: sid, transcript: input.transcript_path, tool: "claude", cfg }); } catch (e) { void e; } } // session log: only the new transcript bytes, outside the repo, silent
   process.exitCode = 0;
 } catch { process.exitCode = 0; }

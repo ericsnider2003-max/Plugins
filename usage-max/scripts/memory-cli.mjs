@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// usage-max memory <init|add|decide|recall|index|lint|sync|export|import|status> ... (see scripts/memory.mjs)
+// usage-max memory <init|add|decide|recall|index|lint|sync|export|import|suggest|suggestions|search|status> ... (see scripts/memory.mjs;
+// suggestions = candidate notes from your past sessions, search = find words in the session log, .memory and past transcripts)
 import fs from "node:fs";
 import path from "node:path";
 import * as M from "./memory.mjs";
@@ -37,6 +38,10 @@ if (sub === "init") {
     const r = S.accept(m, list, ids); for (const x of r.saved) console.log("saved " + x); for (const x of r.skipped) console.log("NOT saved " + x); process.exit(r.skipped.length && !r.saved.length ? 1 : 0);
   }
   const list = S.suggest(root); S.saveCandidates(root, list); console.log(S.render(list));
+} else if (sub === "suggestions") { // from the session log; nothing is saved without --accept (scripts/session-suggest.mjs)
+  const S = await import("./session-suggest.mjs"); process.exit(S.cli(a, { cwd, mem: M.findMemoryDir(cwd) }));
+} else if (sub === "search") { // words in the session log, .memory and this project's past transcripts (scripts/session-search.mjs)
+  const Q = await import("./session-search.mjs"); if (!a.length) { console.log("usage: usage-max memory search <words>"); process.exit(1); } console.log(Q.search(a, { cwd, mem: M.findMemoryDir(cwd) }).text);
 } else if (sub === "export") { console.log(M.loadBlock(need(), { cap: 3000, cmd: "(ask the assistant to note it)" }));
 } else if (sub === "import") {
   const m = need(); if (!a[0] || !fs.existsSync(a[0])) { console.log("usage: usage-max memory import <folder-with-.md-notes>   (an Obsidian vault works; files are copied, never changed)"); process.exit(1); }
@@ -45,5 +50,5 @@ if (sub === "init") {
   const m = M.findMemoryDir(cwd);
   if (!m) { console.log("project memory: not set up here. usage-max memory init"); process.exit(0); }
   const d = M.readDecisions(m), t = M.listTopics(m); const b = M.loadBlock(m, { cap: 1e9 }).length;
-  console.log(`project memory: ${m}\n  ${d.length} decision(s), ${t.length} topic(s), always-loaded block ${b} chars (~${Math.round(b / 3.6)} tokens)\n  commands: init add decide recall suggest index lint sync export import`);
+  console.log(`project memory: ${m}\n  ${d.length} decision(s), ${t.length} topic(s), always-loaded block ${b} chars (~${Math.round(b / 3.6)} tokens)\n  commands: init add decide recall suggest suggestions search index lint sync export import`);
 }
