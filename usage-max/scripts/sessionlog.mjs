@@ -88,9 +88,10 @@ function wanted(line, tool) {
   if (line.includes('"tool_result"')) return false;
   return line.includes('"user"') || (line.includes('"tool_use"') && (line.includes("Edit") || line.includes("Write")));
 }
-const realOf = (q) => { try { return fs.realpathSync.native(q); } catch (e) { return path.resolve(q); } }; // short (8.3) and long Windows names, links and drive-letter case all compare equal
+// real path of a file that may not exist yet: the nearest existing folder above it is resolved (short 8.3 and long Windows names, links, drive-letter case), the rest is appended
+const realOf = (q) => { const rest = []; let cur = path.resolve(q); for (let i = 0; i < 64; i++) { try { return path.join(fs.realpathSync.native(cur), ...rest); } catch (e) { const up = path.dirname(cur); if (up === cur) break; rest.unshift(path.basename(cur)); cur = up; } } return path.resolve(q); };
 const projectRel = (root, cwd, p) => {
-  const abs = path.isAbsolute(p) ? p : path.resolve(cwd, p); const rel = path.relative(realOf(root), path.join(realOf(path.dirname(abs)), path.basename(abs)));
+  const abs = path.isAbsolute(p) ? p : path.resolve(cwd, p); const rel = path.relative(realOf(root), realOf(abs));
   if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return null; return rel.replace(/\\/g, "/");
 };
 
