@@ -15,7 +15,7 @@ function sandbox({ withFiles = true, installExit = 0 } = {}) {
   if (withFiles) {
     fs.mkdirSync(path.join(dir, "usage-max", "scripts"), { recursive: true }); fs.mkdirSync(path.join(dir, "usage-max", "codex", "scripts"), { recursive: true });
     fs.writeFileSync(path.join(dir, "usage-max", "scripts", "usage-max.mjs"), 'import fs from "node:fs"; fs.writeFileSync(process.env.STUB_OUT, JSON.stringify(process.argv.slice(2))); fs.writeFileSync(process.env.STUB_OUT + ".env", JSON.stringify({ pct: process.env.USAGE_MAX_PCT, resets: process.env.USAGE_MAX_RESETS }));\n');
-    fs.writeFileSync(path.join(dir, "usage-max", "codex", "scripts", "install.mjs"), `import fs from "node:fs"; fs.writeFileSync(process.env.STUB_OUT, "installed"); process.exit(${installExit});\n`);
+    fs.writeFileSync(path.join(dir, "usage-max", "codex", "scripts", "install.mjs"), `import fs from "node:fs"; fs.writeFileSync(process.env.STUB_OUT, JSON.stringify("installed")); process.exit(${installExit});\n`);
   }
   return { dir, out, profile: path.join(dir, "profile") };
 }
