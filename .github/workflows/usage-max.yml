@@ -21,6 +21,7 @@ jobs:
           node usage-max/test/memory.mjs
           node usage-max/test/fix.mjs
           node usage-max/test/fix-w.mjs
+          node usage-max/test/fix-x.mjs
       - name: Codex tests
         run: node usage-max/codex/test/run.mjs
       - name: Build the desktop kit and plugin zip
@@ -47,5 +48,6 @@ jobs:
           node usage-max/test/memory.mjs
           node usage-max/test/fix.mjs
           node usage-max/test/fix-w.mjs
+          node usage-max/test/fix-x.mjs
       - name: Codex tests
         run: node usage-max/codex/test/run.mjs
