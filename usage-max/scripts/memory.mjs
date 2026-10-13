@@ -160,7 +160,8 @@ export function sections(t) {
 }
 // loose: a single matching word is enough (for an explicit ask such as `memory recall` or `pack`; prompts need two, to keep chatter out)
 export function recall(mem, query, { max = 3, budget = 1500, seen = new Set(), loose = false } = {}) {
-  const q = tokens(query); if (!q.length) return { text: "", keys: [] };
+  const text = String(query || ""); // a pasted log or file must not make every prompt slow: the task is stated at the start (and often the end), so only those are read
+  const q = tokens(text.length > 6000 ? text.slice(0, 4500) + " " + text.slice(-1500) : text).slice(0, 60); if (!q.length) return { text: "", keys: [] };
   const need = loose ? 1 : 2, scored = [];
   for (const t of listTopics(mem)) {
     const slugT = new Set(tokens(t.slug.replace(/-/g, " ")));
