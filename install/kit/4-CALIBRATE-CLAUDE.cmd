@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableDelayedExpansion
+setlocal
 rem usage-max: tell it your Claude plan numbers once. Needed when you use the Claude desktop app or cloud sessions (no status line there).
 where node >nul 2>nul
 if errorlevel 1 goto nonode
@@ -14,20 +14,25 @@ goto notfound
 :ask
 echo In Claude open Settings, then Usage. Read the weekly percent and the reset time.
 echo.
-set "PCT="
-set "RST="
-set /p PCT=Weekly percent used, for example 67: 
-set /p RST=Reset date and time, for example Oct 11 2026 11:00 AM: 
-if not defined PCT goto bad
-if not defined RST goto bad
-rem what you typed is only ever read with !delayed! expansion (never re-parsed as commands). The percent must be a plain number and the date may only use letters, digits, spaces and : , . / + - (so no quote marks or command characters can get in).
-echo(!PCT!| findstr /r /x "[0-9][0-9]*\.*[0-9]*" >nul || goto bad
-echo(!RST!| findstr /r /x /c:"[A-Za-z0-9 :,./+-]*" >nul || goto bad
-node "%CHK%" budget calibrate "!PCT!" --resets "!RST!"
+set "USAGE_MAX_PCT="
+set "USAGE_MAX_RESETS="
+set /p USAGE_MAX_PCT=Weekly percent used, for example 67: 
+set /p USAGE_MAX_RESETS=Reset date and time, for example Oct 11 2026 11:00 AM: 
+if not defined USAGE_MAX_PCT goto bad
+if not defined USAGE_MAX_RESETS goto bad
+rem what you typed is never put on a command line: it is handed to usage-max in two environment variables, and usage-max checks it (a plain number, and a real future date and time) before using it.
+node "%CHK%" budget calibrate --from-env
+if errorlevel 1 goto failed
 echo.
 echo Done. Run this again whenever you look at Settings, Usage. Two readings a few hours apart give a real burn rate.
 pause
 exit /b 0
+
+:failed
+echo.
+echo That was not saved - see the message above. Run this again.
+pause
+exit /b 1
 
 :bad
 echo You need to type both numbers. Run this again.

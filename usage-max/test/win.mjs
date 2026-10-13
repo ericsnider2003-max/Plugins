@@ -14,7 +14,7 @@ function sandbox({ withFiles = true, installExit = 0 } = {}) {
   for (const f of fs.readdirSync(kit).filter((x) => x.endsWith(".cmd"))) fs.copyFileSync(path.join(kit, f), path.join(dir, f));
   if (withFiles) {
     fs.mkdirSync(path.join(dir, "usage-max", "scripts"), { recursive: true }); fs.mkdirSync(path.join(dir, "usage-max", "codex", "scripts"), { recursive: true });
-    fs.writeFileSync(path.join(dir, "usage-max", "scripts", "usage-max.mjs"), 'import fs from "node:fs"; fs.writeFileSync(process.env.STUB_OUT, JSON.stringify(process.argv.slice(2)));\n');
+    fs.writeFileSync(path.join(dir, "usage-max", "scripts", "usage-max.mjs"), 'import fs from "node:fs"; fs.writeFileSync(process.env.STUB_OUT, JSON.stringify(process.argv.slice(2))); fs.writeFileSync(process.env.STUB_OUT + ".env", JSON.stringify({ pct: process.env.USAGE_MAX_PCT, resets: process.env.USAGE_MAX_RESETS }));\n');
     fs.writeFileSync(path.join(dir, "usage-max", "codex", "scripts", "install.mjs"), `import fs from "node:fs"; fs.writeFileSync(process.env.STUB_OUT, "installed"); process.exit(${installExit});\n`);
   }
   return { dir, out, profile: path.join(dir, "profile") };
@@ -25,30 +25,24 @@ function launch(sb, file, input = "", env = {}) { // input uses CR LF line ends,
   const inFile = path.join(sb.dir, "keys.txt"); fs.writeFileSync(inFile, input.replace(/\r?\n/g, "\r\n")); const fd = fs.openSync(inFile, "r");
   let r; try { r = spawnSync("cmd.exe", ["/d", "/s", "/c", `"${path.join(sb.dir, file)}"`], { stdio: [fd, "pipe", "pipe"], encoding: "utf8", windowsVerbatimArguments: true, cwd: sb.dir, timeout: 60000, env: { ...process.env, STUB_OUT: sb.out, USERPROFILE: sb.profile, ...env } }); } finally { fs.closeSync(fd); }
   let args = null; try { args = JSON.parse(fs.readFileSync(sb.out, "utf8")); } catch (e) { args = null; }
-  return { status: r.status, text: `${r.stdout || ""}${r.stderr || ""}`, args };
+  let seen = null; try { seen = JSON.parse(fs.readFileSync(sb.out + ".env", "utf8")); } catch (e) { seen = null; }
+  return { status: r.status, text: `${r.stdout || ""}${r.stderr || ""}`, args, seen };
 }
 
-await t("WIN-1", "4-CALIBRATE-CLAUDE passes a normal percent and reset time through intact", async () => {
+await t("WIN-1", "4-CALIBRATE-CLAUDE hands a normal percent and reset time to usage-max as data", async () => {
   const sb = sandbox(), r = launch(sb, "4-CALIBRATE-CLAUDE.cmd", "67\nOct 11 2026 11:00 AM\n\n");
-  if (r.status !== 0) { // show which line of the launcher failed
-    const tr = sandbox(); const f = path.join(tr.dir, "4-CALIBRATE-CLAUDE.cmd"); fs.writeFileSync(f, fs.readFileSync(f, "utf8").replace("@echo off", "@echo on")); console.log("TRACE:\n" + launch(tr, "4-CALIBRATE-CLAUDE.cmd", "67\nOct 11 2026 11:00 AM\n\n").text);
-  }
-  assert.equal(r.status, 0, r.text); assert.deepEqual(r.args, ["budget", "calibrate", "67", "--resets", "Oct 11 2026 11:00 AM"]);
-  const dec = launch(sandbox(), "4-CALIBRATE-CLAUDE.cmd", "4.5\nOct 11 2026 11:00 AM\n\n"); assert.deepEqual(dec.args && dec.args[2], "4.5", "a decimal percent is fine");
+  assert.equal(r.status, 0, r.text); assert.deepEqual(r.args, ["budget", "calibrate", "--from-env"]); assert.deepEqual(r.seen, { pct: "67", resets: "Oct 11 2026 11:00 AM" });
+  const dec = launch(sandbox(), "4-CALIBRATE-CLAUDE.cmd", "4.5\nOct 11 2026 11:00 AM\n\n"); assert.equal(dec.seen && dec.seen.pct, "4.5", "a decimal percent is fine");
 });
 
-await t("WIN-2", "4-CALIBRATE-CLAUDE never lets typed text run as a command", async () => {
-  for (const pct of ["67&echo pwned>pwned.txt", "67 & calc", "%PATH%", "67|dir", "67^", "abc", "", "67%", "6 7"]) {
-    const sb = sandbox(), r = launch(sb, "4-CALIBRATE-CLAUDE.cmd", `${pct}\nOct 11 2026 11:00 AM\n\n`);
-    assert.equal(r.args, null, `percent ${JSON.stringify(pct)} must be refused, the tool was called with ${JSON.stringify(r.args)}`); assert.notEqual(r.status, 0, pct); assert.ok(!fs.existsSync(path.join(sb.dir, "pwned.txt")), "nothing was run: " + pct);
+await t("WIN-2", "4-CALIBRATE-CLAUDE never lets typed text run as a command, whatever it contains", async () => {
+  const nasty = ["67&echo pwned>pwned.txt", "67 & calc", "%PATH%", "67|dir", "67^", "a\"b", "!PATH!", "x) & (echo pwned>pwned.txt"];
+  for (const text of nasty) {
+    const sb = sandbox(), r = launch(sb, "4-CALIBRATE-CLAUDE.cmd", `${text}\n${text}\n\n`);
+    assert.ok(!fs.existsSync(path.join(sb.dir, "pwned.txt")), "nothing was run: " + text);
+    assert.ok(r.seen && r.seen.pct === text && r.seen.resets === text, "arrives as plain text, unchanged (usage-max then refuses it): " + JSON.stringify(r.seen) + " <- " + text);
   }
-  // the reset text may only use letters, digits, spaces and : , . / + - ; anything else (command characters, quotes) is refused and nothing runs
-  for (const rst of ["Oct 11 2026 11:00 AM & echo pwned>pwned.txt", "Oct 11 | dir", "Oct 11 2026 %PATH% 11:00", "Oct 11 2026 11:00 AM!", "Oct 11 ^ 2026 11:00", "Oct 11 (2026) 11:00"]) {
-    const sb = sandbox(), r = launch(sb, "4-CALIBRATE-CLAUDE.cmd", `67\n${rst}\n\n`);
-    assert.ok(!fs.existsSync(path.join(sb.dir, "pwned.txt")), "nothing was run: " + rst); assert.equal(r.args, null, "refused: " + rst); assert.notEqual(r.status, 0, rst);
-  }
-  for (const rst of ["2026-10-17T20:00:00-04:00", "10/17/2026 8:00 PM", "Sat, Oct 17 2026 8:00 PM"]) { const ok = launch(sandbox(), "4-CALIBRATE-CLAUDE.cmd", `67\n${rst}\n\n`); assert.ok(ok.args && ok.args[4] === rst, "accepted intact: " + rst + " -> " + JSON.stringify(ok.args)); }
-  const q = sandbox(), rq = launch(q, "4-CALIBRATE-CLAUDE.cmd", '67\nOct 11 "2026" 11:00 AM\n\n'); assert.equal(rq.args, null, "a quote mark is refused"); assert.notEqual(rq.status, 0);
+  for (const miss of ["\n\n", "67\n\n", "\nOct 11 2026 11:00 AM\n\n"]) { const sb = sandbox(), r = launch(sb, "4-CALIBRATE-CLAUDE.cmd", miss); assert.equal(r.args, null, "nothing is called when an answer is missing"); assert.notEqual(r.status, 0); }
 });
 
 await t("WIN-3", "launchers say so plainly when Node.js is missing", async () => {

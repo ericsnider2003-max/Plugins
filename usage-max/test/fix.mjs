@@ -376,10 +376,14 @@ await t("BUG-026", "small status files are written atomically", async () => {
   assert.ok(JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/hook-seen.json"), "utf8")).Stop, "hook-seen written"); assert.deepEqual(fs.readdirSync(path.join(home, ".usage-max-codex")).filter((x) => x.endsWith(".tmp")), []);
 });
 
-await t("BUG-027", "the calibrate launcher never lets typed text run as a command", async () => {
+await t("BUG-027", "the calibrate launcher never lets typed text run as a command: it arrives as data and is checked by usage-max", async () => {
   const c = fs.readFileSync(path.join(root, "..", "install/kit/4-CALIBRATE-CLAUDE.cmd"), "utf8");
-  assert.match(c, /setlocal EnableDelayedExpansion/); assert.match(c, /findstr \/r \/x "\[0-9\]\[0-9\]\*/, "the percent must be a plain number"); assert.match(c, /calibrate "!PCT!" --resets "!RST!"/, "typed values are expanded late and quoted");
-  assert.doesNotMatch(c, /calibrate %PCT%/, "no unquoted use of what was typed");
+  assert.match(c, /calibrate --from-env/, "typed values are never on the command line"); assert.doesNotMatch(c, /calibrate "?%|calibrate "?!/, "no use of what was typed on a command line"); assert.doesNotMatch(c, /\|\s*findstr/, "no pipe built from what was typed");
+  // the check itself runs in usage-max: a bad percent or a date without a time is refused and nothing is saved
+  const home = tmp(); const run = (pct, rst) => spawnSync(process.execPath, [path.join(root, "scripts/governor.mjs"), "calibrate", "--from-env"], { env: { ...process.env, USAGE_MAX_HOME: home, USAGE_MAX_LIMITS_PATH: path.join(home, "none.json"), USAGE_MAX_PCT: pct, USAGE_MAX_RESETS: rst }, encoding: "utf8" });
+  const future = new Date(Date.now() + 3 * 864e5).toISOString();
+  for (const [pct, rst] of [["67&echo pwned>pwned.txt", future], ["abc", future], ["", future], ["67", "2026-10-17"], ["67", "x & y"], ["67", ""]]) { const r = run(pct, rst); assert.notEqual(r.status, 0, `${pct} / ${rst}: ${r.stdout}`); }
+  const ok = run("67%", future); assert.equal(ok.status, 0, ok.stdout + ok.stderr); assert.ok(JSON.parse(fs.readFileSync(path.join(home, ".claude", "usage-max", "governor.json"), "utf8")).calib.pct === 67);
 });
 
 await t("BUG-028", "calibration prices a message once even when two transcript files hold it", async () => {
