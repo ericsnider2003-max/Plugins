@@ -2,6 +2,18 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.19.1 (Oct 13 2026) — safety: nothing lost, nothing switched off
+- **Prompt suggestions are no longer switched off** by the strict profile (it was a product feature). If an older version wrote that switch-off, it is handed back; a switch-off you chose yourself stays.
+- **Trimmed command output always has a saved copy.** If the complete output cannot be saved (full disk, read-only folder), the whole output is shown instead of a trimmed version with no copy.
+- **A cached passing result is no longer replayed in a different folder** (the working folder is part of the cache key; old entries miss once). Cached output is now redacted, stored private and pruned.
+- **Your own files are edited more carefully:** a linked or private config file keeps its link and permissions; syncing project notes into AGENTS.md/CLAUDE.md keeps the file's line endings and encoding, writes atomically and keeps the previous copy outside your repo.
+- **"From now on…" in an ordinary request is no longer saved as a permanent project rule.** It needs a colon or a remember word, and text with an email address or a secret is refused with a message.
+- **The Codex installer fails loudly** (exit code and a list) instead of ending "installed" when its hooks file is corrupt.
+- **Restoring a backup cannot write outside the Codex or data folder** (backslashes, drive letters and `..` are refused).
+- **Big files:** transcripts are read in 8 MB pieces (a gigabyte transcript used to risk running out of memory); a huge pasted prompt no longer slows project-note recall; a huge unbroken line in CLAUDE.md no longer stalls session start.
+- **Smaller fixes:** no pace advice for a window that already reset; no 5-hour "cap" warning in the first tenth of a window; a mistyped `--days` is refused; a reset typed without a time of day is refused; failed saves leave no stray temp files; the tests now run the real code and ignore a CODEX_HOME in your environment.
+- Known and still open (next release): live streaming of trimmed output, and passing typed `/usage-max` text as data rather than through the shell line (needs a check in the real app first).
+
 ## 0.19.0 (Oct 13 2026) — accurate numbers
 - **The weekly estimate no longer overshoots.** Spend was kept per hour and spread evenly across the hour, so a burst just before a reading was counted again after it (the reported 15% vs real 4%). The last 24 hours are now kept per minute, for Claude and for Codex.
 - **A burst now shows in the burn rate** even when there is only one reading, so a heavy hour is no longer averaged away over the week.
