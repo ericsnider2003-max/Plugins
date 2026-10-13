@@ -100,4 +100,33 @@ await t("BUG-041", "usage-check and audit survive one message straddling the win
   const au = run("scripts/audit.mjs", ["--json"], home); assert.equal(au.status, 0, "audit crashed: " + au.stderr.split("\n").slice(0, 6).join(" | "));
 });
 
+await t("BUG-040", "a message repeated across transcript files counts once everywhere, at its largest output", async () => {
+  const home = sandbox(); const dir = path.join(home, ".claude", "projects"); const proj = path.join(dir, "p"); fs.mkdirSync(path.join(proj, "sess", "subagents"), { recursive: true });
+  const now = Date.now(), at = (s) => new Date(now - s * 1000).toISOString();
+  const rec = (id, out, s, extra = {}) => JSON.stringify({ type: "assistant", timestamp: at(s), message: { id, model: "claude-opus-5-5", usage: { input_tokens: 1000000, output_tokens: out }, ...extra } }) + "\n";
+  const main = path.join(proj, "main.jsonl"), sub = path.join(proj, "sess", "subagents", "agent-1.jsonl");
+  const lim = path.join(home, "limits.json"); fs.writeFileSync(lim, JSON.stringify({ capturedAt: new Date().toISOString(), seven_day: { used_percentage: 10, resets_at: Math.floor(now / 1000) + 3 * 86400 } }));
+  const usd = (out) => 4 + out * 20 / 1e6; // 1M input at $4/M plus output at $20/M
+  const check = async (label, turns, cost) => {
+    const uc = JSON.parse(run("scripts/usage-check.mjs", ["--json", "--limits", lim], home).stdout);
+    assert.equal(uc.weekly.assistantTurns, turns, label + ": usage-check turns"); assert.ok(Math.abs(uc.weekly.cost - cost) < 1e-9, `${label}: usage-check cost ${uc.weekly.cost} vs ${cost}`);
+    const au = JSON.parse(run("scripts/audit.mjs", ["--json"], home).stdout); assert.equal(au.allTime.assistantTurns, turns, label + ": audit turns");
+    const dg = JSON.parse(run("scripts/diagnose.mjs", ["--json"], home).stdout); assert.equal(dg.turns, turns, label + ": diagnose turns"); assert.ok(Math.abs(dg.listPriceCost - cost) < 1e-9, `${label}: diagnose cost ${dg.listPriceCost} vs ${cost}`);
+    const svr = await (await imp("scripts/savings.mjs")).claudeSavings({ dir, days: 7, now: now + 1000 }); assert.equal(svr.turns, turns, label + ": savings turns"); assert.ok(Math.abs(svr.total - cost) < 1e-9, `${label}: savings cost ${svr.total} vs ${cost}`);
+    const ev = await (await imp("scripts/anomaly.mjs")).claudeEvents(dir, 7, now + 1000); assert.equal(ev.length, turns, label + ": anomaly events");
+  };
+  // 1. the sub-agent transcript copies a parent message verbatim
+  fs.writeFileSync(main, rec("A", 10000, 60)); fs.writeFileSync(sub, rec("A", 10000, 60)); await check("copy in a sub-agent file", 1, usd(10000));
+  // 2. the later copy has more output (streaming update): it wins, whichever file it is in
+  fs.writeFileSync(sub, rec("A", 50000, 59)); await check("later copy larger", 1, usd(50000));
+  fs.writeFileSync(main, rec("A", 50000, 59)); fs.writeFileSync(sub, rec("A", 10000, 60)); await check("earlier copy larger", 1, usd(50000));
+  // 3. within one file the first record is a partial count, a later record of the same message is the final one
+  fs.writeFileSync(main, rec("B", 10, 60) + rec("B", 5000, 59)); fs.rmSync(sub); await check("streaming update in one file", 1, usd(5000));
+  // 4. distinct messages are untouched
+  fs.writeFileSync(main, rec("C", 100, 60) + rec("D", 200, 59)); fs.writeFileSync(sub, rec("E", 300, 58)); await check("distinct ids", 3, usd(100) + usd(200) + usd(300));
+  // ttl advice: a resumed session file that repeats every turn of the original is not a second session
+  fs.writeFileSync(main, rec("T1", 100, 300) + rec("T2", 100, 200) + rec("T3", 100, 100)); fs.writeFileSync(path.join(proj, "resumed.jsonl"), rec("T1", 100, 300) + rec("T2", 100, 200) + rec("T3", 100, 100)); fs.rmSync(sub, { force: true });
+  const T = await imp("scripts/ttl.mjs"); const adv = await T.ttlAdvice(dir, { minSessions: 1, nowMs: now + 1000 }); assert.equal(adv.sessions, 1, "ttl: one session, not two");
+});
+
 console.log(`${n} passing`);

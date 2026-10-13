@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listJsonlFiles, normalizeUsage, parseTimestamp } from "./lib.mjs";
+import { listJsonlFiles, normalizeUsage, parseTimestamp, createDeduper } from "./lib.mjs";
 import { priceFor, turnCost, replayTtl } from "./pricing.mjs";
 
 function arg(name, fallback = null) {
@@ -29,18 +29,24 @@ const sessions = {};
 const ttl = { actual: 0, sim5m: 0, byProject: {} };
 let baselineTokens = [], mainTurns = 0;
 
+const dedupe = createDeduper(); // a message repeated across files (sub-agent copies, resumed sessions) counts once, at its largest output
 for (const file of await listJsonlFiles(dir)) {
-  const recs = [];
-  const seenIds = new Set(); // one transcript record per content block repeats the same usage
+  try { if (fs.statSync(file).mtimeMs < since) continue; } catch (e) { continue; } // untouched since before the window: nothing in it
   for (const line of fs.readFileSync(file, "utf8").split("\n")) {
     if (!line.includes('"assistant"')) continue;
     let r; try { r = JSON.parse(line); } catch { continue; }
     if (r.type !== "assistant" || !r.message || !r.message.model || r.message.model === "<synthetic>") continue;
-    if (r.message.id) { if (seenIds.has(r.message.id)) continue; seenIds.add(r.message.id); }
     const t = parseTimestamp(r.timestamp);
-    if (t && t < since) continue;
-    recs.push({ t, model: r.message.model, u: normalizeUsage(r.message.usage), side: r.isSidechain === true || file.includes(`${path.sep}subagents${path.sep}`) || file.includes("/subagents/") });
+    dedupe.add(r.message, { file, t, model: r.message.model, u: normalizeUsage(r.message.usage), side: r.isSidechain === true || file.includes(`${path.sep}subagents${path.sep}`) || file.includes("/subagents/") });
   }
+}
+const recsByFile = new Map();
+for (const rec of dedupe.items()) {
+  if (rec.t && rec.t < since) continue;
+  if (!recsByFile.has(rec.file)) recsByFile.set(rec.file, []);
+  recsByFile.get(rec.file).push(rec);
+}
+for (const [file, recs] of recsByFile) {
   recs.sort((a, b) => a.t - b.t);
   const ctxOf = (u) => u.input + u.created + u.read;
   const mainRecs = recs.filter((r) => !r.side).map((r) => ({ t: r.t, u: r.u, p: priceFor(r.model, ctxOf(r.u)) }));
