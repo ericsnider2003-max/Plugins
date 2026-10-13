@@ -228,7 +228,7 @@ export async function summarizeProjects({
       if (timestamp && timestamp < since) return;
       if (duplicate) { // same API response as an earlier record: its tokens are already counted, but not its tool calls
         const extra = toolCallNames(record.message);
-        if (extra.length) {
+        if (extra.length && summary.models[record.message.model]) { // no bucket = the message's first copy fell before the window start: that message is out, so are its repeats
           summary.models[record.message.model].toolCalls += extra.length;
           summary.ranges.all.toolCalls += extra.length;
           if (summary.sessions[file]) summary.sessions[file].toolCalls += extra.length;

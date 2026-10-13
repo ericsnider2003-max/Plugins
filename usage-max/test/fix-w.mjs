@@ -85,4 +85,19 @@ await t("SEC-005", "the Opus 5.5 ceiling reads the version wherever it sits in t
   for (const id of ["opus", "claude-opus-next"]) assert.equal(C.aboveCeiling(id), false, "an alias is not blocked: " + id);
 });
 
+await t("BUG-041", "usage-check and audit survive one message straddling the window start", async () => {
+  const home = sandbox(); const proj = path.join(home, ".claude", "projects", "p"); fs.mkdirSync(proj, { recursive: true });
+  const now = Date.now(), start = now - 7 * 86400e3; // audit's last-7-days window; usage-check gets the same start through a limits file
+  const usage = { input_tokens: 1000, output_tokens: 100 };
+  const rec = (ts, content) => JSON.stringify({ type: "assistant", timestamp: new Date(ts).toISOString(), message: { id: "straddle", model: "claude-opus-5-5", usage, content } }) + "\n";
+  fs.writeFileSync(path.join(proj, "s.jsonl"), rec(start - 120e3, [{ type: "text", text: "hi" }]) + rec(start + 120e3, [{ type: "tool_use", id: "tu1", name: "Edit", input: { file_path: "/x" } }]));
+  const lim = path.join(home, "limits.json"); fs.writeFileSync(lim, JSON.stringify({ capturedAt: new Date().toISOString(), seven_day: { used_percentage: 10, resets_at: Math.floor((now + 3600e3) / 1000) } }));
+  // usage-check's window starts at resets_at - 7d (= 7d minus 1h ago): a second straddling pair sits around that start
+  const ucStart = Math.floor((now + 3600e3) / 1000) * 1000 - 7 * 86400e3;
+  fs.writeFileSync(path.join(proj, "u.jsonl"), rec(ucStart - 120e3, [{ type: "text", text: "hi" }]).replace("straddle", "straddle2") + rec(ucStart + 120e3, [{ type: "tool_use", id: "tu2", name: "Edit", input: { file_path: "/y" } }]).replace("straddle", "straddle2"));
+  const uc = run("scripts/usage-check.mjs", ["--json", "--limits", lim], home); assert.ok(uc.status === 0 || uc.status === 2, "usage-check crashed: " + uc.stderr.split("\n").slice(0, 6).join(" | "));
+  assert.ok(JSON.parse(uc.stdout).weekly, "usage-check printed a report");
+  const au = run("scripts/audit.mjs", ["--json"], home); assert.equal(au.status, 0, "audit crashed: " + au.stderr.split("\n").slice(0, 6).join(" | "));
+});
+
 console.log(`${n} passing`);
