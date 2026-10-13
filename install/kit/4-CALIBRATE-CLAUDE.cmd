@@ -22,7 +22,7 @@ if not defined PCT goto bad
 if not defined RST goto bad
 rem what you typed is only ever read with !delayed! expansion (never re-parsed as commands). The percent must be a plain number and the date may only use letters, digits, spaces and : , . / + - (so no quote marks or command characters can get in).
 echo(!PCT!| findstr /r /x "[0-9][0-9]*\.*[0-9]*" >nul || goto bad
-echo(!RST!| findstr /r /x "[A-Za-z0-9 :,./+-]*" >nul || goto bad
+echo(!RST!| findstr /r /x /c:"[A-Za-z0-9 :,./+-]*" >nul || goto bad
 node "%CHK%" budget calibrate "!PCT!" --resets "!RST!"
 echo.
 echo Done. Run this again whenever you look at Settings, Usage. Two readings a few hours apart give a real burn rate.
