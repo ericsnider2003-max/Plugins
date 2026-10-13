@@ -4,12 +4,17 @@
 //   node eval-cache.mjs status | clear
 // Key = hash of file/dir contents in --key (+ salt + command + the resolved working folder). Only exit-0 runs are cached. On hit: replays stdout/stderr,
 // restores --artifacts, exits 0 without spending a token. Disable with USAGE_MAX_EVAL_CACHE=off.
+// What is stored is redacted (the plugin's secret filter; a replay shows [redacted] where a token was), kept private (folder 0700, files 0600),
+// and entries older than the cache lifetime (default 30 days) are deleted. If the filter cannot be loaded, nothing is stored.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+
+let redact = null; try { ({ redact } = await import("./memory.mjs")); } catch (e) { redact = null; }
+const DAY = 864e5;
 
 const q = (a) => (process.platform === "win32" && /[\s"&|<>^%]/.test(a) ? '"' + a.replace(/"/g, '\\"') + '"' : a);
 const SKIP = new Set(["node_modules", ".git", "__pycache__", ".DS_Store"]);
@@ -35,6 +40,25 @@ export function gitState(cwd = process.cwd()) {
 export function canonicalCwd(cwd = process.cwd()) { let c; try { c = fs.realpathSync.native(cwd); } catch (e) { c = path.resolve(cwd); } return process.platform === "win32" ? c.toLowerCase() : c; }
 export function keyFor({ keys, salt = "", cmd, git = null, cwd = process.cwd() }) { const h = hashPaths(keys); h.update("cwd:" + canonicalCwd(cwd)); if (git) h.update("git:" + git); h.update("salt:" + salt); h.update("cmd:" + cmd.join("\u0000")); return h.digest("hex").slice(0, 32); }
 
+// Private store: the folder is made 0700 (an older version left it open), every file is written 0600 and swapped in whole.
+function privateDir(d) { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); try { fs.chmodSync(d, 0o700); } catch (e) { process.exitCode = process.exitCode || 0; } }
+function putPrivate(file, text) { const t = `${file}.${process.pid}.tmp`; fs.writeFileSync(t, text, { mode: 0o600 }); try { fs.chmodSync(t, 0o600); } catch (e) { process.exitCode = process.exitCode || 0; } fs.renameSync(t, file); }
+// Deletes entries (and their artifact folders) older than maxAgeMs; an unreadable entry is judged by its file time. Never throws.
+export function pruneCache(dir, maxAgeMs, now = Date.now()) {
+  let gone = 0;
+  try {
+    for (const n of fs.readdirSync(dir)) {
+      const p = path.join(dir, n); let age;
+      try { age = n.endsWith(".json") ? (() => { try { return now - JSON.parse(fs.readFileSync(p, "utf8")).at; } catch (e) { return now - fs.statSync(p).mtimeMs; } })() : now - fs.statSync(p).mtimeMs; } catch (e) { continue; }
+      if (!n.endsWith(".json") && !n.endsWith(".art") && !n.endsWith(".tmp")) continue;
+      if (n.endsWith(".art") && fs.existsSync(p.slice(0, -4) + ".json")) continue; // judged together with its entry
+      if (!(age > maxAgeMs)) continue;
+      try { fs.rmSync(p, { recursive: true, force: true }); gone++; if (n.endsWith(".json")) fs.rmSync(p.slice(0, -5) + ".art", { recursive: true, force: true }); } catch (e) { continue; }
+    }
+  } catch (e) { return gone; }
+  return gone;
+}
+
 function main() {
   const argv = process.argv.slice(2); const sub = argv[0];
   if (sub === "status" || sub === "clear") {
@@ -51,22 +75,23 @@ function main() {
   if (process.env.USAGE_MAX_EVAL_CACHE === "off") return run().code;
   let git = null;
   if (!keys.length) { git = gitState(); if (!git) { console.error("[eval-cache] no --key given and this is not a git folder, so nothing can tell when the inputs change: running without the cache"); return run().code; } }
+  if (fs.existsSync(cacheDir())) pruneCache(cacheDir(), Math.max(ttl, 30 * DAY));
   const key = keyFor({ keys, salt, cmd, git }), file = path.join(cacheDir(), key + ".json"); let e = null;
-  try { e = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
+  try { e = JSON.parse(fs.readFileSync(file, "utf8")); } catch (err) { e = null; } // no usable entry: run it
   if (e && !opt.includes("--force") && Date.now() - e.at < ttl) {
     process.stdout.write(e.stdout || ""); process.stderr.write(e.stderr || "");
     if (art && e.artDir && fs.existsSync(e.artDir)) fs.cpSync(e.artDir, art, { recursive: true });
-    e.hits = (e.hits || 0) + 1; fs.writeFileSync(file, JSON.stringify(e)); console.error(`[eval-cache] HIT ${key.slice(0, 8)} — skipped (${Math.round((e.ms || 0) / 1000)}s of work)`); return 0;
+    e.hits = (e.hits || 0) + 1; let hitErr = null; try { putPrivate(file, JSON.stringify(e)); } catch (err) { hitErr = err.message; } if (hitErr) console.error("[eval-cache] could not update the hit counter: " + hitErr); console.error(`[eval-cache] HIT ${key.slice(0, 8)} — skipped (${Math.round((e.ms || 0) / 1000)}s of work)`); return 0;
   }
   if (opt.includes("--hold-red")) {
     const g = spawnSync(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), "governor.mjs"), "gate"], { stdio: "ignore" });
     if (g.status === 20) { console.error("[eval-cache] RED budget mode — run deferred (exit 75)"); return 75; }
   }
   const t0 = Date.now(), res = run(), code = res.code, ms = Date.now() - t0;
-  if (code === 0) {
-    fs.mkdirSync(cacheDir(), { recursive: true }); let artDir = null;
-    if (art && fs.existsSync(art)) { artDir = path.join(cacheDir(), key + ".art"); fs.rmSync(artDir, { recursive: true, force: true }); fs.cpSync(art, artDir, { recursive: true }); }
-    fs.writeFileSync(file, JSON.stringify({ at: Date.now(), ms, cmd, artDir, hits: 0, stdout: res.stdout.slice(0, 2e6), stderr: res.stderr.slice(0, 2e5) }));
+  if (code === 0 && redact) {
+    privateDir(cacheDir()); let artDir = null;
+    if (art && fs.existsSync(art)) { artDir = path.join(cacheDir(), key + ".art"); fs.rmSync(artDir, { recursive: true, force: true }); fs.cpSync(art, artDir, { recursive: true }); } // no mode change on the copy: the cache folder is 0700, and restoring must not alter your artifact folder modes
+    putPrivate(file, JSON.stringify({ at: Date.now(), ms, cmd: cmd.map(redact), artDir, hits: 0, stdout: redact(res.stdout).slice(0, 2e6), stderr: redact(res.stderr).slice(0, 2e5) }));
   }
   return code;
 }

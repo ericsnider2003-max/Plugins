@@ -52,4 +52,28 @@ await t("BUG-051", "only an explicit remember word or colon saves a decision, an
   }
 });
 
+await t("SEC-007", "cached output is redacted, stored private (0600/0700) and old entries are pruned", async () => {
+  const home = sandbox(); delete process.env.USAGE_MAX_EVAL_CACHE; const cache = path.join(home, ".usage-max", "eval-cache");
+  const proj = path.join(home, "proj"); fs.mkdirSync(proj); fs.writeFileSync(path.join(proj, "in.txt"), "x");
+  const tok = "ghp_" + "Ab1".repeat(12), pw = "hunter2hunter2";
+  const go = (extra = []) => spawnSync("node", [path.join(root, "scripts/eval-cache.mjs"), "--key", "in.txt", ...extra, "--", "node", "-e", `console.log("deploy ok token ${tok}"); console.error("password=${pw}")`], { cwd: proj, encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: home } });
+  // an older version left a world-readable folder and files behind, and an entry from 40 days ago
+  fs.mkdirSync(cache, { recursive: true }); if (POSIX) fs.chmodSync(cache, 0o755);
+  const old = path.join(cache, "0".repeat(32) + ".json"), oldArt = path.join(cache, "0".repeat(32) + ".art"), fresh = path.join(cache, "f".repeat(32) + ".json");
+  fs.writeFileSync(old, JSON.stringify({ at: Date.now() - 40 * 864e5, ms: 1, stdout: "old" })); fs.mkdirSync(oldArt); fs.writeFileSync(path.join(oldArt, "r.txt"), "old artifact");
+  fs.writeFileSync(fresh, JSON.stringify({ at: Date.now() - 864e5, ms: 1, stdout: "fresh" }));
+  const r1 = go(); assert.equal(r1.status, 0); assert.match(r1.stdout, /deploy ok/, "the first (real) run shows the real output");
+  const files = fs.readdirSync(cache).filter((f) => f.endsWith(".json") && f !== path.basename(old) && f !== path.basename(fresh));
+  assert.equal(files.length, 1, "one new entry"); const stored = fs.readFileSync(path.join(cache, files[0]), "utf8");
+  assert.ok(!stored.includes(tok) && !stored.includes(pw), "no secret in the stored file: " + stored); assert.match(stored, /\[redacted\]/);
+  assert.equal(fs.existsSync(old), false, "an entry older than the cache lifetime is pruned"); assert.equal(fs.existsSync(oldArt), false, "and its artifacts"); assert.equal(fs.existsSync(fresh), true, "a recent entry stays");
+  const r2 = go(); assert.match(r2.stderr, /HIT/); assert.ok(!r2.stdout.includes(tok) && !r2.stderr.includes(pw), "the replay does not bring the secret back");
+  if (POSIX) {
+    assert.equal(fs.statSync(cache).mode & 0o777, 0o700, "cache folder is private"); assert.equal(fs.statSync(path.join(cache, files[0])).mode & 0o777, 0o600, "entry file is private");
+    fs.chmodSync(path.join(cache, files[0]), 0o644); go(); assert.equal(fs.statSync(path.join(cache, files[0])).mode & 0o777, 0o600, "a hit rewrite keeps it private");
+  }
+  const E = await imp("scripts/eval-cache.mjs"); assert.equal(typeof E.pruneCache, "function"); fs.writeFileSync(path.join(cache, "a".repeat(32) + ".json"), "{not json"); const past = new Date(Date.now() - 50 * 864e5); fs.utimesSync(path.join(cache, "a".repeat(32) + ".json"), past, past);
+  E.pruneCache(cache, 30 * 864e5); assert.equal(fs.existsSync(path.join(cache, "a".repeat(32) + ".json")), false, "a corrupt old file is pruned by its age");
+});
+
 console.log(`${n} passing`);
