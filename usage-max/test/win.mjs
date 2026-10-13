@@ -22,7 +22,7 @@ function sandbox({ withFiles = true, installExit = 0 } = {}) {
 // Runs one launcher with the given keyboard input (one line per answer); returns { status, text, args } where args is what the stand-in saw (or null).
 function launch(sb, file, input = "", env = {}) {
   fs.mkdirSync(sb.profile, { recursive: true });
-  const r = spawnSync("cmd.exe", ["/d", "/s", "/c", `"${path.join(sb.dir, file)}"`], { input, encoding: "utf8", windowsVerbatimArguments: true, cwd: sb.dir, timeout: 60000, env: { ...process.env, STUB_OUT: sb.out, USERPROFILE: sb.profile, ...env } });
+  const r = spawnSync("cmd.exe", ["/d", "/s", "/c", `"${path.join(sb.dir, file)}"`], { input: input.replace(/\r?\n/g, "\r\n"), // a real Enter key is CR LF encoding: "utf8", windowsVerbatimArguments: true, cwd: sb.dir, timeout: 60000, env: { ...process.env, STUB_OUT: sb.out, USERPROFILE: sb.profile, ...env } });
   let args = null; try { args = JSON.parse(fs.readFileSync(sb.out, "utf8")); } catch (e) { args = null; }
   return { status: r.status, text: `${r.stdout || ""}${r.stderr || ""}`, args };
 }
