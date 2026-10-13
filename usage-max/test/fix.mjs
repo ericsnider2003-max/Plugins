@@ -656,4 +656,13 @@ await t("BUG-058", "a mistyped number of days is refused, not read as all histor
   }
 });
 
+await t("BUG-059", "a reset typed without a time of day is refused (Claude and Codex copies)", async () => {
+  for (const f of ["scripts/resettime.mjs", "codex/scripts/resettime.mjs"]) {
+    const { parseResetTime } = await imp(f), now = Date.parse("2026-10-13T12:00:00Z");
+    const r = parseResetTime("2026-10-17", now); assert.match(r.error, /no time of day/, f); assert.match(parseResetTime("17 Oct 2026", now).error, /no time of day/);
+    assert.ok(parseResetTime("2026-10-17T20:00:00-04:00", now).ms, "a full time still works"); assert.ok(parseResetTime("Oct 17 2026 8:00 PM", now).ms || parseResetTime("Oct 17 2026 8:00 PM", now).error);
+    assert.ok(parseResetTime(String(Math.floor((now + 864e5) / 1000)), now).ms, "epoch seconds still work");
+  }
+});
+
 console.log(`${n} passing`);
