@@ -2,7 +2,7 @@
 // eval-cache: skip re-running an eval/batch command when nothing it depends on changed.
 //   node eval-cache.mjs [--key a,b,dir] [--salt s] [--ttl-days 30] [--artifacts dir] [--hold-red] [--force] -- <command...>
 //   node eval-cache.mjs status | clear
-// Key = hash of file/dir contents in --key (+ salt + command). Only exit-0 runs are cached. On hit: replays stdout/stderr,
+// Key = hash of file/dir contents in --key (+ salt + command + the resolved working folder). Only exit-0 runs are cached. On hit: replays stdout/stderr,
 // restores --artifacts, exits 0 without spending a token. Disable with USAGE_MAX_EVAL_CACHE=off.
 import fs from "node:fs";
 import os from "node:os";
@@ -31,7 +31,9 @@ export function gitState(cwd = process.cwd()) {
   for (const f of (g("ls-files", "-o", "--exclude-standard") || "").split("\n").filter(Boolean).sort()) { h.update("u:" + f); try { const fp = path.join(cwd, f), st = fs.statSync(fp); if (st.size > 5e6) h.update(`big:${st.size}:${st.mtimeMs}`); else h.update(fs.readFileSync(fp)); } catch (e) { h.update("unreadable"); } }
   return h.digest("hex");
 }
-export function keyFor({ keys, salt = "", cmd, git = null }) { const h = hashPaths(keys); if (git) h.update("git:" + git); h.update("salt:" + salt); h.update("cmd:" + cmd.join("\u0000")); return h.digest("hex").slice(0, 32); }
+// The working folder is part of the key: the same command in pkg-a and pkg-b reads different files, so one folder's PASS must never be replayed in the other.
+export function canonicalCwd(cwd = process.cwd()) { let c; try { c = fs.realpathSync.native(cwd); } catch (e) { c = path.resolve(cwd); } return process.platform === "win32" ? c.toLowerCase() : c; }
+export function keyFor({ keys, salt = "", cmd, git = null, cwd = process.cwd() }) { const h = hashPaths(keys); h.update("cwd:" + canonicalCwd(cwd)); if (git) h.update("git:" + git); h.update("salt:" + salt); h.update("cmd:" + cmd.join("\u0000")); return h.digest("hex").slice(0, 32); }
 
 function main() {
   const argv = process.argv.slice(2); const sub = argv[0];
