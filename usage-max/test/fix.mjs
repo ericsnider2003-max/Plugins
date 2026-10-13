@@ -496,4 +496,14 @@ await t("BUG-036", "Codex: a typed-in reading is not replaced by an older log re
   const r = C.calibrate(60, new Date((now + 6 * 864e5)).toISOString(), now); assert.ok(Math.abs(r.k - 3) < 0.05, "60% over this week's 20 units: " + r.k);
 });
 
+await t("BUG-037", "Codex: no extra effort from a days-old reading, and an ended 5-hour window is not shown as current", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const C = await imp("codex/scripts/codex-governor.mjs"); const now = Date.now(), resetIso = new Date(now + 3 * 864e5).toISOString();
+  const dd = path.join(home, ".usage-max-codex"); fs.mkdirSync(dd, { recursive: true });
+  const gf = path.join(dd, "governor.json"), put = (at) => fs.writeFileSync(gf, JSON.stringify({ mode: "green", k: 1, calib: { pct: 5, at, resets: resetIso, source: "plan" } }));
+  put(now - 3 * 864e5); assert.equal(C.evaluate(now, true).surplus, false, "3-day-old reading: no surplus");
+  put(now - 36e5); assert.equal(C.evaluate(now, true).surplus, true, "a fresh low reading still allows it");
+  const m = { hours: {}, fine: {}, limits: { ts: now, primary: { used_percent: 90, window_minutes: 300, resets_at: Math.floor((now - 36e5) / 1000) } } }; const st = {}; C.absorbLimits(st, m, now); assert.equal(st.five, null, "ended window is not current");
+});
+
 console.log(`${n} passing`);

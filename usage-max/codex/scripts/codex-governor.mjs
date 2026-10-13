@@ -128,7 +128,8 @@ export function windows(limits) {
 }
 export const K_MIN_DPCT = 3, K_MIN_SPEND = 0.5;
 export function absorbLimits(st, m, now) {
-  const w = windows(m.limits); st.five = w.short ? { pct: w.short.used_percent, resetsAt: w.short.resets_at || null, windowMinutes: w.short.window_minutes, ts: m.limits.ts } : null;
+  // a 5-hour window that has already ended is not shown as current
+  const w = windows(m.limits); st.five = w.short && !(w.short.resets_at && w.short.resets_at * 1000 <= now) ? { pct: w.short.used_percent, resetsAt: w.short.resets_at || null, windowMinutes: w.short.window_minutes, ts: m.limits.ts } : null;
   if (!w.weekly || !w.weekly.resets_at) return false;
   const at = m.limits.ts, resets = new Date(w.weekly.resets_at * 1000).toISOString(), c = st.calib;
   if (c && c.at >= at) return false; // a newer reading (typed in or from the logs) is never replaced by an older one
@@ -150,6 +151,7 @@ export function fiveFloor(f, now) {
   const projected = f.pct / elapsed; if (projected <= 100) return "green";
   return projected > 140 && elapsed >= 0.25 ? "red" : "amber";
 }
+export const SURPLUS_MAX_READING_AGE_MS = 12 * 36e5;
 export function evaluate(now = Date.now(), force = false) {
   const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json");
   const st = j(sf, { mode: "green", override: null, calib: null, k: null }); const m = meterAll(cfg, now, force);
@@ -160,7 +162,8 @@ export function evaluate(now = Date.now(), force = false) {
     const floor = fiveFloor(st.five, now); const rank = { green: 0, amber: 1, red: 2 }; if (rank[floor] > rank[mode]) mode = floor;
   }
   const fl = fiveFloor(st.five, now); let surplus = false;
-  if (mode === "green" && e && fl === "green" && !e.rolled) { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12) : proj < 80 && e.hoursLeft > 12; e.projected = proj; }
+  const freshReading = st.calib && now - st.calib.at < SURPLUS_MAX_READING_AGE_MS; // extra effort needs a recent reading, not a days-old one
+  if (mode === "green" && e && fl === "green" && !e.rolled && freshReading) { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12) : proj < 80 && e.hoursLeft > 12; e.projected = proj; }
   if (mode !== st.mode) { st.history = [...(Array.isArray(st.history) ? st.history : []), { at: new Date(now).toISOString(), from: st.mode, to: mode }].slice(-200); }
   st.mode = mode; st.surplus = surplus; st.appliedKey = st.appliedKey || null; wj(sf, st);
   try { writeSelf({ ...(st.calib ? { readingPct: st.calib.pct, readingAt: st.calib.at } : {}), dataAt: st.calib && st.calib.at ? new Date(st.calib.at).toISOString() : null, mode, surplus, estPct: e && !e.rolled ? e.est : null, hoursLeft: e?.hoursLeft ?? null, fivePct: st.five?.pct ?? null, updatedAt: new Date(now).toISOString() }); } catch (e) { writeFailures.push("shared.json: " + (e.code || e.message)); }
