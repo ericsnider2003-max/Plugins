@@ -16,6 +16,5 @@
     }
   },
   "promptCacheTtl": "5m",
-  "promptSuggestionEnabled": false,
   "autoContinueAtUsageLimit": true
 }

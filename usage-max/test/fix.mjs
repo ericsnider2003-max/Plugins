@@ -533,4 +533,14 @@ await t("BUG-044", "two sessions at once cannot lose a pinned mode or the other 
   }
 });
 
+await t("BUG-052", "prompt suggestions are not switched off, and an older switch-off is handed back", async () => {
+  for (const f of ["profiles/settings.enforced.json", "profiles/settings.strict.json"]) assert.equal(JSON.parse(fs.readFileSync(path.join(root, f), "utf8")).promptSuggestionEnabled, undefined, f);
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const P = await imp("scripts/profile.mjs");
+  const ud = path.join(home, ".claude", "usage-max"), sf = path.join(home, ".claude", "settings.json"); fs.mkdirSync(ud, { recursive: true });
+  fs.writeFileSync(sf, JSON.stringify({ promptSuggestionEnabled: false, theme: "dark" })); fs.writeFileSync(path.join(ud, "applied.json"), JSON.stringify({ promptSuggestionEnabled: false }));
+  assert.deepEqual(P.handBack(home), ["promptSuggestionEnabled"]); assert.deepEqual(JSON.parse(fs.readFileSync(sf, "utf8")), { theme: "dark" });
+  fs.writeFileSync(sf, JSON.stringify({ promptSuggestionEnabled: false })); fs.writeFileSync(path.join(ud, "applied.json"), "{}");
+  assert.deepEqual(P.handBack(home), [], "a switch-off you chose yourself stays"); assert.equal(JSON.parse(fs.readFileSync(sf, "utf8")).promptSuggestionEnabled, false);
+});
+
 console.log(`${n} passing`);

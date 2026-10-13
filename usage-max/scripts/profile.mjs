@@ -20,7 +20,7 @@ export const MARKETPLACE = { name: "eric-plugins", repo: "ericsnider2003-max/Plu
 const OWNED_BY_GOVERNOR = new Set(["model", "effortLevel", "modelSettings"]);
 // Written by older versions, never by this one: they switch off features or connections (telemetry off was reported to block Remote Control).
 // Handed back only while the value is still exactly what usage-max wrote; a value you set yourself is never touched.
-export const HAND_BACK = ["env.DISABLE_TELEMETRY", "env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "env.CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "env.CLAUDE_CODE_GOAL_CHECKIN_MINUTES", "env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "crossSessionInbound"];
+export const HAND_BACK = ["env.DISABLE_TELEMETRY", "env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "env.CLAUDE_CODE_ENABLE_AWAY_SUMMARY", "env.CLAUDE_CODE_GOAL_CHECKIN_MINUTES", "env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "crossSessionInbound", "promptSuggestionEnabled"];
 const fwd = (p) => p.replace(/\\/g, "/");
 const homeDir = () => process.env.USAGE_MAX_HOME || os.homedir();
 const dataDir = (home) => path.join(home, ".claude", "usage-max");
