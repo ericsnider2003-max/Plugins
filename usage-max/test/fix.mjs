@@ -468,4 +468,21 @@ await t("BUG-034", "typed-in readings with almost no spend do not wreck the conv
   assert.equal(JSON.parse(fs.readFileSync(path.join(ud, "governor.json"), "utf8")).k, 0.134, r.stdout + r.stderr);
 });
 
+await t("BUG-035", "one-point steps over tiny spend do not push the conversion rate up (Claude and Codex)", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const G = await imp("scripts/governor.mjs"), C = await imp("codex/scripts/codex-governor.mjs");
+  const now = Date.now(), reset = Math.floor((now + 3 * 864e5) / 1000), snap = (pct, i) => ({ capturedAt: new Date(now + i * 6e5).toISOString(), seven_day: { used_percentage: pct, resets_at: reset } });
+  const st = { k: 0.5, calib: { pct: 40, at: now - 36e5, cumAt: 10, resetsAt: reset, source: "plan" } };
+  G.absorbSnapshot(st, snap(41, 1), 10.1); G.absorbSnapshot(st, snap(42, 2), 10.2); assert.equal(st.k, 0.5, "a point or two over 20 cents teaches nothing");
+  G.absorbSnapshot(st, snap(44, 3), 12); assert.ok(Math.abs(st.k - (0.7 * 0.5 + 0.3 * (4 / 2))) < 1e-9, "4 points over $2 does: " + st.k);
+  // Codex: the same, with the spend in the minute map
+  const spend = (m, i, c) => { m.fine[Math.floor((now + i * 6e5 - 3e5) / 6e4)] = c; };
+  const win = (pct, i) => ({ ts: now + i * 6e5, primary: { used_percent: pct, window_minutes: 10080, resets_at: reset } });
+  const cm = { hours: {}, fine: {}, limits: null }, cs = { k: 0.5, calib: { pct: 40, at: now - 36e5, resets: new Date(reset * 1000).toISOString(), source: "plan" } };
+  spend(cm, 1, 0.1); cm.limits = win(41, 1); C.absorbLimits(cs, cm, now + 6e5); spend(cm, 2, 0.1); cm.limits = win(42, 2); C.absorbLimits(cs, cm, now + 12e5); assert.equal(cs.k, 0.5, "Codex: no learning from tiny steps");
+  spend(cm, 3, 2); cm.limits = win(44, 3); C.absorbLimits(cs, cm, now + 18e5); assert.ok(Math.abs(cs.k - (0.7 * 0.5 + 0.3 * (4 / 2.2))) < 0.05, "Codex learns from the whole stretch: " + cs.k);
+  // a first rate from a week with next to no spend is not accepted
+  const c2 = { hours: {}, fine: {}, limits: win(3, 0) }, s2 = {}; spend(c2, 0, 0.05); C.absorbLimits(s2, c2, now); assert.ok(!s2.k, "no k from 5 cents");
+});
+
 console.log(`${n} passing`);

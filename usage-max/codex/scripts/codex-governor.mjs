@@ -126,14 +126,20 @@ export function windows(limits) {
   const ws = [limits && limits.primary, limits && limits.secondary].filter((w) => w && typeof w.used_percent === "number" && w.window_minutes);
   return { weekly: ws.filter((w) => w.window_minutes >= 7000).sort((a, b) => b.window_minutes - a.window_minutes)[0] || null, short: ws.filter((w) => w.window_minutes <= 600).sort((a, b) => a.window_minutes - b.window_minutes)[0] || null };
 }
+export const K_MIN_DPCT = 3, K_MIN_SPEND = 0.5;
 export function absorbLimits(st, m, now) {
   const w = windows(m.limits); st.five = w.short ? { pct: w.short.used_percent, resetsAt: w.short.resets_at || null, windowMinutes: w.short.window_minutes, ts: m.limits.ts } : null;
   if (!w.weekly || !w.weekly.resets_at) return false;
   const at = m.limits.ts, resets = new Date(w.weekly.resets_at * 1000).toISOString(), c = st.calib;
   if (c && c.at >= at && c.source === "plan") return false;
   const sameWindow = c && Math.abs(Date.parse(c.resets) - w.weekly.resets_at * 1000) < 120000;
-  if (sameWindow && c.at < at) { const d = spendSince(m, c.at) - spendSince(m, at), dp = w.weekly.used_percent - c.pct; if (spendSince(m, c.at) - spendSince(m, at) > 0 && dp > 0) st.k = st.k ? 0.7 * st.k + 0.3 * (dp / d) : dp / d; }
-  if (!st.k) { const week = spendSince(m, w.weekly.resets_at * 1000 - 7 * 864e5); if (week > 0 && w.weekly.used_percent > 0) st.k = w.weekly.used_percent / week; }
+  // k is learned over a stretch of at least K_MIN_DPCT points and K_MIN_SPEND units (whole-percent readings make a 1-point step look like 0.5-1.5); the stretch starts at kBase, which only moves when a sample is taken
+  const used = w.weekly.used_percent, same = (r) => Math.abs(Date.parse(r) - w.weekly.resets_at * 1000) < 120000;
+  let kb = st.kBase;
+  if (!kb || !same(kb.resets) || used < kb.pct) kb = sameWindow && used >= c.pct ? { pct: c.pct, at: c.at, resets } : null;
+  if (kb && kb.at < at) { const d = spendSince(m, kb.at) - spendSince(m, at), dp = used - kb.pct; if (dp >= K_MIN_DPCT && d >= K_MIN_SPEND) { st.k = st.k ? 0.7 * st.k + 0.3 * (dp / d) : dp / d; kb = null; } }
+  st.kBase = kb || { pct: used, at, resets };
+  if (!st.k) { const week = spendSince(m, w.weekly.resets_at * 1000 - 7 * 864e5); if (used >= 1 && week >= Math.max(1, used / 5)) st.k = used / week; }
   st.calib = { pct: w.weekly.used_percent, at, resets, source: "plan" }; return true;
 }
 // Pace-aware 5-hour guard: only tighten when the current burn would hit 100% before the window resets.

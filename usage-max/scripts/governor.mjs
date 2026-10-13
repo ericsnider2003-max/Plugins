@@ -82,6 +82,7 @@ export function decide({ estPct, hoursLeft, ratePerHour, prevMode, config }) {
 // local spend) from real deltas instead of needing a manual `calibrate`.
 // meterCum is the meter total NOW; the reading was taken earlier, so the spend recorded since then belongs AFTER the reading and is taken off the
 // baseline (opts.meter + opts.nowMs); otherwise the next estimate would leave out the turns between the reading and this call.
+export const K_MIN_DPCT = 3, K_MIN_SPEND = 0.5;
 // k (plan % per list-price dollar) from a typed-in reading and the spend that week: nothing learned from almost no spend, and a 0% reading keeps what was learned
 export function kFromCalibration(oldK, pct, spend) {
   if (!(pct >= 1) || !(spend >= Math.max(1, pct / 5))) return { k: oldK || 0, learned: false };
@@ -98,11 +99,15 @@ export function absorbSnapshot(state, limits, meterCum, opts = {}) {
   state.snaps = (state.snaps || []).filter((x) => x.resetsAt === sd.resets_at).slice(-199);
   const last = state.snaps[state.snaps.length - 1];
   if (!last || at - last.at >= 5 * 60000 || sd.used_percentage !== last.pct) state.snaps.push({ at, pct: sd.used_percentage, resetsAt: sd.resets_at });
-  if (c && c.resetsAt === sd.resets_at) {
-    const dPct = sd.used_percentage - c.pct;
-    const dSpend = meterCum - c.cumAt;
-    if (dSpend > 0.25 && dPct > 0) state.k = state.k ? 0.7 * state.k + 0.3 * (dPct / dSpend) : dPct / dSpend;
+  // k is learned from a stretch of at least K_MIN_DPCT points and K_MIN_SPEND dollars: whole-percent readings make a 1-point step look like 0.5-1.5, so a
+  // short stretch overstates k badly. The stretch's start (kBase) only moves when a sample is taken, not at every reading.
+  let kb = state.kBase;
+  if (!kb || kb.resetsAt !== sd.resets_at || sd.used_percentage < kb.pct) kb = c && c.resetsAt === sd.resets_at && sd.used_percentage >= c.pct ? { pct: c.pct, cumAt: c.cumAt, resetsAt: c.resetsAt } : null;
+  if (kb) {
+    const dPct = sd.used_percentage - kb.pct, dSpend = meterCum - kb.cumAt;
+    if (dPct >= K_MIN_DPCT && dSpend >= K_MIN_SPEND) { state.k = state.k ? 0.7 * state.k + 0.3 * (dPct / dSpend) : dPct / dSpend; kb = null; }
   }
+  state.kBase = kb || { pct: sd.used_percentage, cumAt: meterCum, resetsAt: sd.resets_at };
   state.calib = { pct: sd.used_percentage, at, cumAt: meterCum, resetsAt: sd.resets_at, source: "plan" };
   return true;
 }
@@ -302,6 +307,7 @@ async function cli() {
       saveMeter(meter);
       const lk = kFromCalibration(state.k, pct, windowSpend); state.k = lk.k;
       state.calib = { pct, at: now, cumAt: 0, resetsAt, source: "manual" };
+      state.kBase = { pct, cumAt: 0, resetsAt };
       saveState(state);
       console.log(`calibrated: ${pct}% of the week${lk.learned ? ` = $${windowSpend.toFixed(2)} local list-price spend → k=${state.k.toFixed(4)} %/$` : `; only $${windowSpend.toFixed(2)} of local spend, too little to learn from, so the conversion rate stays ${state.k ? state.k.toFixed(4) + " %/$" : "unset"}`} (resets ${new Date(resetsAt * 1000).toString()})`);
     } else {
