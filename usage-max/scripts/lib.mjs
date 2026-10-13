@@ -342,6 +342,14 @@ export function topEntries(map, limit = 10) {
     .map(([name, bucket]) => ({ name, ...bucket }));
 }
 
+// A number of days typed on the command line: a plain positive number, or null. ('7x' used to become NaN, which matched every date, and 0 silently became 7.)
+export function parseDays(value, fallback = 7) {
+  if (value === undefined || value === null) return fallback;
+  const t = String(value).trim(); if (!/^\d+(\.\d+)?$/.test(t)) return null;
+  const n = Number(t); return n > 0 && n <= 3650 ? n : null;
+}
+export const DAYS_MESSAGE = "--days needs a plain number of days above 0, for example --days 7";
+
 export function formatNumber(value) {
   return new Intl.NumberFormat("en-US").format(Math.round(value));
 }
@@ -351,6 +359,7 @@ export function formatNumber(value) {
 export function pace(win, windowSeconds, nowMs = Date.now()) {
   if (!win || typeof win.used_percentage !== "number" || !win.resets_at) return null;
   const end = win.resets_at * 1000;
+  if (end <= nowMs) return null; // the window has already reset: its numbers say nothing about the one that is running now
   const start = end - windowSeconds * 1000;
   const elapsed = Math.min(Math.max((nowMs - start) / (windowSeconds * 1000), 0), 1);
   const used = win.used_percentage;

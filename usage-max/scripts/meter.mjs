@@ -18,9 +18,11 @@ export function writeJsonAtomic(file, value) {
   try { target = fs.realpathSync(file); mode = fs.statSync(target).mode & 0o777; } catch {} // follow symlinks (stow/chezmoi), keep the file mode
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
-  if (mode !== null) { try { fs.chmodSync(tmp, mode); } catch {} }
-  fs.renameSync(tmp, target);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
+    if (mode !== null) { try { fs.chmodSync(tmp, mode); } catch (e) { void e; } }
+    fs.renameSync(tmp, target);
+  } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch (e2) { void e2; } throw e; } // a failed rename (virus scanner, sync tool) must not leave a stray temp file behind
 }
 
 export { recordCost };
@@ -41,38 +43,38 @@ function compact(m, nowMs) { // minutes that fell out of the last-day window are
   for (const [k, c] of Object.entries(m.fine || {})) { const t = Date.parse(k); if (t < cut) { const h = hourKey(t); m.buckets[h] = (m.buckets[h] || 0) + c; delete m.fine[k]; } }
 }
 
-// Read a transcript from `offset`, return { cost, end, byHour }. Only whole lines are consumed.
-export function scanFrom(file, offset = 0, sinceMs = 0, seen = new Set()) {
+// Read a transcript from `offset`, return { cost, end, byHour, byMin }. Only whole lines are consumed. The file is read in chunks (a transcript can be gigabytes;
+// reading what is left of it in one piece ran out of memory), carrying a partial last line into the next chunk.
+export function scanFrom(file, offset = 0, sinceMs = 0, seen = new Set(), chunkBytes = 8 * 1024 * 1024) {
   let fd;
   try { fd = fs.openSync(file, "r"); } catch { return { cost: 0, end: offset, byHour: {}, byMin: {} }; }
   try {
     const size = fs.fstatSync(fd).size;
     if (size < offset) offset = 0; // truncated/rotated
-    const length = size - offset;
-    if (length <= 0) return { cost: 0, end: offset, byHour: {}, byMin: {} };
-    const buf = Buffer.alloc(length);
-    fs.readSync(fd, buf, 0, length, offset);
-    const text = buf.toString("utf8");
-    const lastNl = text.lastIndexOf("\n");
-    if (lastNl < 0) return { cost: 0, end: offset, byHour: {}, byMin: {} };
-    let cost = 0;
+    let cost = 0, end = offset, pos = offset, carry = Buffer.alloc(0);
     const byHour = {}, byMin = {};
-    for (const line of text.slice(0, lastNl).split("\n")) {
-      if (!line.includes('"assistant"')) continue;
-      let r; try { r = JSON.parse(line); } catch { continue; }
-      if (r.type !== "assistant" || !r.message) continue;
+    const take = (line) => {
+      if (!line.includes('"assistant"')) return;
+      let r; try { r = JSON.parse(line); } catch { return; }
+      if (r.type !== "assistant" || !r.message) return;
       const mid = r.message.id; // one record per content block repeats the same usage: count each message once
-      if (mid) { if (seen.has(mid)) continue; seen.add(mid); }
+      if (mid) { if (seen.has(mid)) return; seen.add(mid); }
       const t = Date.parse(r.timestamp) || Date.now();
-      if (t < sinceMs) continue;
+      if (t < sinceMs) return;
       const c = recordCost(r.message);
-      if (!c) continue;
+      if (!c) return;
       cost += c;
-      const h = hourKey(t);
-      byHour[h] = (byHour[h] || 0) + c;
+      const h = hourKey(t); byHour[h] = (byHour[h] || 0) + c;
       const mk = minKey(t); byMin[mk] = (byMin[mk] || 0) + c;
+    };
+    while (pos < size) {
+      const buf = Buffer.alloc(Math.min(chunkBytes, size - pos)); const got = fs.readSync(fd, buf, 0, buf.length, pos); if (got <= 0) break; pos += got;
+      const data = carry.length ? Buffer.concat([carry, buf.subarray(0, got)]) : buf.subarray(0, got), nl = data.lastIndexOf(10);
+      if (nl < 0) { carry = data; continue; }
+      for (const line of data.subarray(0, nl).toString("utf8").split("\n")) take(line);
+      end += nl + 1; carry = data.subarray(nl + 1);
     }
-    return { cost, end: offset + Buffer.byteLength(text.slice(0, lastNl + 1), "utf8"), byHour, byMin };
+    return { cost, end, byHour, byMin };
   } finally {
     fs.closeSync(fd);
   }

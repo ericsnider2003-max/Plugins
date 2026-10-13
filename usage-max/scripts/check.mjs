@@ -120,7 +120,7 @@ for (const script of ["hooks/session-start.mjs", "hooks/ledger.mjs", "hooks/budg
 
 // 6. Profiles: valid JSON, enforced model, strict kill-switch, fable absent.
 const enforced = readJson(path.join(root, "profiles", "settings.enforced.json"));
-if (enforced && enforced.modelSettings && enforced.modelSettings["claude-opus-5-5"] && enforced.modelSettings["claude-opus-5-5"].effortLevel === "medium" && enforced.promptCacheTtl === "5m" && enforced.promptSuggestionEnabled === false && !(enforced.env && enforced.env.MAX_THINKING_TOKENS) && enforced.model === "claude-opus-5-5" && enforced.env && enforced.env.ANTHROPIC_DEFAULT_OPUS_MODEL === "claude-opus-5-5") pass("enforced profile model");
+if (enforced && enforced.modelSettings && enforced.modelSettings["claude-opus-5-5"] && enforced.modelSettings["claude-opus-5-5"].effortLevel === "medium" && enforced.promptCacheTtl === "5m" && enforced.promptSuggestionEnabled === undefined && !(enforced.env && enforced.env.MAX_THINKING_TOKENS) && enforced.model === "claude-opus-5-5" && enforced.env && enforced.env.ANTHROPIC_DEFAULT_OPUS_MODEL === "claude-opus-5-5") pass("enforced profile model");
 else fail("enforced profile model");
 const strict = readJson(path.join(root, "profiles", "settings.strict.json"));
 if (strict && strict.env && strict.env.CLAUDE_CODE_SUBAGENT_MODEL === "claude-sonnet-5-5") pass("strict kill-switch");

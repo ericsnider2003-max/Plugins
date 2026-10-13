@@ -1,6 +1,6 @@
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import assert from "node:assert/strict"; import { spawnSync, execFileSync } from "node:child_process"; import { fileURLToPath, pathToFileURL } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const home = fs.mkdtempSync(path.join(os.tmpdir(), "umm-")); process.env.USAGE_MAX_HOME = home;
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "umm-")); process.env.USAGE_MAX_HOME = home; delete process.env.CODEX_HOME; // a CODEX_HOME in your own environment must not leak in: the default then follows USAGE_MAX_HOME, never the real ~/.codex
 const proj = path.join(home, "proj"); fs.mkdirSync(proj, { recursive: true });
 const imp = (f) => import(pathToFileURL(path.join(root, f)).href);
 const M = await imp("scripts/memory.mjs"), R = await imp("scripts/resume.mjs"), P = await imp("scripts/pack.mjs"), G = await imp("scripts/guard.mjs");
@@ -42,7 +42,7 @@ t("recall returns the matching section only, once per session, nothing for chatt
 });
 t("extractDirective", () => {
   assert.equal(M.extractDirective("Remember: the staging DB is read only on Fridays"), "the staging DB is read only on Fridays");
-  assert.match(M.extractDirective("From now on, run lint before every commit"), /run lint before every commit/); assert.equal(M.extractDirective("ok. From now on, run lint before every commit"), null, "not at the start: ignored");
+  assert.match(M.extractDirective("From now on: run lint before every commit"), /run lint before every commit/); assert.equal(M.extractDirective("From now on, run lint before every commit"), null, "no colon and no remember word: an ordinary request, not a saved decision"); assert.equal(M.extractDirective("ok. From now on, run lint before every commit"), null, "not at the start: ignored");
   assert.equal(M.extractDirective("I remember that place"), null); assert.equal(M.extractDirective("remember: x"), null, "too short to be a rule");
 });
 t("sync writes a bounded block into AGENTS.md, keeps the user's text, is idempotent, --check detects drift", () => {
@@ -137,7 +137,7 @@ t("two notes starting with the same four words are both kept", () => {
 t("directive only counts at the START of the prompt; pasted text is ignored; secrets are refused everywhere", () => {
   assert.equal(M.extractDirective("Here is the email:\nGoing forward, we will bill monthly and keep a ledger."), null);
   assert.equal(M.extractDirective("Summary of the changelog. From now on the API is versioned per release."), null);
-  assert.ok(M.extractDirective("From now on, answer in short sentences"));
+  assert.ok(M.extractDirective("From now on: answer in short sentences")); assert.ok(M.extractDirective("From now on, remember that answers stay short"));
   const sd = M.extractDirective("remember: the prod password is hunter2hunter2"); assert.ok(sd, "extracted so the refusal can be shown to the user"); assert.ok(M.decide(mem, M.directiveKey(sd), sd).error, "but never saved");
   for (const bad of ["use sk-live-abcdefghijklmnop1234 for billing", "password: Tr0ub4dor&3xyz", "AKIAABCDEFGHIJKLMNOP is the key", "token=ghp_abcdefghijklmnopqrstuvwxyz0123456789"]) { assert.ok(M.looksSecret(bad), bad); assert.ok(M.decide(mem, "x", bad).error, bad); assert.ok(M.addFact(mem, "x", bad).error, bad); }
   assert.ok(!M.looksSecret("the password lives in 1Password item Billing"));

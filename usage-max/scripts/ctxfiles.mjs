@@ -16,8 +16,10 @@ export function scan({ home = process.env.USAGE_MAX_HOME || os.homedir(), cwd = 
     seen.set(f, { file: f, via, bytes: st.size, lines: 0, tokens: tok(st.size), ageDays: Math.round((Date.now() - st.mtimeMs) / DAY) });
     if (st.size > 400000) return; let text = ""; try { text = fs.readFileSync(f, "utf8"); } catch { return; }
     seen.get(f).lines = text.split("\n").length;
-    for (const m of text.matchAll(/(?:^|\s)@((?:~|\.{1,2})?[\w./\\ -]*[\w.-]+\.(?:md|txt|mdx))/g)) {
-      const p = m[1].startsWith("~") ? path.join(home, m[1].slice(1)) : path.resolve(path.dirname(f), m[1]); visit(p, f, depth + 1);
+    for (const ln of text.split("\n")) { // one line at a time, and only its first 2000 characters: a huge unbroken line (minified or hostile file) must not stall every session start
+      for (const m of ln.slice(0, 2000).matchAll(/(?:^|\s)@((?:~|\.{1,2})?(?:[\w.-]+[\\/])*[\w.-]+\.(?:md|txt|mdx))/g)) {
+        const p = m[1].startsWith("~") ? path.join(home, m[1].slice(1)) : path.resolve(path.dirname(f), m[1]); visit(p, f, depth + 1);
+      }
     }
   };
   for (const r of roots) visit(r, null, 0);

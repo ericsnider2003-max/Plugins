@@ -4,7 +4,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { listJsonlFiles, normalizeUsage, parseTimestamp, createDeduper } from "./lib.mjs";
+import { listJsonlFiles, normalizeUsage, parseTimestamp, createDeduper, parseDays, DAYS_MESSAGE } from "./lib.mjs";
 import { priceFor, turnCost } from "./pricing.mjs";
 
 const SONNET = "claude-sonnet-5-5";
@@ -52,6 +52,7 @@ export function formatClaude(r) {
 
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("savings.mjs")) {
   const a = process.argv.slice(2); const flag = (n, d) => { const i = a.indexOf(`--${n}`); return i === -1 ? d : a[i + 1]; };
-  const home = process.env.USAGE_MAX_HOME || os.homedir(); const r = await claudeSavings({ dir: flag("projects-dir", path.join(home, ".claude", "projects")), days: Number(flag("days", 7)) || 7 });
+  const home = process.env.USAGE_MAX_HOME || os.homedir(); const dayCount = parseDays(flag("days", 7)); if (dayCount === null) { console.error(DAYS_MESSAGE); process.exit(2); }
+  const r = await claudeSavings({ dir: flag("projects-dir", path.join(home, ".claude", "projects")), days: dayCount });
   console.log(a.includes("--json") ? JSON.stringify(r, null, 2) : formatClaude(r));
 }

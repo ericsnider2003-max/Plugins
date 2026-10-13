@@ -210,8 +210,19 @@ await t("BUG-008", "a Stop inside the one-minute gap does no transcript read or 
   assert.equal(R.saveResume(home, cwd, "first note"), true); let called = 0;
   assert.equal(R.saveResume(home, cwd, () => { called++; return "second"; }), false); assert.equal(called, 0, "builder not called inside the gap");
   assert.equal(R.saveResume(home, cwd, () => { called++; return "second"; }, { minGapMs: 0 }), true); assert.equal(called, 1);
-  const src = fs.readFileSync(path.join(root, "hooks/memory.mjs"), "utf8"); assert.match(src, /saveResume\(R\.sharedDir\(\), cwd, \(\) =>/, "the Claude Stop hook passes a builder, not a built note");
-  const cx = fs.readFileSync(path.join(root, "codex/scripts/codex-hook.mjs"), "utf8"); assert.match(cx, /saveResume\(R\.sharedDir\(\), cwdR, \(\) =>/, "so does the Codex hook");
+  if (process.platform !== "win32") { // run the real Stop hooks with a fake git that logs every call: a second Stop inside the gap must make none
+    const bin = path.join(home, "bin"); fs.mkdirSync(bin); const log = path.join(home, "git.log"); fs.writeFileSync(path.join(bin, "git"), `#!/bin/sh\necho "$@" >> "${log}"\n`, { mode: 0o755 });
+    const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, USAGE_MAX_HOME: path.join(home, "h"), CODEX_HOME: path.join(home, "h", ".codex") }, calls = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").split("\n").filter(Boolean).length : 0);
+    const tr = path.join(home, "t.jsonl"); fs.writeFileSync(tr, JSON.stringify({ type: "user", message: { role: "user", content: "hello" } }) + "\n");
+    const rollDir = path.join(env.CODEX_HOME, "sessions", "2026", "10", "13"), roll = path.join(rollDir, "rollout-2026-10-13T00-00-00-s1.jsonl");
+    const stop = (script) => { if (script.startsWith("codex")) { fs.mkdirSync(rollDir, { recursive: true }); fs.writeFileSync(roll, JSON.stringify({ timestamp: new Date().toISOString(), type: "event_msg", payload: { type: "user_message", message: "hello" } }) + "\n"); }
+      return spawnSync(process.execPath, [path.join(root, script), "Stop"], { input: JSON.stringify({ hook_event_name: "Stop", cwd, session_id: "s1", transcript_path: script.startsWith("codex") ? roll : tr }), env, encoding: "utf8" }); };
+    for (const script of ["hooks/memory.mjs", "codex/scripts/codex-hook.mjs"]) {
+      fs.rmSync(log, { force: true }); fs.rmSync(path.join(home, "h"), { recursive: true, force: true });
+      assert.equal(stop(script).status, 0); const first = calls(); assert.ok(first > 0, script + ": the first Stop does build the note (" + first + " git calls)");
+      assert.equal(stop(script).status, 0); assert.equal(calls(), first, script + ": a second Stop inside the gap makes no git call");
+    }
+  }
 });
 
 await t("BUG-010", "the loop-note wrapper works for commands that end in a # comment", async () => {
@@ -357,9 +368,6 @@ await t("BUG-025", "with no inputs named, the result cache notices a changed fil
 });
 
 await t("BUG-026", "small status files are written atomically", async () => {
-  const src = (f) => fs.readFileSync(path.join(root, f), "utf8");
-  assert.doesNotMatch(src("scripts/statusline.mjs"), /writeFileSync\(limitsPath/); assert.doesNotMatch(src("scripts/profile.mjs"), /writeFileSync\(launcher/); assert.doesNotMatch(src("hooks/ledger.mjs"), /writeFileSync\(file, JSON/);
-  assert.doesNotMatch(src("codex/scripts/codex-hook.mjs"), /writeFileSync\((f|sf), JSON/, "hook-seen.json and hook-state.json");
   const home = tmp(); const env = { ...process.env, USAGE_MAX_HOME: home }; const now = Math.floor(Date.now() / 1000);
   const rl = { rate_limits: { seven_day: { used_percentage: 10, resets_at: now + 86400 * 3 }, five_hour: { used_percentage: 5, resets_at: now + 3600 } }, model: { id: "claude-opus-5-5", display_name: "Opus" } };
   const { spawn } = await import("node:child_process"); await Promise.all(Array.from({ length: 6 }, () => new Promise((res) => { const c = spawn("node", [path.join(root, "scripts/statusline.mjs")], { env }); c.stdin.end(JSON.stringify(rl)); c.on("exit", res); })));
@@ -530,6 +538,130 @@ await t("BUG-044", "two sessions at once cannot lose a pinned mode or the other 
     fs.rmSync(path.join(home, ".usage-max", "shared.json"), { force: true });
     await Promise.all([...Array(6).fill(0).map((_, i) => run(null, env, `import {writeSelf} from "${sh}"; for (let i=0;i<6;i++) writeSelf("claude",{mode:"green",n:i});`)), ...Array(6).fill(0).map(() => run(null, env, `import {writeSelf} from "${shc}"; for (let i=0;i<6;i++) writeSelf({mode:"green",n:i});`))]);
     const all = JSON.parse(fs.readFileSync(path.join(home, ".usage-max", "shared.json"), "utf8")); assert.ok(all.claude && all.codex, "both plans' entries survive: " + Object.keys(all));
+  }
+});
+
+await t("BUG-052", "prompt suggestions are not switched off, and an older switch-off is handed back", async () => {
+  for (const f of ["profiles/settings.enforced.json", "profiles/settings.strict.json"]) assert.equal(JSON.parse(fs.readFileSync(path.join(root, f), "utf8")).promptSuggestionEnabled, undefined, f);
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const P = await imp("scripts/profile.mjs");
+  const ud = path.join(home, ".claude", "usage-max"), sf = path.join(home, ".claude", "settings.json"); fs.mkdirSync(ud, { recursive: true });
+  fs.writeFileSync(sf, JSON.stringify({ promptSuggestionEnabled: false, theme: "dark" })); fs.writeFileSync(path.join(ud, "applied.json"), JSON.stringify({ promptSuggestionEnabled: false }));
+  assert.deepEqual(P.handBack(home), ["promptSuggestionEnabled"]); assert.deepEqual(JSON.parse(fs.readFileSync(sf, "utf8")), { theme: "dark" });
+  fs.writeFileSync(sf, JSON.stringify({ promptSuggestionEnabled: false })); fs.writeFileSync(path.join(ud, "applied.json"), "{}");
+  assert.deepEqual(P.handBack(home), [], "a switch-off you chose yourself stays"); assert.equal(JSON.parse(fs.readFileSync(sf, "utf8")).promptSuggestionEnabled, false);
+});
+
+await t("BUG-046", "trimmed output is never printed without a saved copy: when the copy cannot be saved the whole output is shown", async () => {
+  const big = Array.from({ length: 400 }, (_, i) => `line ${i}`).join("\n") + "\n";
+  const blocked = tmp(); const notDir = path.join(blocked, "file"); fs.writeFileSync(notDir, "x"); // a file where the data folder must go: nothing can be saved
+  const run = (script, home, input) => spawnSync(process.execPath, [path.join(root, script)], { input, encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: path.join(home, ".codex") }, maxBuffer: 1 << 24 });
+  for (const sc of ["scripts/trim.mjs", "codex/scripts/trim.mjs"]) {
+    assert.equal(run(sc, notDir, big).stdout, big, sc + ": whole output when it cannot be saved");
+    const ok = run(sc, tmp(), big).stdout; assert.match(ok, /output was trimmed; the complete output is saved at /, sc); assert.ok(ok.length < big.length);
+  }
+  const gen = path.join(blocked, "gen.js"); fs.writeFileSync(gen, "for (let i = 0; i < 400; i++) console.log('line ' + i);\n");
+  const rt = spawnSync(process.execPath, [path.join(root, "codex/scripts/run-trimmed.mjs"), "run", "node", gen.replace(/\\/g, "/")], { encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: notDir, CODEX_HOME: path.join(blocked, ".codex") } });
+  assert.equal(rt.stdout.replace(/\r\n/g, "\n"), big, "run-trimmed: whole output when it cannot be saved");
+});
+
+await t("BUG-048", "editing a linked or private file keeps the link and the permissions", async () => {
+  const S = await imp("scripts/safefile.mjs"); const d = tmp();
+  if (process.platform !== "win32") {
+    const real = path.join(d, "real.json"), link = path.join(d, "link.json"); fs.writeFileSync(real, "{}", { mode: 0o600 }); fs.chmodSync(real, 0o600); fs.symlinkSync(real, link);
+    const r = S.editText(link, () => '{"a":1}'); assert.equal(r.changed, true);
+    assert.ok(fs.lstatSync(link).isSymbolicLink(), "still a link"); assert.equal(fs.readFileSync(real, "utf8"), '{"a":1}', "the real file got the change");
+    assert.equal(fs.statSync(real).mode & 0o777, 0o600, "still private"); assert.equal(fs.statSync(r.backup).mode & 0o777, 0o600, "its backup is private too");
+  }
+  const f = path.join(d, "plain.txt"); S.writeAtomic(f, "a"); S.writeAtomic(f, "b"); assert.equal(fs.readFileSync(f, "utf8"), "b");
+});
+
+await t("BUG-050", "big transcripts are read in pieces and big prompts do not slow recall", async () => {
+  const M = await imp("scripts/meter.mjs"), Mem = await imp("scripts/memory.mjs"); const d = tmp(), f = path.join(d, "t.jsonl"), now = Date.now();
+  const rec = (i, text) => JSON.stringify({ type: "assistant", timestamp: new Date(now - 6e4 * (i + 1)).toISOString(), message: { id: "m" + i, model: "claude-opus-5-5", usage: { input_tokens: 1000 * (i + 1), output_tokens: 10 }, content: [{ type: "text", text }] } });
+  fs.writeFileSync(f, Array.from({ length: 40 }, (_, i) => rec(i, i % 3 ? "plain" : "héllo wörld ✓ ".repeat(7))).join("\n") + "\n" + '{"type":"assistant","message":{"id":"part'); // ends with a half line
+  const whole = M.scanFrom(f, 0, 0, new Set()), tiny = M.scanFrom(f, 0, 0, new Set(), 64), odd = M.scanFrom(f, 0, 0, new Set(), 997);
+  for (const r of [tiny, odd]) { assert.ok(Math.abs(r.cost - whole.cost) < 1e-9, "same cost"); assert.equal(r.end, whole.end, "same end"); assert.deepEqual(r.byMin, whole.byMin); }
+  assert.ok(whole.cost > 0 && whole.end < fs.statSync(f).size, "the half line is left for next time");
+  const bigf = path.join(d, "big.jsonl"), line = rec(1, "x".repeat(900)) + "\n"; fs.writeFileSync(bigf, line.repeat(Math.ceil(20e6 / line.length)));
+  const realRead = fs.readSync; let widest = 0; fs.readSync = (fd, b, o, len, ...r) => { widest = Math.max(widest, len); return realRead(fd, b, o, len, ...r); };
+  try { M.scanFrom(bigf, 0, 0, new Set()); } finally { fs.readSync = realRead; }
+  assert.ok(widest <= 8 * 1024 * 1024, "no read bigger than 8 MB: " + widest);
+  const mem = path.join(d, ".memory"); fs.mkdirSync(path.join(mem, "topics"), { recursive: true }); fs.writeFileSync(path.join(mem, "topics", "billing.md"), "# billing\n\n## invoices\n- invoices are generated nightly by the billing worker _(2026-10-01)_\n");
+  const big = "please check how invoices are generated by the billing worker. " + "lorem ipsum dolor sit amet ".repeat(400000);
+  const t0 = Date.now(), r = Mem.recall(mem, big, { loose: true }); assert.ok(Date.now() - t0 < 1500, "fast on an 11 MB prompt: " + (Date.now() - t0) + " ms"); assert.match(r.text, /billing worker/, "still finds the note");
+});
+
+await t("IMP-003", "the synced Codex folder is complete: every file it copies finds the files it imports; dead helpers are gone", async () => {
+  const S = await imp("codex/scripts/sync.mjs"), home = tmp(); const r = S.syncBin({ root, home, force: true });
+  assert.equal(r.changed, true); assert.equal(r.missing, undefined, "nothing failed to copy: " + JSON.stringify(r.missing));
+  const bin = path.join(S.binDir(home), "scripts"); const have = new Set(fs.readdirSync(bin));
+  for (const f of fs.readdirSync(bin).filter((x) => x.endsWith(".mjs"))) {
+    const src = fs.readFileSync(path.join(bin, f), "utf8");
+    for (const m of src.matchAll(/(?:from\s*|import\(\s*)["'](\.\/[^"']+)["']/g)) assert.ok(have.has(m[1].slice(2)), `${f} imports ${m[1]} which is not in the synced folder`);
+  }
+  const G = await imp("codex/scripts/codex-governor.mjs"); assert.equal(G.spendLast, undefined); assert.equal(G.markApplied, undefined);
+});
+
+await t("BUG-053", "syncing notes into AGENTS.md keeps its line endings and encoding, writes atomically and keeps the old copy outside the repo", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const Mem = await imp("scripts/memory.mjs");
+  const mem = path.join(home, "repo", ".memory"); fs.mkdirSync(path.join(mem, "topics"), { recursive: true }); fs.writeFileSync(path.join(mem, "decisions.md"), "- 2026-10-01 | db | postgres\n");
+  const f = path.join(home, "repo", "AGENTS.md"), crlf = "# Team rules\r\n\r\nBe kind.\r\n";
+  fs.writeFileSync(f, crlf); const r = Mem.syncFile(mem, f, {}); assert.equal(r.changed, true, JSON.stringify(r));
+  const out = fs.readFileSync(f, "utf8"); assert.equal((out.match(/(?<!\r)\n/g) || []).length, 0, "no bare line feeds in a CRLF file"); assert.ok(out.startsWith(crlf), "the user's text is untouched");
+  const kept = fs.readdirSync(path.join(home, ".usage-max", "sync-backups")); assert.equal(kept.length, 1); assert.equal(fs.readFileSync(path.join(home, ".usage-max", "sync-backups", kept[0]), "utf8"), crlf, "the previous version is kept");
+  assert.deepEqual(fs.readdirSync(path.join(home, "repo")).filter((n) => n.includes("backup")), [], "nothing dirties the repo");
+  const u = path.join(home, "repo", "CLAUDE.md"); fs.writeFileSync(u, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("# Rules\r\n", "utf16le")]));
+  assert.equal(Mem.syncFile(mem, u, {}).changed, true); const b = fs.readFileSync(u); assert.ok(b[0] === 0xff && b[1] === 0xfe, "still UTF-16 with its byte-order mark"); assert.match(b.subarray(2).toString("utf16le"), /^# Rules\r\n/);
+  const again = Mem.syncFile(mem, f, {}); assert.equal(again.changed, false, "second sync is a no-op");
+});
+
+await t("SEC-008", "a backup manifest cannot send a file outside the Codex or data folder", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const B = await imp("codex/scripts/backup.mjs"); const ok = B.target("codex/config.toml"); assert.ok(ok && ok.startsWith(process.env.CODEX_HOME), "a normal path still works: " + ok);
+  assert.ok(B.target("data/governor.json"));
+  for (const bad of ["codex/..\\..\\AppData\\Roaming\\Startup\\x.cmd", "codex/C:\\evil.txt", "codex/C:evil.txt", "codex/../x", "codex/a/../../x", "/etc/passwd", "codex//x", "codex/./x", "codex/", "codex", "other/x", "codex/a\0b", "data\\x", 5, null]) assert.equal(B.target(bad), null, "refused: " + JSON.stringify(bad));
+});
+
+await t("BUG-054", "a huge unbroken line in CLAUDE.md does not stall the scan, and real @imports are still found", async () => {
+  const { scan } = await imp("scripts/ctxfiles.mjs"); const d = tmp(); fs.mkdirSync(path.join(d, "docs")); fs.writeFileSync(path.join(d, "docs", "a.md"), "# a\n");
+  fs.writeFileSync(path.join(d, "CLAUDE.md"), "See @docs/a.md for rules.\n" + "See @" + "a".repeat(30000) + "\n");
+  const t0 = Date.now(), r = scan({ home: path.join(d, "h"), cwd: d }); assert.ok(Date.now() - t0 < 400, "fast: " + (Date.now() - t0) + " ms");
+  assert.ok((r.rows || r.files || []).some((x) => String(x.file).endsWith("a.md") && x.via), "the real import is followed");
+});
+
+await t("BUG-055", "a failed save of a small status file leaves no temp file behind", async () => {
+  const M = await imp("scripts/meter.mjs"); const d = tmp(), f = path.join(d, "s.json"); fs.mkdirSync(f); // renaming onto a folder fails
+  assert.throws(() => M.writeJsonAtomic(f, { a: 1 })); assert.deepEqual(fs.readdirSync(d).filter((n) => n.endsWith(".tmp")), []);
+});
+
+await t("BUG-056", "pace gives no advice for a window that already reset", async () => {
+  const L = await imp("scripts/lib.mjs"), now = Date.now();
+  assert.equal(L.pace({ used_percentage: 40, resets_at: Math.floor((now - 3 * 36e5) / 1000) }, 7 * 86400, now), null);
+  assert.ok(L.pace({ used_percentage: 40, resets_at: Math.floor((now + 3 * 864e5) / 1000) }, 7 * 86400, now), "a running window still gets one");
+});
+
+await t("BUG-057", "the status line shows no cap warning in the first tenth of a window", async () => {
+  const home = tmp(), now = Math.floor(Date.now() / 1000);
+  const line = (five) => spawnSync(process.execPath, [path.join(root, "scripts/statusline.mjs")], { input: JSON.stringify({ rate_limits: { five_hour: five, seven_day: { used_percentage: 10, resets_at: now + 5 * 86400 } }, model: { id: "claude-opus-5-5", display_name: "Opus" } }), env: { ...process.env, USAGE_MAX_HOME: home }, encoding: "utf8" }).stdout;
+  assert.doesNotMatch(line({ used_percentage: 4, resets_at: now + 4 * 3600 + 53 * 60 }), /cap in/, "7 minutes in, 4% used");
+  assert.match(line({ used_percentage: 80, resets_at: now + 2 * 3600 }), /5h 80%.*cap in/, "a real warning still shows");
+});
+
+await t("BUG-058", "a mistyped number of days is refused, not read as all history", async () => {
+  const L = await imp("scripts/lib.mjs"); assert.equal(L.parseDays("7"), 7); assert.equal(L.parseDays(undefined), 7); assert.equal(L.parseDays("0.5"), 0.5);
+  for (const bad of ["7x", "0", "-3", "abc", "", "1e9", "99999"]) assert.equal(L.parseDays(bad), null, bad);
+  const home = tmp(); for (const [script, args] of [["scripts/diagnose.mjs", ["--days", "7x"]], ["scripts/savings.mjs", ["--days", "0x"]]]) {
+    const r = spawnSync(process.execPath, [path.join(root, script), ...args, "--projects-dir", path.join(home, "none")], { env: { ...process.env, USAGE_MAX_HOME: home }, encoding: "utf8" });
+    assert.equal(r.status, 2, script + ": " + r.stdout + r.stderr); assert.match(r.stderr, /--days needs a plain number/);
+  }
+});
+
+await t("BUG-059", "a reset typed without a time of day is refused (Claude and Codex copies)", async () => {
+  for (const f of ["scripts/resettime.mjs", "codex/scripts/resettime.mjs"]) {
+    const { parseResetTime } = await imp(f), now = Date.parse("2026-10-13T12:00:00Z");
+    const r = parseResetTime("2026-10-17", now); assert.match(r.error, /no time of day/, f); assert.match(parseResetTime("17 Oct 2026", now).error, /no time of day/);
+    assert.ok(parseResetTime("2026-10-17T20:00:00-04:00", now).ms, "a full time still works"); assert.ok(parseResetTime("Oct 17 2026 8:00 PM", now).ms || parseResetTime("Oct 17 2026 8:00 PM", now).error);
+    assert.ok(parseResetTime(String(Math.floor((now + 864e5) / 1000)), now).ms, "epoch seconds still work");
   }
 });
 

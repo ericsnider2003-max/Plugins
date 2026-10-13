@@ -5,6 +5,7 @@ import { codexHome, dataDir, setTopLevel, topValue, writeProfiles, loadConfig, a
 import { binDir, syncBin } from "./sync.mjs";
 import { editText } from "./safefile.mjs";
 const plugin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."); const sr = syncBin({ root: plugin, force: true }); if (sr.error) console.error("sync to stable dir failed (using existing copy if any):", sr.error);
+const failures = []; // every step that could not be done: listed at the end and the exit code is 1
 const root = binDir(); const ch = codexHome(); fs.mkdirSync(ch, { recursive: true });
 // 1. skill (user skills dir)
 const sk = path.join(ch, "skills", "usage-max"); fs.mkdirSync(sk, { recursive: true });
@@ -14,7 +15,7 @@ fs.writeFileSync(path.join(sk, "SKILL.md"), sub(fs.readFileSync(path.join(root, 
 const ag = path.join(ch, "AGENTS.md");
 const blk = fs.readFileSync(path.join(root, "AGENTS.usage-max.md"), "utf8").trim().split("<usage-max>").join(rp);
 const re = /<!-- usage-max:start -->[\s\S]*?<!-- usage-max:end -->/;
-{ const r = editText(ag, (a) => re.test(a) ? a.replace(re, () => blk) : (a ? a.replace(/\n*$/, "\n\n") : "") + blk + "\n"); if (r.error) console.error("AGENTS.md NOT updated: " + r.error); }
+{ const r = editText(ag, (a) => re.test(a) ? a.replace(re, () => blk) : (a ? a.replace(/\n*$/, "\n\n") : "") + blk + "\n"); if (r.error) { console.error("AGENTS.md NOT updated: " + r.error); failures.push("AGENTS.md was not updated: " + r.error); } }
 // 3. notify hook (only if user has none, or ours)
 const cf = path.join(ch, "config.toml");
 const notify = path.join(root, "scripts", "notify.mjs").replace(/\\/g, "/");
@@ -23,7 +24,7 @@ const notify = path.join(root, "scripts", "notify.mjs").replace(/\\/g, "/");
     if (cur !== undefined && !cur.includes("usage-max") && !cur.includes("notify.mjs")) { console.log(`existing notify= left untouched; run node ${rp}/scripts/notify.mjs from your own notifier to keep metering`); return null; }
     t = setTopLevel(t, { notify: { raw: `["node", ${JSON.stringify(notify)}]` } });
     return t.replace(/\n*$/, "\n");
-  }); if (r.error) console.error("config.toml notify NOT set: " + r.error); else if (r.changed) console.log("notify hook set"); }
+  }); if (r.error) { console.error("config.toml notify NOT set: " + r.error); failures.push("config.toml notify hook was not set: " + r.error); } else if (r.changed) console.log("notify hook set"); }
 // 4. hooks.json (merge, idempotent). Codex asks you to trust non-managed hooks once: run /hooks in Codex.
 {
   const hf = path.join(ch, "hooks.json"); const hs = path.join(root, "scripts", "codex-hook.mjs").replace(/\\/g, "/");
@@ -36,7 +37,7 @@ const notify = path.join(root, "scripts", "notify.mjs").replace(/\\/g, "/");
     }
     return JSON.stringify(hj, null, 2);
   });
-  if (r.error) console.error("hooks.json NOT updated: " + r.error); else console.log("hooks.json merged (run /hooks in Codex once to trust them)");
+  if (r.error) { console.error("hooks.json NOT updated: " + r.error); failures.push("hooks.json was not updated, so the hooks are not installed: " + r.error); } else console.log("hooks.json merged (run /hooks in Codex once to trust them)");
 }
 // 5. seed config.json modes from models seen in sessions (never overwrite)
 {
@@ -52,6 +53,7 @@ const notify = path.join(root, "scripts", "notify.mjs").replace(/\\/g, "/");
   }
 }
 writeProfiles(loadConfig()); markInstalled(); const { mode, cfg, st: ist } = evaluate(); applyMode(mode, cfg, Boolean(ist && ist.surplus && mode === "green"));
-console.log(`installed. mode=${mode}.
+if (failures.length) { console.error(`\nINSTALL INCOMPLETE: ${failures.length} step(s) failed (nothing you own was overwritten):\n` + failures.map((f) => "  - " + f).join("\n") + "\nFix the cause above, then run install again (it is safe to repeat)."); process.exitCode = 1; }
+console.log(`${failures.length ? "installed with problems (see the list above)" : "installed"}. mode=${mode}.
 REQUIRED once: start Codex and run /hooks, then trust the usage-max hooks. Codex silently skips untrusted hooks, so until you do this usage-max does nothing in Codex.
 Calibration is automatic (read from Codex's own rate_limits) after your first Codex turn. Verify anytime: node "${rp}/scripts/codex-governor.mjs" doctor`);

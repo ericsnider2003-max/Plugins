@@ -6,6 +6,7 @@ export function parseResetTime(input, now = Date.now()) {
   let ms, note = null;
   if (/^\d+(\.\d+)?$/.test(s)) { const n = Number(s); ms = n > 1e11 ? n : n * 1000; if (n > 1e11) note = "read as milliseconds"; } // seconds (what Claude Code reports) or milliseconds (JavaScript)
   else {
+    if (!/\d{1,2}:\d{2}/.test(s)) return { error: `"${s}" has no time of day, and a date alone is read as midnight on the server's clock. Use for example 2026-10-17T20:00:00-04:00` };
     ms = Date.parse(s); if (!Number.isFinite(ms)) return { error: `could not read "${s}" as a date and time. Use for example 2026-10-17T20:00:00-04:00` };
     if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(s)) note = "no time zone was given, so it was read as this computer's local time";
   }
