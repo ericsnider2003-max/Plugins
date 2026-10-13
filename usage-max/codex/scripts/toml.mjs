@@ -3,7 +3,7 @@
 // that a line starting with [ inside a multi-line array is NOT a table header. Dependency-free.
 
 // Where does the value that starts at lines[i] (text after the "=") end? -> index of its last line.
-function valueEnd(lines, i, rest) {
+export function valueEnd(lines, i, rest) {
   let depth = 0, multi = null, line = i, s = rest;
   for (;;) {
     for (let p = 0; p < s.length; p++) {

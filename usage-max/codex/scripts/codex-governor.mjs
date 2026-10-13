@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // usage-max for OpenAI Codex CLI: meter ~/.codex sessions, estimate plan %, pick mode, write profiles.
-// CLI: doctor | selftest-trim | savings [--days N --since ISO --json] | backup [--out dir] | restore --check <dir> | restore <dir> --apply | models | status | calibrate <pct> --resets <ISO> | mode <auto|green|amber|red> | apply | profiles | gate
+// CLI: doctor [--fix] | selftest-trim | savings [--days N --since ISO --json] | backup [--out dir] | restore --check <dir> | restore <dir> --apply | models | status | calibrate <pct> --resets <ISO> | mode <auto|green|amber|red> | apply | profiles | gate
 // gate exit codes: 0 green, 10 amber, 20 red (for batch/eval harnesses: skip or defer work on 20).
 import fs from "node:fs";
 import os from "node:os";
@@ -11,6 +11,7 @@ import { binDir } from "./sync.mjs";
 import { editText, writeAtomic, withLock } from "./safefile.mjs";
 import { parseResetTime } from "./resettime.mjs";
 import { writeSelf, readOther, isFresh } from "./shared.mjs";
+import { cleanupCodex, cleanupLines } from "./cleanup.mjs";
 
 export const HOME = () => process.env.USAGE_MAX_HOME || os.homedir();
 export const codexHome = () => process.env.CODEX_HOME || path.join(HOME(), ".codex");
@@ -322,7 +323,9 @@ const EXT = new Set(["selftest-trim", "savings", "backup", "restore"]);
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const [cmd = "status", ...a] = process.argv.slice(2); const flag = n => { const i = a.indexOf(n); return i >= 0 ? a[i + 1] : null; };
-  if (cmd === "doctor") { console.log("usage-max codex doctor:\n" + doctor()); process.exit(0); }
+  if (cmd === "doctor") { // --fix: first remove the leftover entries of an old uploaded copy from config.toml (backed up), then report the state after that
+    const fix = a.includes("--fix"); let cl; try { cl = cleanupCodex({ codexHome: codexHome(), fix }); } catch (e) { cl = { found: 0, removed: 0, names: [], error: String(e && e.message || e) }; }
+    console.log("usage-max codex doctor:\n" + doctor() + cleanupLines(cl, fix)); process.exit(0); }
   if (EXT.has(cmd)) extCli(cmd, a, flag).then((c) => process.exit(c), (e) => { console.error(e.message); process.exit(1); }); else {
   if (cmd === "models") { const m = modelsSeen(); console.log(Object.keys(m).length ? "models seen in your Codex sessions (set config.json modes to ones your plan has):\n" + Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `  ${k}  (${v})`).join("\n") : "no sessions found under " + codexHome()); process.exit(0); }
   if (cmd === "calibrate") { const pct = Number(a[0]); const r = flag("--resets"); if (!(pct >= 0 && pct <= 100) || !r) { console.error("usage: calibrate <pct 0-100 from /status or chatgpt.com/codex/settings/usage> --resets <ISO time with zone>"); process.exit(2); } const pr = parseResetTime(r); if (pr.error) { console.error("not calibrated: " + pr.error); process.exit(2); } if (pr.note) console.log("note: " + pr.note); if (!calibrate(pct, new Date(pr.ms).toISOString())) { console.error("not saved: another session is updating the budget file. Run the same command again in a moment."); process.exit(1); } }
