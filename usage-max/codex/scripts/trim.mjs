@@ -58,7 +58,7 @@ export function canSave(home = process.env.USAGE_MAX_HOME || os.homedir()) {
 export class StreamTrimmer {
   constructor(o = {}) {
     this.head = o.head ?? 30; this.tail = o.tail ?? 60; this.hold = o.hold ?? 20; this.max = o.max ?? 160;
-    this.rawCap = o.rawCap ?? 64 * MB; this.lineCap = o.lineCap ?? MB; this.quietMs = o.quietMs ?? 1000; this.maxAgeMs = o.maxAgeMs ?? 10000;
+    this.rawCap = o.rawCap ?? 64 * MB; this.lineCap = o.lineCap ?? MB; this.quietMs = o.quietMs ?? (Number(process.env.USAGE_MAX_TRIM_QUIET_MS) || 5000); this.maxAgeMs = o.maxAgeMs ?? (Number(process.env.USAGE_MAX_TRIM_AGE_MS) || 30000); // long enough that a normal chatty run is trimmed as before; only a stalled one is shown early
     this.write = o.write || ((s) => process.stdout.write(s)); this.save = o.save || ((raw) => saveFull(raw)); this.now = o.now || Date.now; this.pass = !!o.pass;
     this.dec = new StringDecoder("utf8"); this.n = 0; this.ring = []; this.dropped = 0; this.droppedTotal = 0; this.gaps = []; this.size = this.head + this.tail; this.ctx = false;
     this.partial = ""; this.partialLen = 0; this.partialOut = 0; this.pendingSince = null;

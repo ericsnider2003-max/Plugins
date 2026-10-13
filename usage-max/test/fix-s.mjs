@@ -1,6 +1,7 @@
 // Tests for the streaming trimmer (BUG-047, blocks a..h). `node test/fix-s.mjs BUG-047c` runs just that block.
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import assert from "node:assert/strict"; import { spawn, spawnSync } from "node:child_process"; import { fileURLToPath, pathToFileURL } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+process.env.USAGE_MAX_TRIM_QUIET_MS = "1000"; process.env.USAGE_MAX_TRIM_AGE_MS = "10000"; // the real defaults are 5 s and 30 s; the tests use short ones
 const only = process.argv[2] || null; let n = 0;
 const imp = (f) => import(pathToFileURL(path.join(root, f)).href);
 const tmp = (p = "umx-") => fs.mkdtempSync(path.join(os.tmpdir(), p));
