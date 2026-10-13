@@ -56,4 +56,15 @@ await t("BUG-042", "a message that carries only per-step iterations is priced, e
   assert.equal(P.recordCost({ model: "claude-opus-5-5", usage: top }), P.recordCost({ model: "claude-opus-5-5", usage: { input_tokens: 5, output_tokens: 7 } }), "top-level fields still win when present");
 });
 
+await t("BUG-043", "an old status.json is not shown as current; the governor estimate is", async () => {
+  const home = sandbox(); const dd = path.join(home, ".claude", "usage-max"); fs.mkdirSync(dd, { recursive: true });
+  const sp = path.join(dd, "status.json"); fs.writeFileSync(sp, JSON.stringify({ contextPerDay: 5000000, opusTurns: 77 }));
+  fs.writeFileSync(path.join(dd, "governor.json"), JSON.stringify({ mode: "green", last: { at: new Date().toISOString(), estPct: 42 } }));
+  const line = () => run("scripts/statusline.mjs", [], home, { USAGE_MAX_MODEL: "claude-opus-5-5" }).stdout.trim();
+  const age = (h) => { const d = new Date(Date.now() - h * 3600e3); fs.utimesSync(sp, d, d); };
+  age(0.5); assert.equal(line(), "usage-max claude-opus-5-5 \u00b7 budget GREEN \u00b7 5.0M/day \u00b7 opus 77", "fresh file: output unchanged");
+  age(5); assert.match(line(), /5\.0M\/day · opus 77 \(as of 5h ago\)/, "shown with its age past 2h");
+  age(40 * 24); const old = line(); assert.ok(!/opus 77|\/day/.test(old), "40-day-old summary hidden: " + old); assert.match(old, /wk ~42% \(est\.\)/);
+});
+
 console.log(`${n} passing`);
