@@ -20,9 +20,10 @@ function sandbox({ withFiles = true, installExit = 0 } = {}) {
   return { dir, out, profile: path.join(dir, "profile") };
 }
 // Runs one launcher with the given keyboard input (one line per answer); returns { status, text, args } where args is what the stand-in saw (or null).
-function launch(sb, file, input = "", env = {}) { // input uses CR LF line ends, like a real Enter key
+function launch(sb, file, input = "", env = {}) { // input uses CR LF line ends, like a real Enter key; it is given as a file because `set /p` reads a redirected file reliably
   fs.mkdirSync(sb.profile, { recursive: true });
-  const r = spawnSync("cmd.exe", ["/d", "/s", "/c", `"${path.join(sb.dir, file)}"`], { input: input.replace(/\r?\n/g, "\r\n"),  encoding: "utf8", windowsVerbatimArguments: true, cwd: sb.dir, timeout: 60000, env: { ...process.env, STUB_OUT: sb.out, USERPROFILE: sb.profile, ...env } });
+  const inFile = path.join(sb.dir, "keys.txt"); fs.writeFileSync(inFile, input.replace(/\r?\n/g, "\r\n")); const fd = fs.openSync(inFile, "r");
+  let r; try { r = spawnSync("cmd.exe", ["/d", "/s", "/c", `"${path.join(sb.dir, file)}"`], { stdio: [fd, "pipe", "pipe"], encoding: "utf8", windowsVerbatimArguments: true, cwd: sb.dir, timeout: 60000, env: { ...process.env, STUB_OUT: sb.out, USERPROFILE: sb.profile, ...env } }); } finally { fs.closeSync(fd); }
   let args = null; try { args = JSON.parse(fs.readFileSync(sb.out, "utf8")); } catch (e) { args = null; }
   return { status: r.status, text: `${r.stdout || ""}${r.stderr || ""}`, args };
 }
