@@ -17,6 +17,7 @@ const writeAtomic = SF ? SF.writeAtomic : (f, t) => fs.writeFileSync(f, t); // a
 const READY = Boolean(CGOV && SH && RTR && GU && TC && evaluate && applyMode && dataDir && modeKey && codexHome && readOther && balanceAdvice && wrap && guard && sessionContext && nudge && nudgeAt && TC.isDisabled && TC.record);
 // project memory + shared resume point: ./memory.mjs and ./resume.mjs next to this file (the stable bin copy) or the plugin's scripts/ (running from the plugin). Absent = feature silently off.
 let R = null; try { R = await import("./resume.mjs"); } catch { try { R = await import("../../scripts/resume.mjs"); } catch {} }
+let SL = null; try { SL = await import("./sessionlog.mjs"); } catch { try { SL = await import("../../scripts/sessionlog.mjs"); } catch {} } // session log (rollout format as parsed by resume.mjs); absent = silently off
 let M = null; try { M = await import("./memory.mjs"); } catch { try { M = await import("../../scripts/memory.mjs"); } catch {} }
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
 const LONG = /(^|\s)(-w|--watch\w*(=\S+)?|--serve|--dev)(\s|$)|:watch\b|\b(watch|serve|dev|start)\b/i; // never ends: the trimmer would show nothing until it does
@@ -70,6 +71,9 @@ function main() {
         if (ev === "SessionStart" && (!input.source || input.source === "startup" || input.source === "clear")) { const t = R.takeResume(R.sharedDir(), cwdR, { tool: "codex" }); if (t) process.stdout.write(M.fenceNotes(t, "resume-note") + "\n(Automatic note about the previous session in this folder; it may be stale. Ignore it if the user's request is about something else.)\n"); }
       }
     } catch {}
+  }
+  if (SL && ev === "Stop") { // session log: new requests since the last Stop, from this session's rollout file only (never a guessed other session)
+    try { const cwdL = input.cwd || process.cwd(), roll = R && R.findRollout({ transcript: input.transcript_path, sessionId: input.session_id, codexHome: codexHome() }); if (roll && (input.transcript_path || path.basename(roll).includes(sid0))) SL.recordStop({ cwd: cwdL, sessionId: sid0, transcript: roll, tool: "codex", cfg: rj("config.json") || {} }); } catch (e) { ignore(e); }
   }
   const sf = path.join(dataDir(), "hook-state.json"); let st = {}; try { st = JSON.parse(fs.readFileSync(sf, "utf8")); } catch {}
   const prev = (() => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), "governor.json"), "utf8")); } catch { return {}; } })();
