@@ -71,7 +71,8 @@ export function candidates(root, { mem = null, env = process.env, now = Date.now
 const keyOf = (c) => "rule-" + norm(c.text).split(" ").slice(0, 5).join("-").slice(0, 40) + "-" + c.hash.slice(0, 4);
 const valueOf = (c) => `${c.text} (from a session on ${c.date})`;
 
-// SessionStart: one short line, at most once per candidate set, only when something is waiting. -> string | null (never longer than 220 chars)
+// SessionStart: one short line, at most once per candidate set, only when something is waiting. -> string | null (never longer than MAX_ANNOUNCE chars; the command path is long on Windows, so the cap allows for it)
+const MAX_ANNOUNCE = 420;
 export function announce(root, { mem, scriptsDir, env = process.env } = {}) {
   if (!mem) return null;
   const list = candidates(root, { mem, env }); if (!list.length) return null;
@@ -83,7 +84,7 @@ export function announce(root, { mem, scriptsDir, env = process.env } = {}) {
     `usage-max: ${what}. For "show memory suggestions" run: ${cmd}  (nothing saved without approval)`,
     `usage-max: ${what}. "show memory suggestions" = run: ${cmd}`
   ];
-  const line = tiers.find((t) => t.length <= 220); if (!line) return null;
+  const line = tiers.find((t) => t.length <= MAX_ANNOUNCE); if (!line) return null;
   st.announced = setKey; if (!saveState(root, st, env)) return null; // if it cannot be remembered, say nothing rather than repeat it every session
   return line;
 }
