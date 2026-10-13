@@ -22,4 +22,15 @@ await t("BUG-045", "the same command in two folders is two cache entries (a PASS
   assert.equal(E.keyFor({ keys: [], cmd, cwd: A }), E.keyFor({ keys: [], cmd, cwd: path.join(A, ".", "..", "pkg-a") }), "the folder is resolved before hashing");
 });
 
+await t("BUG-049", "the Codex installer exits non-zero and lists what failed when hooks.json is corrupt", async () => {
+  const mk = () => { const home = tmp(); const ch = path.join(home, ".codex"); fs.mkdirSync(ch, { recursive: true }); return { home, ch, env: { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: ch } }; };
+  const inst = (env) => spawnSync("node", [path.join(root, "codex/scripts/install.mjs")], { env, encoding: "utf8" });
+  const ok = mk(); const r0 = inst(ok.env); assert.equal(r0.status, 0, "a clean install still succeeds: " + r0.stderr); assert.match(r0.stdout, /^installed\. mode=/m);
+  const bad = mk(); const corrupt = "{ this is : not json"; fs.writeFileSync(path.join(bad.ch, "hooks.json"), corrupt);
+  const r = inst(bad.env); assert.notEqual(r.status, 0, "corrupt hooks.json must give a failing exit code");
+  assert.match(r.stderr, /INSTALL INCOMPLETE/); assert.match(r.stderr, /hooks\.json was not updated/); assert.doesNotMatch(r.stdout, /^installed\. mode=/m, "must not claim a clean install");
+  assert.equal(fs.readFileSync(path.join(bad.ch, "hooks.json"), "utf8"), corrupt, "the user's file is left exactly as it was");
+  assert.ok(fs.existsSync(path.join(bad.ch, "skills", "usage-max", "SKILL.md")), "the other steps still ran");
+});
+
 console.log(`${n} passing`);
