@@ -52,16 +52,17 @@ if (rl && (rl.seven_day || rl.five_hour)) {
   try { // atomic: the governor reads this file while the next render may be writing it. A window the reading lacks stays null (an old value must not look new).
     writeAtomic(limitsPath, JSON.stringify({ capturedAt: new Date().toISOString(), five_hour: rl.five_hour || null, seven_day: rl.seven_day || null }));
   } catch (e) { process.exitCode = 0; }
+  const early = (p) => p.elapsed < 0.1 && p.used < 95; // a projection from the first tenth of a window is noise (the budget logic ignores it too)
   const wk = pace(rl.seven_day, 7 * 24 * 3600);
   if (wk) {
     let s = `wk ${Math.round(wk.used)}%`;
-    if (wk.state === "over") s += ` ⚠ cap in ${hrs(wk.capInHours)} (resets ${hrs(wk.hoursLeft)})`;
+    if (wk.state === "over" && !early(wk)) s += ` ⚠ cap in ${hrs(wk.capInHours)} (resets ${hrs(wk.hoursLeft)})`;
     else if (wk.state === "under") s += ` → ~${Math.round(wk.projected)}% at reset: ${Math.round(100 - wk.projected)}% unused, spend more`;
     else if (wk.projected !== null) s += ` → ~${Math.round(Math.min(wk.projected, 100))}% at reset, on pace`;
     parts.push(s);
   }
   const fh = pace(rl.five_hour, 5 * 3600);
-  if (fh) parts.push(`5h ${Math.round(fh.used)}%${fh.state === "over" ? ` ⚠ cap in ${hrs(fh.capInHours)}` : ""}`);
+  if (fh) parts.push(`5h ${Math.round(fh.used)}%${fh.state === "over" && !early(fh) ? ` ⚠ cap in ${hrs(fh.capInHours)}` : ""}`);
 } else {
   try {
     const status = JSON.parse(fs.readFileSync(statusPath, "utf8"));

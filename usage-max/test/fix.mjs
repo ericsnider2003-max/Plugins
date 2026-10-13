@@ -640,4 +640,11 @@ await t("BUG-056", "pace gives no advice for a window that already reset", async
   assert.ok(L.pace({ used_percentage: 40, resets_at: Math.floor((now + 3 * 864e5) / 1000) }, 7 * 86400, now), "a running window still gets one");
 });
 
+await t("BUG-057", "the status line shows no cap warning in the first tenth of a window", async () => {
+  const home = tmp(), now = Math.floor(Date.now() / 1000);
+  const line = (five) => spawnSync(process.execPath, [path.join(root, "scripts/statusline.mjs")], { input: JSON.stringify({ rate_limits: { five_hour: five, seven_day: { used_percentage: 10, resets_at: now + 5 * 86400 } }, model: { id: "claude-opus-5-5", display_name: "Opus" } }), env: { ...process.env, USAGE_MAX_HOME: home }, encoding: "utf8" }).stdout;
+  assert.doesNotMatch(line({ used_percentage: 4, resets_at: now + 4 * 3600 + 53 * 60 }), /cap in/, "7 minutes in, 4% used");
+  assert.match(line({ used_percentage: 80, resets_at: now + 2 * 3600 }), /5h 80%.*cap in/, "a real warning still shows");
+});
+
 console.log(`${n} passing`);
