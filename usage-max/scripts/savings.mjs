@@ -4,7 +4,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { listJsonlFiles, normalizeUsage, parseTimestamp } from "./lib.mjs";
+import { listJsonlFiles, normalizeUsage, parseTimestamp, createDeduper } from "./lib.mjs";
 import { priceFor, turnCost } from "./pricing.mjs";
 
 const SONNET = "claude-sonnet-5-5";
@@ -12,18 +12,21 @@ const usd = (x) => `$${x.toFixed(x >= 100 ? 0 : 2)}`;
 
 export async function claudeSavings({ dir, days = 7, now = Date.now() } = {}) {
   const lo = now - days * 864e5; const byModel = {}; const hub = {}; let subCost = 0, hubCost = 0, turns = 0, subTurns = 0; const subTurnList = [];
+  const dedupe = createDeduper(); // one message repeated across files counts once, at its largest output
   for (const file of await listJsonlFiles(dir)) {
-    const isSub = file.includes(`${path.sep}subagents${path.sep}`) || file.includes("/subagents/"); const seen = new Set(); let text; try { text = fs.readFileSync(file, "utf8"); } catch { continue; }
+    const isSub = file.includes(`${path.sep}subagents${path.sep}`) || file.includes("/subagents/"); let text; try { if (fs.statSync(file).mtimeMs < lo) continue; text = fs.readFileSync(file, "utf8"); } catch { continue; }
     for (const line of text.split("\n")) {
       if (!line.includes('"assistant"')) continue; let r; try { r = JSON.parse(line); } catch { continue; }
       const m = r && r.message; if (r.type !== "assistant" || !m || !m.model || m.model === "<synthetic>") continue;
-      if (m.id) { if (seen.has(m.id)) continue; seen.add(m.id); }
-      const t = parseTimestamp(r.timestamp); if (t && (t < lo || t > now)) continue;
-      const u = normalizeUsage(m.usage); const ctx = u.input + u.created + u.read; const p = priceFor(m.model, ctx); if (!p) continue;
-      const c = turnCost(u, p).total; const side = isSub || r.isSidechain === true;
-      const b = (byModel[m.model] = byModel[m.model] || { turns: 0, cost: 0, sub: 0 }); b.turns++; b.cost += c; turns++;
-      if (side) { subCost += c; subTurns++; b.sub += c; subTurnList.push({ u, ctx }); } else { hubCost += c; hub[m.model] = (hub[m.model] || 0) + c; }
+      dedupe.add(m, { m, t: parseTimestamp(r.timestamp), side: isSub || r.isSidechain === true });
     }
+  }
+  for (const { m, t, side } of dedupe.items()) {
+    if (t && (t < lo || t > now)) continue;
+    const u = normalizeUsage(m.usage); const ctx = u.input + u.created + u.read; const p = priceFor(m.model, ctx); if (!p) continue;
+    const c = turnCost(u, p).total;
+    const b = (byModel[m.model] = byModel[m.model] || { turns: 0, cost: 0, sub: 0 }); b.turns++; b.cost += c; turns++;
+    if (side) { subCost += c; subTurns++; b.sub += c; subTurnList.push({ u, ctx }); } else { hubCost += c; hub[m.model] = (hub[m.model] || 0) + c; }
   }
   const total = hubCost + subCost; const hubModel = Object.entries(hub).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
   let counterfactual = null;

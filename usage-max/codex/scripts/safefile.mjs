@@ -30,7 +30,7 @@ export function backupFile(file, { keep = 5, now = new Date() } = {}) {
   return out;
 }
 // Cross-process lock for a read-modify-write: an atomically created `<file>.lock` folder. Waits up to waitMs, steals a lock older than staleMs
-// (its owner died). -> { ok: true, value } or { ok: false } when busy: the caller skips this round (it is retried at the next hook) rather than racing.
+// (its owner died). -> { ok: true, value }, or { ok: false, busy: true } when another process holds it (and { ok: false } when the folder cannot be written at all): the caller skips this round (it is retried at the next hook) rather than racing.
 export function withLock(file, fn, { waitMs = 2000, staleMs = 15000 } = {}) {
   const lock = file + ".lock", t0 = Date.now(); fs.mkdirSync(path.dirname(file), { recursive: true });
   for (;;) {
@@ -38,7 +38,7 @@ export function withLock(file, fn, { waitMs = 2000, staleMs = 15000 } = {}) {
     catch (e) {
       if (!e || !["EEXIST", "EPERM", "EACCES", "EBUSY"].includes(e.code)) return { ok: false }; // Windows reports a folder that is still being deleted as EPERM/EACCES/EBUSY: wait and retry, do not give up
       try { if (Date.now() - fs.statSync(lock).mtimeMs > staleMs) { fs.rmdirSync(lock); continue; } } catch (e2) { ignore(e2); }
-      if (Date.now() - t0 > waitMs) return { ok: false };
+      if (Date.now() - t0 > waitMs) return { ok: false, busy: true };
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 + (process.pid % 30));
     }
   }

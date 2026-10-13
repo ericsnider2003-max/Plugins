@@ -57,6 +57,11 @@ export function replayTtl(turns) {
 // Cost of one assistant message at list price, honouring the real 5m/1h cache-write split when present.
 export function recordCost(message) {
   const u = (message && message.usage) || {};
+  const num = (x) => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+  // Usage that carries only a per-step `iterations` array (normalizeUsage counts it the same way): price each step on its own and add them up.
+  if (Array.isArray(u.iterations) && !num(u.input_tokens) && !num(u.output_tokens) && !num(u.cache_creation_input_tokens) && !num(u.cache_read_input_tokens)) {
+    return u.iterations.reduce((sum, step) => sum + recordCost({ ...message, usage: step }), 0);
+  }
   const ctx = (Number(u.input_tokens) || 0) + (Number(u.cache_creation_input_tokens) || 0) + (Number(u.cache_read_input_tokens) || 0);
   const p = priceFor(message && message.model, ctx);
   if (!p || message.model === "<synthetic>") return 0;

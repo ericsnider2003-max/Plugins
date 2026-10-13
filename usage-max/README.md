@@ -2,6 +2,15 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.19.0 (Oct 13 2026) — accurate numbers
+- **The weekly estimate no longer overshoots.** Spend was kept per hour and spread evenly across the hour, so a burst just before a reading was counted again after it (the reported 15% vs real 4%). The last 24 hours are now kept per minute, for Claude and for Codex.
+- **A burst now shows in the burn rate** even when there is only one reading, so a heavy hour is no longer averaged away over the week.
+- **The conversion rate (plan % per dollar) is learned properly.** A typed-in reading with almost no local spend no longer sets a huge rate or wipes what was learned, and one-point steps over a few cents no longer push it up: it learns over a stretch of at least 3 points and a real amount of spend. Codex got the same rules.
+- **Codex:** a newer typed-in reading is no longer replaced by an older log reading; a new week no longer learns from the old one; extra effort needs a reading from the last 12 hours; an ended 5-hour window is no longer shown as current.
+- **A busy settings file is retried** instead of being recorded as applied; two sessions at once can no longer lose a pinned mode or the other plan's shared status (locked updates, Claude and Codex).
+- **Fixed in the usage readers:** the same message copied into two files is counted once (largest output); a message straddling the start of a window no longer crashes usage-check; iterations-only usage is priced; the status line ignores a day-old summary; usage-check uses the reset saved by `calibrate`; the model ceiling reads versions from decorated ids (`[1m]`, `-latest`, Bedrock/Vertex); no balance advice when the other plan's percentage is unknown.
+- After updating: upload the new plugin, then run `4-CALIBRATE-CLAUDE` once to re-anchor.
+
 ## 0.18.1 (Oct 12 2026) — estimates say what they are built on
 - **The weekly percentage now says where it comes from.** In the desktop app there is no live reading from Claude, so the plugin estimates: your last real reading plus a conversion rate times new spend. The estimate could drift (one report: 15% shown when the real figure was 4%) and chats repeated it as a fact. `status`/`budget` and the shared Claude/Codex status now show "(estimate: last real reading 4% 9h ago)", so a chat can see how stale it is. Re-run `4-CALIBRATE-CLAUDE` whenever you look at Settings > Usage to re-anchor it.
 - **Codex no longer invents "0% used, with surplus" after a weekly reset.** When the last Codex reading belongs to a window that has ended, the week is reported as unknown (not 0%), the surplus/high-effort allowance is not granted from that guess, and the session note does not print a made-up percentage.

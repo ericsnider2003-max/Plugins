@@ -15,7 +15,7 @@ await t("BUG-014", "Codex model survives a scan boundary (split log costs the sa
   const head = JSON.stringify({ type: "turn_context", payload: { model: "sol-1" } }) + "\n" + tc(ts);
   fs.writeFileSync(f, head); G.meterAll(G.loadConfig(), now, true);
   fs.appendFileSync(f, tc(ts)); const m = G.meterAll(G.loadConfig(), now + 1, true);
-  const total = Object.values(m.hours).reduce((a, b) => a + b, 0);
+  const total = Object.values(m.hours).concat(Object.values(m.fine || {})).reduce((a, b) => a + b, 0);
   assert.ok(Math.abs(total - 40) < 1e-6, "two 1M-input lines at weight 20 = 40, got " + total);
 });
 
@@ -147,7 +147,7 @@ await t("BUG-004", "concurrent sessions cannot lose or double count meter data o
   const gov = pathToFileURL(path.join(root, "codex/scripts/codex-governor.mjs")).href;
   const code = `const G = await import(${JSON.stringify(gov)}); G.meterAll(G.loadConfig(), Date.now(), true);`;
   const { spawn } = await import("node:child_process"); await Promise.all(Array.from({ length: 6 }, () => new Promise((res) => spawn("node", ["--input-type=module", "-e", code], { env }).on("exit", res))));
-  const m = JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/meter.json"), "utf8")); assert.ok(Math.abs(Object.values(m.hours).reduce((a, b) => a + b, 0) - 80) < 1e-6, "4 lines x weight 20 counted once: " + JSON.stringify(m.hours));
+  const m = JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/meter.json"), "utf8")); assert.ok(Math.abs(Object.values(m.hours).concat(Object.values(m.fine || {})).reduce((a, b) => a + b, 0) - 80) < 1e-6, "4 lines x weight 20 counted once: " + JSON.stringify(m.hours));
   // the lock itself: 6 processes x 30 locked read-modify-write steps never lose an update
   const S = pathToFileURL(path.join(root, "scripts/safefile.mjs")).href, f = path.join(home, "counter.json"); fs.writeFileSync(f, "0");
   const code2 = `const S = await import(${JSON.stringify(S)}); const fs = await import("node:fs"); for (let i = 0; i < 30; i++) { const r = S.withLock(${JSON.stringify(f)}, () => { const v = Number(fs.readFileSync(${JSON.stringify(f)}, "utf8")); fs.writeFileSync(${JSON.stringify(f)}, String(v + 1)); }, { waitMs: 20000 }); if (!r.ok) process.exit(3); }`;
@@ -377,7 +377,7 @@ await t("BUG-027", "the calibrate launcher never lets typed text run as a comman
 await t("BUG-028", "calibration prices a message once even when two transcript files hold it", async () => {
   const home = tmp(); const proj = path.join(home, "projects/x"); fs.mkdirSync(proj, { recursive: true }); const line = JSON.stringify({ type: "assistant", timestamp: new Date().toISOString(), message: { id: "dup1", model: "claude-opus-5-5", usage: { input_tokens: 1e6, output_tokens: 0 } } }) + "\n";
   fs.writeFileSync(path.join(proj, "a.jsonl"), line); fs.writeFileSync(path.join(proj, "b.jsonl"), line);
-  const M = await imp("scripts/meter.mjs"); const { windowSpend, meter } = await M.bootstrap(path.join(home, "projects"), Date.now() - 864e5); const total = Object.values(meter.buckets).reduce((a, b) => a + b, 0);
+  const M = await imp("scripts/meter.mjs"); const { windowSpend, meter } = await M.bootstrap(path.join(home, "projects"), Date.now() - 864e5); const total = [...Object.values(meter.buckets), ...Object.values(meter.fine || {})].reduce((a, b) => a + b, 0);
   assert.ok(Math.abs(total - 4) < 1e-6, "one 1M-token opus message = $4, not $8: " + total); assert.ok(Math.abs(windowSpend - 4) < 1e-6);
 });
 
@@ -407,6 +407,130 @@ await t("V0181", "estimates say what they are built on; a Codex week with no new
   fs.mkdirSync(path.join(home, ".usage-max-codex"), { recursive: true }); fs.writeFileSync(path.join(home, ".usage-max-codex/governor.json"), JSON.stringify({ mode: "green", ...old }));
   const r = C.evaluate(now, true); assert.equal(r.surplus, false, "no surplus invented from a guess");
   const sh = JSON.parse(fs.readFileSync(path.join(home, ".usage-max/shared.json"), "utf8")).codex; assert.equal(sh.estPct, null, "shared status says unknown, not 0%"); assert.equal(sh.readingPct, 77);
+});
+
+await t("BUG-031", "spend just before a reading is not counted again after it (Claude and Codex)", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const G = await imp("scripts/governor.mjs"), M = await imp("scripts/meter.mjs"), C = await imp("codex/scripts/codex-governor.mjs");
+  const H = 36e5, h0 = Math.floor(Date.now() / H) * H - 2 * H; // two hours ago, on the hour
+  // Claude: $9 spent 12:00-12:04, a 40% reading taken at 12:05, evaluated one minute later with nothing new spent
+  const meter = { cum: 9, offsets: {}, buckets: {}, fine: {} }; for (let i = 0; i < 5; i++) meter.fine[new Date(h0 + i * 6e4).toISOString()] = 1.8;
+  const at = h0 + 5 * 6e4, now = at + 6e4, st = {};
+  G.absorbSnapshot(st, { capturedAt: new Date(at).toISOString(), seven_day: { used_percentage: 40, resets_at: Math.floor((now + 3 * 864e5) / 1000) } }, meter.cum, { meter, nowMs: now });
+  assert.ok(Math.abs(st.calib.cumAt - 9) < 1e-6, "baseline includes the burst: " + st.calib.cumAt);
+  st.k = 2; const e = G.estimate(st, meter, now); assert.ok(Math.abs(e.estPct - 40) < 0.5, "estimate equals the reading: " + e.estPct);
+  // the same spend recorded through the real scan path lands in minute buckets, and the last day is exact
+  const m2 = { cum: 0, offsets: {}, buckets: {}, fine: {} }; const tr = path.join(home, "s.jsonl"); const ts = new Date(Date.now() - 20 * 6e4).toISOString();
+  fs.writeFileSync(tr, JSON.stringify({ type: "assistant", timestamp: ts, message: { id: "q1", model: "claude-opus-5-5", usage: { input_tokens: 1e6, output_tokens: 0 } } }) + "\n"); M.meterFiles(m2, [tr]);
+  assert.ok(Object.keys(m2.fine).length === 1 && Object.keys(m2.buckets).length === 0, "recent spend is per minute"); assert.ok(Math.abs(M.spendInLast(m2, 10 / 60, Date.now())) < 1e-9, "nothing spent in the last 10 minutes"); assert.ok(Math.abs(M.spendInLast(m2, 30 / 60, Date.now()) - 4) < 0.05, "all of it in the last 30");
+  // old minutes fold into their hour when saved
+  const old = { cum: 1, offsets: {}, buckets: {}, fine: { [new Date(Date.now() - 30 * H).toISOString()]: 3 } }; M.saveMeter(old); assert.equal(Object.keys(old.fine).length, 0); assert.ok(Math.abs(Object.values(old.buckets)[0] - 3) < 1e-9);
+  // Codex: same shape
+  const cm = { hours: {}, fine: {} }; for (let i = 0; i < 5; i++) cm.fine[Math.floor((h0 + i * 6e4) / 6e4)] = 1.8; const cst = { calib: { pct: 40, at, resets: new Date(now + 3 * 864e5).toISOString() }, k: 2 };
+  const ce = C.estimate(cst, cm, now, C.DEFAULT_CONFIG); assert.ok(ce.est >= 39.99 && ce.est < 41, "Codex estimate equals the reading: " + ce.est);
+  cm.fine[Math.floor((now + 6e4) / 6e4)] = 1; const ce2 = C.estimate(cst, cm, now + 12e4, C.DEFAULT_CONFIG); assert.ok(ce2.est > 41.5 && ce2.est < 42.5, "Codex counts spend after the reading (2 per $1): " + ce2.est);
+  assert.ok(Math.abs(C.spendSince({ hours: {}, fine: { [Math.floor(Date.now() / 6e4) - 1]: 3 } }, Date.now() - 30 * 6e4) - 3) < 1e-9);
+});
+
+await t("BUG-032", "a busy settings file is retried, not recorded as applied", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.USAGE_MAX_LIMITS_PATH = path.join(home, "none.json");
+  const G = await imp("scripts/governor.mjs"); const sf = path.join(home, ".claude", "settings.json"); fs.mkdirSync(path.dirname(sf), { recursive: true }); fs.writeFileSync(sf, "{}");
+  fs.mkdirSync(path.join(home, ".claude", "usage-max"), { recursive: true }); fs.writeFileSync(path.join(home, ".claude", "usage-max", "governor.json"), JSON.stringify({ override: "red", history: [], snaps: [] }));
+  fs.mkdirSync(sf + ".lock"); // another tool holds the settings file
+  let st = G.evaluate({ meter: { cum: 0, buckets: {}, fine: {}, offsets: {} } });
+  assert.notEqual(st.appliedKey, "red", "not recorded as applied while the file was busy"); assert.equal(JSON.parse(fs.readFileSync(sf, "utf8")).model, undefined);
+  fs.rmdirSync(sf + ".lock");
+  st = G.evaluate({ meter: { cum: 0, buckets: {}, fine: {}, offsets: {} } });
+  assert.equal(st.appliedKey, "red"); assert.ok(JSON.parse(fs.readFileSync(sf, "utf8")).model, "the next evaluation applied it");
+});
+
+await t("BUG-033", "a burst after a single reading shows in the burn rate", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const G = await imp("scripts/governor.mjs"); const M = await imp("scripts/meter.mjs");
+  const now = Date.now(), reset = Math.floor((now + 6 * 864e5) / 1000);
+  const meter = { cum: 30, offsets: {}, buckets: {}, fine: { [new Date(Math.floor((now - 30 * 6e4) / 6e4) * 6e4).toISOString()]: 30 } };
+  const st = { k: 1, calib: { pct: 4, at: now - 36e5, cumAt: 0, resetsAt: reset, source: "manual" }, snaps: [{ at: now - 36e5, pct: 4, resetsAt: reset }] };
+  const e = G.estimate(st, meter, now, G.DEFAULT_CONFIG);
+  assert.ok(e.ratePerHour >= 2.4, "burst counted: " + e.ratePerHour); assert.equal(e.rateSource, "recent local spend");
+  assert.equal(G.decide({ ...e, prevMode: "green", config: G.DEFAULT_CONFIG }).mode, "red");
+  const calm = G.estimate({ ...st, k: 1 }, { cum: 0, offsets: {}, buckets: {}, fine: {} }, now, G.DEFAULT_CONFIG); assert.equal(calm.rateSource, "average so far");
+});
+
+await t("BUG-034", "typed-in readings with almost no spend do not wreck the conversion rate", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const G = await imp("scripts/governor.mjs");
+  assert.equal(G.kFromCalibration(undefined, 3, 0.05).k, 0, "3% over 5 cents is not k=60"); assert.equal(G.kFromCalibration(0.13, 3, 0.05).k, 0.13);
+  assert.equal(G.kFromCalibration(0.13, 0, 10).k, 0.13, "a 0% reading keeps what was learned"); assert.equal(G.kFromCalibration(undefined, 0, 10).k, 0);
+  const ok = G.kFromCalibration(0.13, 40, 300); assert.ok(ok.learned && Math.abs(ok.k - 40 / 300) < 1e-9);
+  // end to end: calibrate 3% with no history keeps the old rate
+  const ud = path.join(home, ".claude", "usage-max"); fs.mkdirSync(ud, { recursive: true }); fs.writeFileSync(path.join(ud, "governor.json"), JSON.stringify({ mode: "green", k: 0.134, history: [], snaps: [] }));
+  const proj = path.join(home, ".claude", "projects", "p"); fs.mkdirSync(proj, { recursive: true });
+  fs.writeFileSync(path.join(proj, "s.jsonl"), JSON.stringify({ type: "assistant", timestamp: new Date().toISOString(), message: { id: "z1", model: "claude-haiku-5-5", usage: { input_tokens: 1000, output_tokens: 10 } } }) + "\n");
+  const r = spawnSync(process.execPath, [path.join(root, "scripts/governor.mjs"), "calibrate", "3", "--resets", new Date(Date.now() + 3 * 864e5).toISOString()], { env: { ...process.env, USAGE_MAX_HOME: home, USAGE_MAX_LIMITS_PATH: path.join(home, "none.json") }, encoding: "utf8" });
+  assert.equal(JSON.parse(fs.readFileSync(path.join(ud, "governor.json"), "utf8")).k, 0.134, r.stdout + r.stderr);
+});
+
+await t("BUG-035", "one-point steps over tiny spend do not push the conversion rate up (Claude and Codex)", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const G = await imp("scripts/governor.mjs"), C = await imp("codex/scripts/codex-governor.mjs");
+  const now = Date.now(), reset = Math.floor((now + 3 * 864e5) / 1000), snap = (pct, i) => ({ capturedAt: new Date(now + i * 6e5).toISOString(), seven_day: { used_percentage: pct, resets_at: reset } });
+  const st = { k: 0.5, calib: { pct: 40, at: now - 36e5, cumAt: 10, resetsAt: reset, source: "plan" } };
+  G.absorbSnapshot(st, snap(41, 1), 10.1); G.absorbSnapshot(st, snap(42, 2), 10.2); assert.equal(st.k, 0.5, "a point or two over 20 cents teaches nothing");
+  G.absorbSnapshot(st, snap(44, 3), 12); assert.ok(Math.abs(st.k - (0.7 * 0.5 + 0.3 * (4 / 2))) < 1e-9, "4 points over $2 does: " + st.k);
+  // Codex: the same, with the spend in the minute map
+  const spend = (m, i, c) => { m.fine[Math.floor((now + i * 6e5 - 3e5) / 6e4)] = c; };
+  const win = (pct, i) => ({ ts: now + i * 6e5, primary: { used_percent: pct, window_minutes: 10080, resets_at: reset } });
+  const cm = { hours: {}, fine: {}, limits: null }, cs = { k: 0.5, calib: { pct: 40, at: now - 36e5, resets: new Date(reset * 1000).toISOString(), source: "plan" } };
+  spend(cm, 1, 0.1); cm.limits = win(41, 1); C.absorbLimits(cs, cm, now + 6e5); spend(cm, 2, 0.1); cm.limits = win(42, 2); C.absorbLimits(cs, cm, now + 12e5); assert.equal(cs.k, 0.5, "Codex: no learning from tiny steps");
+  spend(cm, 3, 2); cm.limits = win(44, 3); C.absorbLimits(cs, cm, now + 18e5); assert.ok(Math.abs(cs.k - (0.7 * 0.5 + 0.3 * (4 / 2.2))) < 0.05, "Codex learns from the whole stretch: " + cs.k);
+  // a first rate from a week with next to no spend is not accepted
+  const c2 = { hours: {}, fine: {}, limits: win(3, 0) }, s2 = {}; spend(c2, 0, 0.05); C.absorbLimits(s2, c2, now); assert.ok(!s2.k, "no k from 5 cents");
+});
+
+await t("BUG-036", "Codex: a typed-in reading is not replaced by an older log reading, and a new week does not learn from the old one", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const C = await imp("codex/scripts/codex-governor.mjs"); const now = Date.now(), reset = Math.floor((now + 3 * 864e5) / 1000), iso = new Date(reset * 1000).toISOString();
+  const st = { k: 0.5, calib: { pct: 10, at: now, resets: iso } }; const m = { hours: {}, fine: {}, limits: { ts: now - 36e5, primary: { used_percent: 4, window_minutes: 10080, resets_at: reset } } };
+  assert.equal(C.absorbLimits(st, m, now), false); assert.equal(st.calib.pct, 10, "the newer typed-in reading stays");
+  const dd = path.join(home, ".usage-max-codex"); fs.mkdirSync(dd, { recursive: true });
+  fs.writeFileSync(path.join(dd, "governor.json"), JSON.stringify({ mode: "green", k: null, calib: { pct: 1, at: now - 2 * 864e5, resets: new Date(now - 864e5).toISOString() } }));
+  fs.writeFileSync(path.join(dd, "meter.json"), JSON.stringify({ files: {}, hours: { [Math.floor((now - 1.5 * 864e5) / 36e5)]: 10 }, fine: { [Math.floor((now - 36e5) / 6e4)]: 20 }, lastRun: now }));
+  const r = C.calibrate(60, new Date((now + 6 * 864e5)).toISOString(), now); assert.ok(Math.abs(r.k - 3) < 0.05, "60% over this week's 20 units: " + r.k);
+});
+
+await t("BUG-037", "Codex: no extra effort from a days-old reading, and an ended 5-hour window is not shown as current", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const C = await imp("codex/scripts/codex-governor.mjs"); const now = Date.now(), resetIso = new Date(now + 3 * 864e5).toISOString();
+  const dd = path.join(home, ".usage-max-codex"); fs.mkdirSync(dd, { recursive: true });
+  const gf = path.join(dd, "governor.json"), put = (at) => fs.writeFileSync(gf, JSON.stringify({ mode: "green", k: 1, calib: { pct: 5, at, resets: resetIso, source: "plan" } }));
+  put(now - 3 * 864e5); assert.equal(C.evaluate(now, true).surplus, false, "3-day-old reading: no surplus");
+  put(now - 36e5); assert.equal(C.evaluate(now, true).surplus, true, "a fresh low reading still allows it");
+  const m = { hours: {}, fine: {}, limits: { ts: now, primary: { used_percent: 90, window_minutes: 300, resets_at: Math.floor((now - 36e5) / 1000) } } }; const st = {}; C.absorbLimits(st, m, now); assert.equal(st.five, null, "ended window is not current");
+});
+
+await t("BUG-044", "two sessions at once cannot lose a pinned mode or the other plan's shared status", async () => {
+  const { spawn } = await import("node:child_process");
+  const run = (args, env, code) => new Promise((res) => { const c = spawn(process.execPath, code ? ["--input-type=module", "-e", code] : args, { env: { ...process.env, ...env }, stdio: "ignore" }); c.on("close", res); });
+  const home = tmp(); const env = { USAGE_MAX_HOME: home, USAGE_MAX_LIMITS_PATH: path.join(home, "none.json"), CODEX_HOME: path.join(home, ".codex") };
+  const gov = path.join(root, "scripts/governor.mjs"), ud = path.join(home, ".claude", "usage-max"); fs.mkdirSync(ud, { recursive: true });
+  let lost = 0;
+  for (let r = 0; r < 4; r++) {
+    fs.writeFileSync(path.join(ud, "governor.json"), JSON.stringify({ mode: "green", override: null, history: [], snaps: [] }));
+    await Promise.all([...Array(5).fill(0).map(() => run([gov, "status"], env)), run([gov, "mode", "red"], env), ...Array(5).fill(0).map(() => run([gov, "status"], env))]);
+    if (JSON.parse(fs.readFileSync(path.join(ud, "governor.json"), "utf8")).override !== "red") lost++;
+  }
+  assert.equal(lost, 0, "the pinned mode survived every round");
+  const cg = path.join(root, "codex/scripts/codex-governor.mjs"), cd = path.join(home, ".usage-max-codex"); fs.mkdirSync(cd, { recursive: true }); let clost = 0;
+  for (let r = 0; r < 4; r++) {
+    fs.writeFileSync(path.join(cd, "governor.json"), JSON.stringify({ mode: "green", override: null, calib: null, k: null }));
+    await Promise.all([...Array(5).fill(0).map(() => run([cg, "status"], env)), run([cg, "mode", "red"], env), ...Array(5).fill(0).map(() => run([cg, "status"], env))]);
+    if (JSON.parse(fs.readFileSync(path.join(cd, "governor.json"), "utf8")).override !== "red") clost++;
+  }
+  assert.equal(clost, 0, "Codex: the pinned mode survived every round");
+  const sh = pathToFileURL(path.join(root, "scripts/shared.mjs")).href, shc = pathToFileURL(path.join(root, "codex/scripts/shared.mjs")).href;
+  for (let r = 0; r < 3; r++) {
+    fs.rmSync(path.join(home, ".usage-max", "shared.json"), { force: true });
+    await Promise.all([...Array(6).fill(0).map((_, i) => run(null, env, `import {writeSelf} from "${sh}"; for (let i=0;i<6;i++) writeSelf("claude",{mode:"green",n:i});`)), ...Array(6).fill(0).map(() => run(null, env, `import {writeSelf} from "${shc}"; for (let i=0;i<6;i++) writeSelf({mode:"green",n:i});`))]);
+    const all = JSON.parse(fs.readFileSync(path.join(home, ".usage-max", "shared.json"), "utf8")); assert.ok(all.claude && all.codex, "both plans' entries survive: " + Object.keys(all));
+  }
 });
 
 console.log(`${n} passing`);

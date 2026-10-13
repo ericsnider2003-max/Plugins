@@ -2,7 +2,7 @@
 // Burn-anomaly alarm for BOTH plans. Compares the recent burn rate with your own hourly median and names the biggest contributor.
 // Read-only, local logs only. Claude is measured in list-price dollars; Codex has no price in its logs, so it is measured in tokens (input-cached + output).
 import fs from "node:fs"; import os from "node:os"; import path from "node:path";
-import { listJsonlFiles, normalizeUsage, parseTimestamp } from "./lib.mjs";
+import { listJsonlFiles, normalizeUsage, parseTimestamp, createDeduper } from "./lib.mjs";
 import { priceFor, turnCost } from "./pricing.mjs";
 
 const HOUR = 36e5;
@@ -22,17 +22,20 @@ export function detect(events, { now = Date.now(), recentHours = 3, days = 7, fa
 }
 
 export async function claudeEvents(dir, days = 7, now = Date.now()) {
-  const ev = [], lo = now - days * 864e5;
+  const dedupe = createDeduper(), lo = now - days * 864e5; // one message repeated across files counts once, at its largest output
   for (const f of await listJsonlFiles(dir)) {
     let text; try { if (fs.statSync(f).mtimeMs < lo) continue; text = fs.readFileSync(f, "utf8"); } catch { continue; }
-    const side = f.includes("/subagents/") || f.includes(`${path.sep}subagents${path.sep}`), seen = new Set(), label = (side ? "subagent " : "main ") + path.basename(f).slice(0, 8);
+    const side = f.includes("/subagents/") || f.includes(`${path.sep}subagents${path.sep}`), label = (side ? "subagent " : "main ") + path.basename(f).slice(0, 8);
     for (const line of text.split("\n")) {
       if (!line.includes('"assistant"')) continue; let r; try { r = JSON.parse(line); } catch { continue; }
       const m = r && r.message; if (r.type !== "assistant" || !m || !m.model || m.model === "<synthetic>") continue;
-      if (m.id) { if (seen.has(m.id)) continue; seen.add(m.id); }
-      const t = parseTimestamp(r.timestamp), u = normalizeUsage(m.usage), p = priceFor(m.model, u.input + u.created + u.read); if (!t || !p) continue;
-      ev.push({ t, v: turnCost(u, p).total, who: `${label} (${m.model})` });
+      dedupe.add(m, { m, t: parseTimestamp(r.timestamp), who: `${label} (${m.model})` });
     }
+  }
+  const ev = [];
+  for (const { m, t, who } of dedupe.items()) {
+    const u = normalizeUsage(m.usage), p = priceFor(m.model, u.input + u.created + u.read); if (!t || !p) continue;
+    ev.push({ t, v: turnCost(u, p).total, who });
   }
   return ev;
 }

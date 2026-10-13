@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { recordCost } from "./pricing.mjs";
+import { modelVersion } from "./ceiling.mjs";
 
 export function asNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -99,20 +100,15 @@ export function weeklyStart(now = new Date(), spec = { day: 0, hour: 7, minute: 
 
 // Ceiling: Opus 5.5. Returns "ok" | "above" | "unknown".
 export const CEILING = { family: "opus", version: 5.5 };
-export function modelVersion(model) {
-  const m = String(model || "").toLowerCase().match(/(?:opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
-  if (!m) return null;
-  return Number(m[1]) + (m[2] ? Number(m[2]) / 10 : 0);
-}
+export { modelVersion };
 export function ceilingStatus(model) {
   const family = modelFamily(model);
   if (family === "synthetic") return "ok";
   if (family === "fable") return "above";
-  if (family === "haiku" || family === "sonnet") return "ok";
-  if (family === "opus") {
+  if (family === "haiku" || family === "sonnet" || family === "opus") {
     const v = modelVersion(model);
-    if (v === null) return "unknown";
-    return v <= CEILING.version ? "ok" : "above";
+    if (v === null) return "unknown"; // an id whose version cannot be read is never "ok" by accident
+    return family !== "opus" || v <= CEILING.version ? "ok" : "above";
   }
   return "unknown";
 }
@@ -175,6 +171,21 @@ export async function scanAssistantRecords(file, onRecord, { includeDuplicates =
   }
 }
 
+// One message can appear many times: one record per content block, and sub-agent / resumed transcripts copy parent messages into other files.
+// Count each message id once, keeping the copy with the largest output_tokens (a streaming update supersedes the partial count; ties: the latest).
+// Records without an id are never merged. add(message, item) takes any caller payload; items() returns the winners in first-seen order.
+export function createDeduper() {
+  const byId = new Map(), slots = [];
+  return {
+    add(message, item) {
+      const id = message && message.id, out = normalizeUsage(message && message.usage).output;
+      const slot = id ? byId.get(id) : null;
+      if (!slot) { const s = { item, out }; slots.push(s); if (id) byId.set(id, s); } else if (out >= slot.out) { slot.item = item; slot.out = out; }
+    },
+    items: () => slots.map((x) => x.item)
+  };
+}
+
 function emptyModelBucket() {
   return {
     turns: 0,
@@ -225,29 +236,39 @@ export async function summarizeProjects({
   };
   for (const key of Object.keys(windows)) summary.ranges[key] = emptyModelBucket();
 
+  // Pass 1: read every transcript once, keeping only what the summary needs (usage, tool calls). The winner of each message id is picked across ALL files.
+  const slim = (message) => ({ id: message.id, model: message.model, usage: message.usage, content: (Array.isArray(message.content) ? message.content : []).filter((c) => c && c.type === "tool_use" && c.input && typeof c.input === "object").map((c) => ({ type: "tool_use", id: c.id, name: c.name, input: { file_path: c.input.file_path, command: typeof c.input.command === "string" ? c.input.command.slice(0, 160) : undefined } })) });
+  const winners = new Map(), perFile = [];
   for (const file of files) {
+    const records = [];
+    await scanAssistantRecords(file, (record) => {
+      const message = slim(record.message), out = normalizeUsage(message.usage).output;
+      const rec = { file, timestamp: parseTimestamp(record.timestamp), sidechain: record.isSidechain === true, message, out };
+      records.push(rec);
+      const cur = message.id ? winners.get(message.id) : null;
+      if (message.id && (!cur || out >= cur.out)) winners.set(message.id, rec);
+    }, { includeDuplicates: true });
+    perFile.push({ file, records });
+  }
+  const isPrimary = (rec) => !rec.message.id || winners.get(rec.message.id) === rec;
+  const inWindow = (rec) => !rec.timestamp || rec.timestamp >= since;
+  // Pass 2: one turn per message (its winning copy). Tool calls of the other copies are added afterwards, once per tool_use id.
+  const seenTools = new Set();
+  const newTools = (message) => message.content.filter((c) => !c.id || !seenTools.has(c.id));
+  for (const { file, records } of perFile) {
     let fileBucket = null;
-    await scanAssistantRecords(file, (record, _file, duplicate) => {
-      const timestamp = parseTimestamp(record.timestamp);
-      if (timestamp && timestamp < since) return;
-      if (duplicate) { // same API response as an earlier record: its tokens are already counted, but not its tool calls
-        const extra = toolCallNames(record.message);
-        if (extra.length) {
-          summary.models[record.message.model].toolCalls += extra.length;
-          summary.ranges.all.toolCalls += extra.length;
-          if (summary.sessions[file]) summary.sessions[file].toolCalls += extra.length;
-          trackRework(summary.rework, record.message);
-        }
-        return;
-      }
-      const model = record.message.model;
-      const usage = normalizeUsage(record.message.usage);
-      const tools = toolCallNames(record.message);
-      const sidechain = record.isSidechain === true;
+    for (const rec of records) {
+      if (!isPrimary(rec) || !inWindow(rec)) continue;
+      const { timestamp, message } = rec;
+      const model = message.model;
+      const usage = normalizeUsage(message.usage);
+      const tools = toolCallNames(message);
+      for (const c of message.content) if (c.id) seenTools.add(c.id);
+      const sidechain = rec.sidechain;
       const project = path.basename(path.dirname(file));
       const session = path.basename(file, ".jsonl");
 
-      const cost = recordCost(record.message);
+      const cost = recordCost(message);
       summary.assistantTurns += 1;
       if (sidechain) summary.sidechainTurns += 1;
       summary.models[model] = summary.models[model] || emptyModelBucket();
@@ -274,11 +295,25 @@ export async function summarizeProjects({
       if (tools.length >= toolCallSpike || context >= contextSpike) {
         summary.spikes.push({ file, session, project, timestamp, model, sidechain, toolCalls: tools.length, context });
       }
-      trackRework(summary.rework, record.message);
-    }, { includeDuplicates: true });
+      trackRework(summary.rework, message);
+    }
     if (fileBucket) {
       summary.files += 1;
       if (typeof onFile === "function") onFile(file, fileBucket);
+    }
+  }
+  for (const { file, records } of perFile) {
+    for (const rec of records) { // other copies of a counted message: its tokens are already counted, but not tool calls first seen on this copy
+      if (isPrimary(rec)) continue;
+      const winner = winners.get(rec.message.id);
+      if (!inWindow(winner) || !summary.models[rec.message.model]) continue; // the message itself fell before the window start: so do its copies
+      const fresh = newTools(rec.message);
+      if (!fresh.length) continue;
+      for (const c of fresh) if (c.id) seenTools.add(c.id);
+      summary.models[rec.message.model].toolCalls += fresh.length;
+      summary.ranges.all.toolCalls += fresh.length;
+      if (summary.sessions[file]) summary.sessions[file].toolCalls += fresh.length;
+      trackRework(summary.rework, { content: fresh });
     }
   }
   summary.spikes.sort((a, b) => b.context - a.context);

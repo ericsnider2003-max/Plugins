@@ -63,7 +63,7 @@ export function scanFile(file, offset, cfg, model0 = null) {
   }
   return { items, limits, model, offset: offset + Buffer.byteLength(text.slice(0, end + 1)) };
 }
-export function loadMeter() { return j(path.join(dataDir(), "meter.json"), { files: {}, hours: {} }); }
+export function loadMeter() { return j(path.join(dataDir(), "meter.json"), { files: {}, hours: {}, fine: {} }); }
 export const METER_TTL_MS = 20e3;
 export function meterAll(cfg = loadConfig(), nowMs = Date.now(), force = false) {
   const m0 = loadMeter(); if (!force && m0.lastRun && nowMs - m0.lastRun >= 0 && nowMs - m0.lastRun < METER_TTL_MS) return m0;
@@ -77,14 +77,27 @@ function meterAllLocked(cfg, nowMs) {
     let st; try { st = fs.statSync(f); } catch { continue; } if (st.mtimeMs < cut) { delete m.files[f]; continue; }
     const prev = m.files[f] || { offset: 0, size: 0 }; if (st.size === prev.size) continue;
     const r = scanFile(f, prev.offset, cfg, prev.model || null); m.files[f] = { offset: r.offset, size: st.size, model: r.model };
-    for (const it of r.items) { const h = Math.floor(it.ts / 36e5); m.hours[h] = (m.hours[h] || 0) + it.cost; }
+    for (const it of r.items) addSpend(m, it.ts, it.cost, nowMs);
     if (r.limits && (!m.limits || r.limits.ts >= m.limits.ts)) m.limits = r.limits;
   }
+  compact(m, nowMs);
   for (const h of Object.keys(m.hours)) if (h < (nowMs - 8 * 864e5) / 36e5) delete m.hours[h];
   for (const f of Object.keys(m.files)) { try { fs.statSync(f); } catch { delete m.files[f]; } } // offsets of deleted logs would grow forever
   m.lastRun = nowMs; wj(path.join(dataDir(), "meter.json"), m); return m;
 }
-export const spendSince = (m, ms) => Object.entries(m.hours).reduce((a, [h, c]) => a + (h * 36e5 + 36e5 > ms ? c * Math.min(1, (h * 36e5 + 36e5 - ms) / 36e5) : 0), 0); // the hour that straddles `ms` counts only its later share
+// the last 24 h is kept per minute (an hourly bucket spread a burst over the whole hour, so spend just before a reading was counted again after it); older spend is per hour
+export const fineCut = (nowMs) => Math.floor((nowMs - 24 * 36e5) / 36e5) * 36e5;
+function addSpend(m, ts, cost, nowMs) {
+  m.fine = m.fine || {}; m.hours = m.hours || {};
+  if (ts >= fineCut(nowMs)) { const k = Math.floor(ts / 6e4); m.fine[k] = (m.fine[k] || 0) + cost; }
+  else { const h = Math.floor(ts / 36e5); m.hours[h] = (m.hours[h] || 0) + cost; }
+}
+function compact(m, nowMs) {
+  const cut = fineCut(nowMs); m.fine = m.fine || {}; m.hours = m.hours || {};
+  for (const [k, c] of Object.entries(m.fine)) if (k * 6e4 < cut) { const h = Math.floor(k * 6e4 / 36e5); m.hours[h] = (m.hours[h] || 0) + c; delete m.fine[k]; }
+}
+const share = (start, width, ms, c) => (start + width > ms ? c * Math.min(1, (start + width - ms) / width) : 0); // a bucket that straddles `ms` counts only its later share
+export const spendSince = (m, ms) => Object.entries(m.hours || {}).reduce((a, [h, c]) => a + share(h * 36e5, 36e5, ms, c), 0) + Object.entries(m.fine || {}).reduce((a, [k, c]) => a + share(k * 6e4, 6e4, ms, c), 0);
 export const spendLast = (m, hrs, now = Date.now()) => spendSince(m, now - hrs * 36e5);
 
 export function decide({ estPct, hoursLeft, ratePerHour, prevMode = "green", cfg }) {
@@ -113,14 +126,21 @@ export function windows(limits) {
   const ws = [limits && limits.primary, limits && limits.secondary].filter((w) => w && typeof w.used_percent === "number" && w.window_minutes);
   return { weekly: ws.filter((w) => w.window_minutes >= 7000).sort((a, b) => b.window_minutes - a.window_minutes)[0] || null, short: ws.filter((w) => w.window_minutes <= 600).sort((a, b) => a.window_minutes - b.window_minutes)[0] || null };
 }
+export const K_MIN_DPCT = 3, K_MIN_SPEND = 0.5;
 export function absorbLimits(st, m, now) {
-  const w = windows(m.limits); st.five = w.short ? { pct: w.short.used_percent, resetsAt: w.short.resets_at || null, windowMinutes: w.short.window_minutes, ts: m.limits.ts } : null;
+  // a 5-hour window that has already ended is not shown as current
+  const w = windows(m.limits); st.five = w.short && !(w.short.resets_at && w.short.resets_at * 1000 <= now) ? { pct: w.short.used_percent, resetsAt: w.short.resets_at || null, windowMinutes: w.short.window_minutes, ts: m.limits.ts } : null;
   if (!w.weekly || !w.weekly.resets_at) return false;
   const at = m.limits.ts, resets = new Date(w.weekly.resets_at * 1000).toISOString(), c = st.calib;
-  if (c && c.at >= at && c.source === "plan") return false;
+  if (c && c.at >= at) return false; // a newer reading (typed in or from the logs) is never replaced by an older one
   const sameWindow = c && Math.abs(Date.parse(c.resets) - w.weekly.resets_at * 1000) < 120000;
-  if (sameWindow && c.at < at) { const d = spendSince(m, c.at) - spendSince(m, at), dp = w.weekly.used_percent - c.pct; if (spendSince(m, c.at) - spendSince(m, at) > 0 && dp > 0) st.k = st.k ? 0.7 * st.k + 0.3 * (dp / d) : dp / d; }
-  if (!st.k) { const week = spendSince(m, w.weekly.resets_at * 1000 - 7 * 864e5); if (week > 0 && w.weekly.used_percent > 0) st.k = w.weekly.used_percent / week; }
+  // k is learned over a stretch of at least K_MIN_DPCT points and K_MIN_SPEND units (whole-percent readings make a 1-point step look like 0.5-1.5); the stretch starts at kBase, which only moves when a sample is taken
+  const used = w.weekly.used_percent, same = (r) => Math.abs(Date.parse(r) - w.weekly.resets_at * 1000) < 120000;
+  let kb = st.kBase;
+  if (!kb || !same(kb.resets) || used < kb.pct) kb = sameWindow && used >= c.pct ? { pct: c.pct, at: c.at, resets } : null;
+  if (kb && kb.at < at) { const d = spendSince(m, kb.at) - spendSince(m, at), dp = used - kb.pct; if (dp >= K_MIN_DPCT && d >= K_MIN_SPEND) { st.k = st.k ? 0.7 * st.k + 0.3 * (dp / d) : dp / d; kb = null; } }
+  st.kBase = kb || { pct: used, at, resets };
+  if (!st.k) { const week = spendSince(m, w.weekly.resets_at * 1000 - 7 * 864e5); if (used >= 1 && week >= K_MIN_SPEND) st.k = used / week; }
   st.calib = { pct: w.weekly.used_percent, at, resets, source: "plan" }; return true;
 }
 // Pace-aware 5-hour guard: only tighten when the current burn would hit 100% before the window resets.
@@ -131,9 +151,22 @@ export function fiveFloor(f, now) {
   const projected = f.pct / elapsed; if (projected <= 100) return "green";
   return projected > 140 && elapsed >= 0.25 ? "red" : "amber";
 }
+// read -> change -> write of governor.json as one locked step (a hook's evaluation and a typed command used to overwrite each other); fn(state) changes it in place.
+// -> { ok: true, value }, or { ok: false, busy: true } when another process holds the lock; an unwritable folder (Codex sandbox) runs unlocked as before.
+function govUpdate(fn) {
+  const sf = path.join(dataDir(), "governor.json");
+  const run = () => { const st = j(sf, {}); const value = fn(st); wj(sf, st); return value; };
+  const r = withLock(sf, run);
+  return r.ok ? { ok: true, value: r.value } : r.busy ? { ok: false, busy: true } : { ok: true, value: run() };
+}
+export const SURPLUS_MAX_READING_AGE_MS = 12 * 36e5;
 export function evaluate(now = Date.now(), force = false) {
-  const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json");
-  const st = j(sf, { mode: "green", override: null, calib: null, k: null }); const m = meterAll(cfg, now, force);
+  const cfg = loadConfig(), sf = path.join(dataDir(), "governor.json"), m = meterAll(cfg, now, force);
+  const r = withLock(sf, () => evaluateOn(cfg, m, now, true));
+  return r.ok ? r.value : evaluateOn(cfg, m, now, !r.busy); // busy: work the numbers out but leave the file to the process that holds it; an unwritable folder runs unlocked as before
+}
+function evaluateOn(cfg, m, now, persist) {
+  const sf = path.join(dataDir(), "governor.json"), st = j(sf, { mode: "green", override: null, calib: null, k: null });
   absorbLimits(st, m, now);
   let mode = st.mode, e = estimate(st, m, now, cfg);
   if (st.override) mode = st.override; else {
@@ -141,17 +174,22 @@ export function evaluate(now = Date.now(), force = false) {
     const floor = fiveFloor(st.five, now); const rank = { green: 0, amber: 1, red: 2 }; if (rank[floor] > rank[mode]) mode = floor;
   }
   const fl = fiveFloor(st.five, now); let surplus = false;
-  if (mode === "green" && e && fl === "green" && !e.rolled) { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12) : proj < 80 && e.hoursLeft > 12; e.projected = proj; }
+  const freshReading = st.calib && now - st.calib.at < SURPLUS_MAX_READING_AGE_MS; // extra effort needs a recent reading, not a days-old one
+  if (mode === "green" && e && fl === "green" && !e.rolled && freshReading) { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12) : proj < 80 && e.hoursLeft > 12; e.projected = proj; }
   if (mode !== st.mode) { st.history = [...(Array.isArray(st.history) ? st.history : []), { at: new Date(now).toISOString(), from: st.mode, to: mode }].slice(-200); }
-  st.mode = mode; st.surplus = surplus; st.appliedKey = st.appliedKey || null; wj(sf, st);
-  try { writeSelf({ ...(st.calib ? { readingPct: st.calib.pct, readingAt: st.calib.at } : {}), dataAt: st.calib && st.calib.at ? new Date(st.calib.at).toISOString() : null, mode, surplus, estPct: e && !e.rolled ? e.est : null, hoursLeft: e?.hoursLeft ?? null, fivePct: st.five?.pct ?? null, updatedAt: new Date(now).toISOString() }); } catch (e) { writeFailures.push("shared.json: " + (e.code || e.message)); }
+  st.mode = mode; st.surplus = surplus; st.appliedKey = st.appliedKey || null; if (persist) wj(sf, st);
+  if (persist) try { writeSelf({ ...(st.calib ? { readingPct: st.calib.pct, readingAt: st.calib.at } : {}), dataAt: st.calib && st.calib.at ? new Date(st.calib.at).toISOString() : null, mode, surplus, estPct: e && !e.rolled ? e.est : null, hoursLeft: e?.hoursLeft ?? null, fivePct: st.five?.pct ?? null, updatedAt: new Date(now).toISOString() }); } catch (e) { writeFailures.push("shared.json: " + (e.code || e.message)); }
   return { mode, surplus, e, st, cfg };
 }
 export function calibrate(pct, resets, now = Date.now()) {
-  const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); const m = meterAll(cfg, now, true);
-  const start = st.calib ? st.calib.at : now - 7 * 864e5; const spend = spendSince(m, start);
-  const newK = st.calib && spend > 0 ? Math.max(0, (pct - st.calib.pct) / spend) : (spendSince(m, Date.parse(resets) - 7 * 864e5) > 0 ? pct / spendSince(m, Date.parse(resets) - 7 * 864e5) : 0);
-  st.k = st.k && newK ? 0.7 * newK + 0.3 * st.k : newK || st.k; st.calib = { pct, at: now, resets }; wj(sf, st); return st;
+  const cfg = loadConfig(); const m = meterAll(cfg, now, true);
+  const r = govUpdate((st) => {
+    // a typed-in reading learns from the previous one only inside the same weekly window; across a boundary the two are different weeks, so it uses this week's spend
+    const sameWin = st.calib && Math.abs(Date.parse(st.calib.resets) - Date.parse(resets)) < 120000, spend = sameWin ? spendSince(m, st.calib.at) : 0, wk = spendSince(m, Date.parse(resets) - 7 * 864e5);
+    const newK = sameWin && pct - st.calib.pct >= K_MIN_DPCT && spend >= K_MIN_SPEND ? (pct - st.calib.pct) / spend : (pct >= 1 && wk >= K_MIN_SPEND ? pct / wk : 0);
+    st.k = st.k && newK ? 0.7 * newK + 0.3 * st.k : newK || st.k; st.calib = { pct, at: now, resets }; st.kBase = { pct, at: now, resets }; return { ...st };
+  });
+  return r.ok ? r.value : null; // null: another process is updating the file; nothing was saved
 }
 
 // ---- TOML: top-level keys only; see toml.mjs
@@ -167,7 +205,7 @@ export function writeProfiles(cfg = loadConfig()) {
     fs.mkdirSync(codexHome(), { recursive: true }); fs.writeFileSync(f, `# managed by usage-max (mode ${mode})\n` + t);
   }
 }
-export function markInstalled(now = Date.now()) { const sf = path.join(dataDir(), "governor.json"); const st = { mode: "green", override: null, calib: null, k: null, ...j(sf, {}) }; if (!st.installedAt) { st.installedAt = new Date(now).toISOString(); wj(sf, st); } }
+export function markInstalled(now = Date.now()) { govUpdate((st) => { for (const [k, v] of Object.entries({ mode: "green", override: null, calib: null, k: null })) if (!(k in st)) st[k] = v; if (!st.installedAt) st.installedAt = new Date(now).toISOString(); }); }
 export const modeKey = (mode, surplus) => mode + (surplus ? "+s" : "");
 export function markApplied(key) { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.appliedKey = key; wj(sf, st); }
 // Old defaults are removed ONLY when (a) usage-max once applied a mode on this machine (governor.json has appliedKey, i.e. it is the one that wrote them),
@@ -212,7 +250,7 @@ export function applyMode(mode, cfg = loadConfig(), surplus = false) {
     return setTopLevel(t, { ...legacyRemovals(t, cfg), ...planModeKeys(t, want, mode === "amber" || mode === "red", owned) }).replace(/\n*$/, "\n");
   });
   if (r.error) { writeFailures.push(r.error); console.error("usage-max: " + r.error); return r; }
-  writeProfiles(cfg); const st = j(sf, {}); st.owned = owned; st.appliedKey = modeKey(mode, surplus); wj(sf, st); return r;
+  writeProfiles(cfg); govUpdate((st) => { st.owned = owned; st.appliedKey = modeKey(mode, surplus); }); return r;
 }
 export function modelsSeen() {
   const out = {}; for (const f of walk(path.join(codexHome(), "sessions"))) { let t; try { t = fs.readFileSync(f, "utf8"); } catch { continue; } for (const m of t.matchAll(/"model"\s*:\s*"([^"]+)"/g)) out[m[1]] = (out[m[1]] || 0) + 1; }
@@ -289,8 +327,8 @@ if (isMain) {
   if (cmd === "doctor") { console.log("usage-max codex doctor:\n" + doctor()); process.exit(0); }
   if (EXT.has(cmd)) extCli(cmd, a, flag).then((c) => process.exit(c), (e) => { console.error(e.message); process.exit(1); }); else {
   if (cmd === "models") { const m = modelsSeen(); console.log(Object.keys(m).length ? "models seen in your Codex sessions (set config.json modes to ones your plan has):\n" + Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `  ${k}  (${v})`).join("\n") : "no sessions found under " + codexHome()); process.exit(0); }
-  if (cmd === "calibrate") { const pct = Number(a[0]); const r = flag("--resets"); if (!(pct >= 0 && pct <= 100) || !r) { console.error("usage: calibrate <pct 0-100 from /status or chatgpt.com/codex/settings/usage> --resets <ISO time with zone>"); process.exit(2); } const pr = parseResetTime(r); if (pr.error) { console.error("not calibrated: " + pr.error); process.exit(2); } if (pr.note) console.log("note: " + pr.note); calibrate(pct, new Date(pr.ms).toISOString()); }
-  if (cmd === "mode") { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.override = a[0] === "auto" ? null : a[0]; wj(sf, st); }
+  if (cmd === "calibrate") { const pct = Number(a[0]); const r = flag("--resets"); if (!(pct >= 0 && pct <= 100) || !r) { console.error("usage: calibrate <pct 0-100 from /status or chatgpt.com/codex/settings/usage> --resets <ISO time with zone>"); process.exit(2); } const pr = parseResetTime(r); if (pr.error) { console.error("not calibrated: " + pr.error); process.exit(2); } if (pr.note) console.log("note: " + pr.note); if (!calibrate(pct, new Date(pr.ms).toISOString())) { console.error("not saved: another session is updating the budget file. Run the same command again in a moment."); process.exit(1); } }
+  if (cmd === "mode") { const w = govUpdate((st) => { st.override = a[0] === "auto" ? null : a[0]; }); if (!w.ok) { console.error("not saved: another session is updating the budget file. Run the same command again in a moment."); process.exit(1); } }
   const { mode, surplus, e, st, cfg } = evaluate(Date.now(), true);
   if ((cmd === "mode" || cmd === "calibrate") && writeFailures.length) { console.error(`could not save (${[...new Set(writeFailures)].join(", ")}): this shell is read-only (Codex sandbox?). Run the same command from a normal terminal.`); process.exit(1); }
   if (writeFailures.length) console.log(`note: could not save state (${[...new Set(writeFailures)].join(", ")}) because this shell is read-only (the Codex sandbox). Numbers below are computed live from Codex's own logs; the hooks (which run outside the sandbox) keep the saved state current.`);

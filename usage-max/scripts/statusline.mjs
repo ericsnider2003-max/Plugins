@@ -65,7 +65,9 @@ if (rl && (rl.seven_day || rl.five_hour)) {
 } else {
   try {
     const status = JSON.parse(fs.readFileSync(statusPath, "utf8"));
-    parts.push(`${compact(status.contextPerDay)}/day · opus ${status.opusTurns || 0}`);
+    const ageH = (Date.now() - fs.statSync(statusPath).mtimeMs) / 3600000; // a summary from weeks ago is not "current": fall through to the governor estimate
+    if (ageH > 24) throw new Error("status.json is stale");
+    parts.push(`${compact(status.contextPerDay)}/day · opus ${status.opusTurns || 0}${ageH > 2 ? ` (as of ${Math.round(ageH)}h ago)` : ""}`);
   } catch {
     const est = gov && gov.last && Number.isFinite(gov.last.estPct) ? `wk ~${Math.round(gov.last.estPct)}% (est.)` : "no plan data yet (appears after first reply)";
     parts.push(est);
