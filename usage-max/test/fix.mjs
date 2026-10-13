@@ -485,4 +485,15 @@ await t("BUG-035", "one-point steps over tiny spend do not push the conversion r
   const c2 = { hours: {}, fine: {}, limits: win(3, 0) }, s2 = {}; spend(c2, 0, 0.05); C.absorbLimits(s2, c2, now); assert.ok(!s2.k, "no k from 5 cents");
 });
 
+await t("BUG-036", "Codex: a typed-in reading is not replaced by an older log reading, and a new week does not learn from the old one", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const C = await imp("codex/scripts/codex-governor.mjs"); const now = Date.now(), reset = Math.floor((now + 3 * 864e5) / 1000), iso = new Date(reset * 1000).toISOString();
+  const st = { k: 0.5, calib: { pct: 10, at: now, resets: iso } }; const m = { hours: {}, fine: {}, limits: { ts: now - 36e5, primary: { used_percent: 4, window_minutes: 10080, resets_at: reset } } };
+  assert.equal(C.absorbLimits(st, m, now), false); assert.equal(st.calib.pct, 10, "the newer typed-in reading stays");
+  const dd = path.join(home, ".usage-max-codex"); fs.mkdirSync(dd, { recursive: true });
+  fs.writeFileSync(path.join(dd, "governor.json"), JSON.stringify({ mode: "green", k: null, calib: { pct: 1, at: now - 2 * 864e5, resets: new Date(now - 864e5).toISOString() } }));
+  fs.writeFileSync(path.join(dd, "meter.json"), JSON.stringify({ files: {}, hours: { [Math.floor((now - 1.5 * 864e5) / 36e5)]: 10 }, fine: { [Math.floor((now - 36e5) / 6e4)]: 20 }, lastRun: now }));
+  const r = C.calibrate(60, new Date((now + 6 * 864e5)).toISOString(), now); assert.ok(Math.abs(r.k - 3) < 0.05, "60% over this week's 20 units: " + r.k);
+});
+
 console.log(`${n} passing`);

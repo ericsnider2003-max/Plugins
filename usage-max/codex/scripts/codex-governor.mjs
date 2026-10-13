@@ -131,7 +131,7 @@ export function absorbLimits(st, m, now) {
   const w = windows(m.limits); st.five = w.short ? { pct: w.short.used_percent, resetsAt: w.short.resets_at || null, windowMinutes: w.short.window_minutes, ts: m.limits.ts } : null;
   if (!w.weekly || !w.weekly.resets_at) return false;
   const at = m.limits.ts, resets = new Date(w.weekly.resets_at * 1000).toISOString(), c = st.calib;
-  if (c && c.at >= at && c.source === "plan") return false;
+  if (c && c.at >= at) return false; // a newer reading (typed in or from the logs) is never replaced by an older one
   const sameWindow = c && Math.abs(Date.parse(c.resets) - w.weekly.resets_at * 1000) < 120000;
   // k is learned over a stretch of at least K_MIN_DPCT points and K_MIN_SPEND units (whole-percent readings make a 1-point step look like 0.5-1.5); the stretch starts at kBase, which only moves when a sample is taken
   const used = w.weekly.used_percent, same = (r) => Math.abs(Date.parse(r) - w.weekly.resets_at * 1000) < 120000;
@@ -139,7 +139,7 @@ export function absorbLimits(st, m, now) {
   if (!kb || !same(kb.resets) || used < kb.pct) kb = sameWindow && used >= c.pct ? { pct: c.pct, at: c.at, resets } : null;
   if (kb && kb.at < at) { const d = spendSince(m, kb.at) - spendSince(m, at), dp = used - kb.pct; if (dp >= K_MIN_DPCT && d >= K_MIN_SPEND) { st.k = st.k ? 0.7 * st.k + 0.3 * (dp / d) : dp / d; kb = null; } }
   st.kBase = kb || { pct: used, at, resets };
-  if (!st.k) { const week = spendSince(m, w.weekly.resets_at * 1000 - 7 * 864e5); if (used >= 1 && week >= Math.max(1, used / 5)) st.k = used / week; }
+  if (!st.k) { const week = spendSince(m, w.weekly.resets_at * 1000 - 7 * 864e5); if (used >= 1 && week >= K_MIN_SPEND) st.k = used / week; }
   st.calib = { pct: w.weekly.used_percent, at, resets, source: "plan" }; return true;
 }
 // Pace-aware 5-hour guard: only tighten when the current burn would hit 100% before the window resets.
@@ -168,9 +168,10 @@ export function evaluate(now = Date.now(), force = false) {
 }
 export function calibrate(pct, resets, now = Date.now()) {
   const cfg = loadConfig(); const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); const m = meterAll(cfg, now, true);
-  const start = st.calib ? st.calib.at : now - 7 * 864e5; const spend = spendSince(m, start);
-  const newK = st.calib && spend > 0 ? Math.max(0, (pct - st.calib.pct) / spend) : (spendSince(m, Date.parse(resets) - 7 * 864e5) > 0 ? pct / spendSince(m, Date.parse(resets) - 7 * 864e5) : 0);
-  st.k = st.k && newK ? 0.7 * newK + 0.3 * st.k : newK || st.k; st.calib = { pct, at: now, resets }; wj(sf, st); return st;
+  // a typed-in reading learns from the previous one only inside the same weekly window; across a boundary the two are different weeks, so it uses this week's spend
+  const sameWin = st.calib && Math.abs(Date.parse(st.calib.resets) - Date.parse(resets)) < 120000, spend = sameWin ? spendSince(m, st.calib.at) : 0, wk = spendSince(m, Date.parse(resets) - 7 * 864e5);
+  const newK = sameWin && pct - st.calib.pct >= K_MIN_DPCT && spend >= K_MIN_SPEND ? (pct - st.calib.pct) / spend : (pct >= 1 && wk >= K_MIN_SPEND ? pct / wk : 0);
+  st.k = st.k && newK ? 0.7 * newK + 0.3 * st.k : newK || st.k; st.calib = { pct, at: now, resets }; st.kBase = { pct, at: now, resets }; wj(sf, st); return st;
 }
 
 // ---- TOML: top-level keys only; see toml.mjs
