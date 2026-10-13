@@ -8,7 +8,8 @@ import { underCodex } from "../scripts/host.mjs";
 import { dataDir } from "../scripts/meter.mjs";
 import { isDisabled, recordRewrite } from "../scripts/trimtest.mjs";
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
-// Long-running commands never end, and the trimmer only prints at the end of input: a dev server or a watcher would show nothing. Leave them alone.
+// Long-running commands never end. The trimmer streams (first 30 lines at once, the rest through a small window, flushed after 1 s of quiet or on a signal), but a dev server or
+// a watcher would still have everything after its first lines cut down to that window, and nothing says when it is over. Leave them alone.
 const LONG = /(^|\s)(-w|--watch\w*(=\S+)?|--serve|--dev)(\s|$)|:watch\b|\b(watch|serve|dev|start)\b/i;
 export function rewrite(cmd, trimPath) {
   if (typeof cmd !== "string" || process.env.USAGE_MAX_TRIM === "off") return null;
