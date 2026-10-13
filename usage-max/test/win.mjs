@@ -30,6 +30,9 @@ function launch(sb, file, input = "", env = {}) { // input uses CR LF line ends,
 
 await t("WIN-1", "4-CALIBRATE-CLAUDE passes a normal percent and reset time through intact", async () => {
   const sb = sandbox(), r = launch(sb, "4-CALIBRATE-CLAUDE.cmd", "67\nOct 11 2026 11:00 AM\n\n");
+  if (r.status !== 0) { // show which line of the launcher failed
+    const tr = sandbox(); const f = path.join(tr.dir, "4-CALIBRATE-CLAUDE.cmd"); fs.writeFileSync(f, fs.readFileSync(f, "utf8").replace("@echo off", "@echo on")); console.log("TRACE:\n" + launch(tr, "4-CALIBRATE-CLAUDE.cmd", "67\nOct 11 2026 11:00 AM\n\n").text);
+  }
   assert.equal(r.status, 0, r.text); assert.deepEqual(r.args, ["budget", "calibrate", "67", "--resets", "Oct 11 2026 11:00 AM"]);
   const dec = launch(sandbox(), "4-CALIBRATE-CLAUDE.cmd", "4.5\nOct 11 2026 11:00 AM\n\n"); assert.deepEqual(dec.args && dec.args[2], "4.5", "a decimal percent is fine");
 });
