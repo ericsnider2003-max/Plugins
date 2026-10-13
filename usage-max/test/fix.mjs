@@ -556,4 +556,15 @@ await t("BUG-046", "trimmed output is never printed without a saved copy: when t
   assert.equal(rt.stdout.replace(/\r\n/g, "\n"), big, "run-trimmed: whole output when it cannot be saved");
 });
 
+await t("BUG-048", "editing a linked or private file keeps the link and the permissions", async () => {
+  const S = await imp("scripts/safefile.mjs"); const d = tmp();
+  if (process.platform !== "win32") {
+    const real = path.join(d, "real.json"), link = path.join(d, "link.json"); fs.writeFileSync(real, "{}", { mode: 0o600 }); fs.chmodSync(real, 0o600); fs.symlinkSync(real, link);
+    const r = S.editText(link, () => '{"a":1}'); assert.equal(r.changed, true);
+    assert.ok(fs.lstatSync(link).isSymbolicLink(), "still a link"); assert.equal(fs.readFileSync(real, "utf8"), '{"a":1}', "the real file got the change");
+    assert.equal(fs.statSync(real).mode & 0o777, 0o600, "still private"); assert.equal(fs.statSync(r.backup).mode & 0o777, 0o600, "its backup is private too");
+  }
+  const f = path.join(d, "plain.txt"); S.writeAtomic(f, "a"); S.writeAtomic(f, "b"); assert.equal(fs.readFileSync(f, "utf8"), "b");
+});
+
 console.log(`${n} passing`);

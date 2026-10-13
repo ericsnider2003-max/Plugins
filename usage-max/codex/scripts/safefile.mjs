@@ -11,21 +11,25 @@ const ignore = (e) => e;
 
 // -> text, or null when the file does not exist. Any other failure (locked, permission, a directory) throws: the caller must leave the file alone.
 export function readText(file) { try { return fs.readFileSync(file, "utf8"); } catch (e) { if (e && e.code === "ENOENT") return null; throw e; } }
+// A linked file is edited through the link (the link stays a link), and an existing file keeps its permissions (a private file stays private).
 export function writeAtomic(file, text, { mode } = {}) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
-  try { fs.writeFileSync(tmp, text, mode ? { mode } : undefined); fs.renameSync(tmp, file); }
-  catch (e) { try { fs.rmSync(tmp, { force: true }); } catch (e) { ignore(e); } throw e; }
+  let target = file, keep = mode;
+  try { target = fs.realpathSync(file); if (keep === undefined) keep = fs.statSync(target).mode & 0o777; } catch (e) { ignore(e); } // a new file: the defaults
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const tmp = `${target}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+  try { fs.writeFileSync(tmp, text, keep ? { mode: keep } : undefined); if (keep) { try { fs.chmodSync(tmp, keep); } catch (e) { ignore(e); } } fs.renameSync(tmp, target); }
+  catch (e) { try { fs.rmSync(tmp, { force: true }); } catch (e2) { ignore(e2); } throw e; }
 }
 const stamp = (d = new Date()) => d.toISOString().replace(/[-:]/g, "").replace(/\.(\d+)Z$/, "$1Z");
 // Copies the current content to `<file>.usage-max-backup-<timestamp>` unless the newest backup is already identical; keeps the newest `keep`.
 export function backupFile(file, { keep = 5, now = new Date() } = {}) {
   const cur = readText(file); if (cur === null) return null;
-  try { fs.writeFileSync(file + ".usage-max-backup", cur, { flag: "wx" }); } catch (e) { ignore(e); /* the untouched original is kept once; it already exists */ }
+  let perm; try { perm = fs.statSync(file).mode & 0o777; } catch (e) { ignore(e); } // a backup of a private file is private too
+  try { fs.writeFileSync(file + ".usage-max-backup", cur, { flag: "wx", mode: perm }); } catch (e) { ignore(e); /* the untouched original is kept once; it already exists */ }
   const dir = path.dirname(file), base = path.basename(file) + ".usage-max-backup-";
   const all = fs.readdirSync(dir).filter((n) => n.startsWith(base)).sort();
   if (all.length) { try { if (fs.readFileSync(path.join(dir, all[all.length - 1]), "utf8") === cur) return path.join(dir, all[all.length - 1]); } catch (e) { ignore(e); } }
-  const out = path.join(dir, base + stamp(now)); fs.writeFileSync(out, cur);
+  const out = path.join(dir, base + stamp(now)); fs.writeFileSync(out, cur, { mode: perm });
   for (const n of [...all, path.basename(out)].sort().slice(0, -keep)) try { fs.rmSync(path.join(dir, n), { force: true }); } catch (e) { ignore(e); }
   return out;
 }
