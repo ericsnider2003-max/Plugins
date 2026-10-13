@@ -63,7 +63,7 @@ export function scanFile(file, offset, cfg, model0 = null) {
   }
   return { items, limits, model, offset: offset + Buffer.byteLength(text.slice(0, end + 1)) };
 }
-export function loadMeter() { return j(path.join(dataDir(), "meter.json"), { files: {}, hours: {} }); }
+export function loadMeter() { return j(path.join(dataDir(), "meter.json"), { files: {}, hours: {}, fine: {} }); }
 export const METER_TTL_MS = 20e3;
 export function meterAll(cfg = loadConfig(), nowMs = Date.now(), force = false) {
   const m0 = loadMeter(); if (!force && m0.lastRun && nowMs - m0.lastRun >= 0 && nowMs - m0.lastRun < METER_TTL_MS) return m0;
@@ -77,14 +77,27 @@ function meterAllLocked(cfg, nowMs) {
     let st; try { st = fs.statSync(f); } catch { continue; } if (st.mtimeMs < cut) { delete m.files[f]; continue; }
     const prev = m.files[f] || { offset: 0, size: 0 }; if (st.size === prev.size) continue;
     const r = scanFile(f, prev.offset, cfg, prev.model || null); m.files[f] = { offset: r.offset, size: st.size, model: r.model };
-    for (const it of r.items) { const h = Math.floor(it.ts / 36e5); m.hours[h] = (m.hours[h] || 0) + it.cost; }
+    for (const it of r.items) addSpend(m, it.ts, it.cost, nowMs);
     if (r.limits && (!m.limits || r.limits.ts >= m.limits.ts)) m.limits = r.limits;
   }
+  compact(m, nowMs);
   for (const h of Object.keys(m.hours)) if (h < (nowMs - 8 * 864e5) / 36e5) delete m.hours[h];
   for (const f of Object.keys(m.files)) { try { fs.statSync(f); } catch { delete m.files[f]; } } // offsets of deleted logs would grow forever
   m.lastRun = nowMs; wj(path.join(dataDir(), "meter.json"), m); return m;
 }
-export const spendSince = (m, ms) => Object.entries(m.hours).reduce((a, [h, c]) => a + (h * 36e5 + 36e5 > ms ? c * Math.min(1, (h * 36e5 + 36e5 - ms) / 36e5) : 0), 0); // the hour that straddles `ms` counts only its later share
+// the last 24 h is kept per minute (an hourly bucket spread a burst over the whole hour, so spend just before a reading was counted again after it); older spend is per hour
+export const fineCut = (nowMs) => Math.floor((nowMs - 24 * 36e5) / 36e5) * 36e5;
+function addSpend(m, ts, cost, nowMs) {
+  m.fine = m.fine || {}; m.hours = m.hours || {};
+  if (ts >= fineCut(nowMs)) { const k = Math.floor(ts / 6e4); m.fine[k] = (m.fine[k] || 0) + cost; }
+  else { const h = Math.floor(ts / 36e5); m.hours[h] = (m.hours[h] || 0) + cost; }
+}
+function compact(m, nowMs) {
+  const cut = fineCut(nowMs); m.fine = m.fine || {}; m.hours = m.hours || {};
+  for (const [k, c] of Object.entries(m.fine)) if (k * 6e4 < cut) { const h = Math.floor(k * 6e4 / 36e5); m.hours[h] = (m.hours[h] || 0) + c; delete m.fine[k]; }
+}
+const share = (start, width, ms, c) => (start + width > ms ? c * Math.min(1, (start + width - ms) / width) : 0); // a bucket that straddles `ms` counts only its later share
+export const spendSince = (m, ms) => Object.entries(m.hours || {}).reduce((a, [h, c]) => a + share(h * 36e5, 36e5, ms, c), 0) + Object.entries(m.fine || {}).reduce((a, [k, c]) => a + share(k * 6e4, 6e4, ms, c), 0);
 export const spendLast = (m, hrs, now = Date.now()) => spendSince(m, now - hrs * 36e5);
 
 export function decide({ estPct, hoursLeft, ratePerHour, prevMode = "green", cfg }) {

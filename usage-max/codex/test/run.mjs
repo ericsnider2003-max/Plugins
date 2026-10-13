@@ -16,8 +16,8 @@ fs.mkdirSync(path.join(home, ".usage-max-codex"), { recursive: true });
 fs.writeFileSync(path.join(home, ".usage-max-codex/config.json"), JSON.stringify({ modes: { green: { model: "gpt-6.1-sol", effort: "medium" }, amber: { model: "gpt-6.1-sol", effort: "low" }, red: { model: "gpt-6-luna", effort: "low" } } }));
 t("uncalibrated status works", () => { const r = g("status"); assert.equal(r.status, 0); assert.match(r.stdout, /not calibrated/); });
 t("calibrate computes k and estimate", () => { const r = g("calibrate", "60", "--resets", new Date(now + 97 * 36e5).toISOString()); assert.match(r.stdout, /est plan 60/); });
-t("meter counts spend with model weight", () => { const m = JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/meter.json"))); const tot = Object.values(m.hours).reduce((a, b) => a + b, 0); assert.ok(Math.abs(tot - 20 * 4 * (20000 + 8000 + 20000) / 1e6) < 1e-9, String(tot)); });
-t("partial trailing line not consumed twice", () => { g("status"); const m = JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/meter.json"))); assert.equal(Object.values(m.hours).reduce((a, b) => a + b, 0) > 0, true); });
+t("meter counts spend with model weight", () => { const m = JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/meter.json"))); const tot = Object.values(m.hours).concat(Object.values(m.fine || {})).reduce((a, b) => a + b, 0); assert.ok(Math.abs(tot - 20 * 4 * (20000 + 8000 + 20000) / 1e6) < 1e-9, String(tot)); });
+t("partial trailing line not consumed twice", () => { g("status"); const m = JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/meter.json"))); assert.equal(Object.values(m.hours).concat(Object.values(m.fine || {})).reduce((a, b) => a + b, 0) > 0, true); });
 t("manual red -> config.toml top-level only, tables intact, backup", () => { const r = g("mode", "red"); assert.match(r.stdout, /RED/); const c = fs.readFileSync(path.join(ch, "config.toml"), "utf8"); assert.match(c, /^approval_policy = "on-request"/m); assert.match(c, /^model = "gpt-6-luna"/m); assert.match(c, /model_reasoning_effort = "low"/); assert.ok(c.indexOf("model_reasoning_effort") < c.indexOf("[mcp_servers.x]")); assert.match(c, /\[mcp_servers.x\]\ncommand = "x"/); assert.ok(fs.existsSync(path.join(ch, "config.toml.usage-max-backup"))); assert.doesNotMatch(c, /model = "old"/); });
 t("profiles written", () => { for (const m of ["green", "amber", "red"]) assert.ok(fs.existsSync(path.join(ch, `usage-max-${m}.config.toml`))); });
 t("gate exit codes", () => { assert.equal(g("gate").status, 20); g("mode", "green"); assert.equal(g("gate").status, 0); g("mode", "auto"); });
@@ -89,9 +89,9 @@ console.log(`${n} passing (incl. hooks)`);
   t("meterAll throttle: two quick evaluate() calls scan once; force rescans", () => {
     const h = fresh(); const d = path.join(h, ".codex/sessions/2026/10/07"); fs.mkdirSync(d, { recursive: true }); const f = path.join(d, "rollout-t.jsonl");
     const tok = (ts) => JSON.stringify({ timestamp: new Date(ts).toISOString(), type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 1000, output_tokens: 0 } } } }) + "\n";
-    const t0 = Date.now(); fs.writeFileSync(f, tok(t0 - 1000)); gov.evaluate(t0); const a = Object.values(gov.loadMeter().hours).reduce((x, y) => x + y, 0);
-    fs.appendFileSync(f, tok(t0 - 500)); gov.evaluate(t0 + 1000); const b = Object.values(gov.loadMeter().hours).reduce((x, y) => x + y, 0); assert.equal(b, a);
-    gov.evaluate(t0 + 2000, true); const c = Object.values(gov.loadMeter().hours).reduce((x, y) => x + y, 0); assert.ok(c > a);
+    const t0 = Date.now(); fs.writeFileSync(f, tok(t0 - 1000)); gov.evaluate(t0); const a = (mm => Object.values(mm.hours).concat(Object.values(mm.fine || {})).reduce((x, y) => x + y, 0))(gov.loadMeter());
+    fs.appendFileSync(f, tok(t0 - 500)); gov.evaluate(t0 + 1000); const b = (mm => Object.values(mm.hours).concat(Object.values(mm.fine || {})).reduce((x, y) => x + y, 0))(gov.loadMeter()); assert.equal(b, a);
+    gov.evaluate(t0 + 2000, true); const c = (mm => Object.values(mm.hours).concat(Object.values(mm.fine || {})).reduce((x, y) => x + y, 0))(gov.loadMeter()); assert.ok(c > a);
   });
 }
 // auto-calibration from Codex's own rate_limits

@@ -15,7 +15,7 @@ await t("BUG-014", "Codex model survives a scan boundary (split log costs the sa
   const head = JSON.stringify({ type: "turn_context", payload: { model: "sol-1" } }) + "\n" + tc(ts);
   fs.writeFileSync(f, head); G.meterAll(G.loadConfig(), now, true);
   fs.appendFileSync(f, tc(ts)); const m = G.meterAll(G.loadConfig(), now + 1, true);
-  const total = Object.values(m.hours).reduce((a, b) => a + b, 0);
+  const total = Object.values(m.hours).concat(Object.values(m.fine || {})).reduce((a, b) => a + b, 0);
   assert.ok(Math.abs(total - 40) < 1e-6, "two 1M-input lines at weight 20 = 40, got " + total);
 });
 
@@ -147,7 +147,7 @@ await t("BUG-004", "concurrent sessions cannot lose or double count meter data o
   const gov = pathToFileURL(path.join(root, "codex/scripts/codex-governor.mjs")).href;
   const code = `const G = await import(${JSON.stringify(gov)}); G.meterAll(G.loadConfig(), Date.now(), true);`;
   const { spawn } = await import("node:child_process"); await Promise.all(Array.from({ length: 6 }, () => new Promise((res) => spawn("node", ["--input-type=module", "-e", code], { env }).on("exit", res))));
-  const m = JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/meter.json"), "utf8")); assert.ok(Math.abs(Object.values(m.hours).reduce((a, b) => a + b, 0) - 80) < 1e-6, "4 lines x weight 20 counted once: " + JSON.stringify(m.hours));
+  const m = JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/meter.json"), "utf8")); assert.ok(Math.abs(Object.values(m.hours).concat(Object.values(m.fine || {})).reduce((a, b) => a + b, 0) - 80) < 1e-6, "4 lines x weight 20 counted once: " + JSON.stringify(m.hours));
   // the lock itself: 6 processes x 30 locked read-modify-write steps never lose an update
   const S = pathToFileURL(path.join(root, "scripts/safefile.mjs")).href, f = path.join(home, "counter.json"); fs.writeFileSync(f, "0");
   const code2 = `const S = await import(${JSON.stringify(S)}); const fs = await import("node:fs"); for (let i = 0; i < 30; i++) { const r = S.withLock(${JSON.stringify(f)}, () => { const v = Number(fs.readFileSync(${JSON.stringify(f)}, "utf8")); fs.writeFileSync(${JSON.stringify(f)}, String(v + 1)); }, { waitMs: 20000 }); if (!r.ok) process.exit(3); }`;
@@ -377,7 +377,7 @@ await t("BUG-027", "the calibrate launcher never lets typed text run as a comman
 await t("BUG-028", "calibration prices a message once even when two transcript files hold it", async () => {
   const home = tmp(); const proj = path.join(home, "projects/x"); fs.mkdirSync(proj, { recursive: true }); const line = JSON.stringify({ type: "assistant", timestamp: new Date().toISOString(), message: { id: "dup1", model: "claude-opus-5-5", usage: { input_tokens: 1e6, output_tokens: 0 } } }) + "\n";
   fs.writeFileSync(path.join(proj, "a.jsonl"), line); fs.writeFileSync(path.join(proj, "b.jsonl"), line);
-  const M = await imp("scripts/meter.mjs"); const { windowSpend, meter } = await M.bootstrap(path.join(home, "projects"), Date.now() - 864e5); const total = Object.values(meter.buckets).reduce((a, b) => a + b, 0);
+  const M = await imp("scripts/meter.mjs"); const { windowSpend, meter } = await M.bootstrap(path.join(home, "projects"), Date.now() - 864e5); const total = [...Object.values(meter.buckets), ...Object.values(meter.fine || {})].reduce((a, b) => a + b, 0);
   assert.ok(Math.abs(total - 4) < 1e-6, "one 1M-token opus message = $4, not $8: " + total); assert.ok(Math.abs(windowSpend - 4) < 1e-6);
 });
 
@@ -407,6 +407,29 @@ await t("V0181", "estimates say what they are built on; a Codex week with no new
   fs.mkdirSync(path.join(home, ".usage-max-codex"), { recursive: true }); fs.writeFileSync(path.join(home, ".usage-max-codex/governor.json"), JSON.stringify({ mode: "green", ...old }));
   const r = C.evaluate(now, true); assert.equal(r.surplus, false, "no surplus invented from a guess");
   const sh = JSON.parse(fs.readFileSync(path.join(home, ".usage-max/shared.json"), "utf8")).codex; assert.equal(sh.estPct, null, "shared status says unknown, not 0%"); assert.equal(sh.readingPct, 77);
+});
+
+await t("BUG-031", "spend just before a reading is not counted again after it (Claude and Codex)", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const G = await imp("scripts/governor.mjs"), M = await imp("scripts/meter.mjs"), C = await imp("codex/scripts/codex-governor.mjs");
+  const H = 36e5, h0 = Math.floor(Date.now() / H) * H - 2 * H; // two hours ago, on the hour
+  // Claude: $9 spent 12:00-12:04, a 40% reading taken at 12:05, evaluated one minute later with nothing new spent
+  const meter = { cum: 9, offsets: {}, buckets: {}, fine: {} }; for (let i = 0; i < 5; i++) meter.fine[new Date(h0 + i * 6e4).toISOString()] = 1.8;
+  const at = h0 + 5 * 6e4, now = at + 6e4, st = {};
+  G.absorbSnapshot(st, { capturedAt: new Date(at).toISOString(), seven_day: { used_percentage: 40, resets_at: Math.floor((now + 3 * 864e5) / 1000) } }, meter.cum, { meter, nowMs: now });
+  assert.ok(Math.abs(st.calib.cumAt - 9) < 1e-6, "baseline includes the burst: " + st.calib.cumAt);
+  st.k = 2; const e = G.estimate(st, meter, now); assert.ok(Math.abs(e.estPct - 40) < 0.5, "estimate equals the reading: " + e.estPct);
+  // the same spend recorded through the real scan path lands in minute buckets, and the last day is exact
+  const m2 = { cum: 0, offsets: {}, buckets: {}, fine: {} }; const tr = path.join(home, "s.jsonl"); const ts = new Date(Date.now() - 20 * 6e4).toISOString();
+  fs.writeFileSync(tr, JSON.stringify({ type: "assistant", timestamp: ts, message: { id: "q1", model: "claude-opus-5-5", usage: { input_tokens: 1e6, output_tokens: 0 } } }) + "\n"); M.meterFiles(m2, [tr]);
+  assert.ok(Object.keys(m2.fine).length === 1 && Object.keys(m2.buckets).length === 0, "recent spend is per minute"); assert.ok(Math.abs(M.spendInLast(m2, 10 / 60, Date.now())) < 1e-9, "nothing spent in the last 10 minutes"); assert.ok(Math.abs(M.spendInLast(m2, 30 / 60, Date.now()) - 4) < 0.05, "all of it in the last 30");
+  // old minutes fold into their hour when saved
+  const old = { cum: 1, offsets: {}, buckets: {}, fine: { [new Date(Date.now() - 30 * H).toISOString()]: 3 } }; M.saveMeter(old); assert.equal(Object.keys(old.fine).length, 0); assert.ok(Math.abs(Object.values(old.buckets)[0] - 3) < 1e-9);
+  // Codex: same shape
+  const cm = { hours: {}, fine: {} }; for (let i = 0; i < 5; i++) cm.fine[Math.floor((h0 + i * 6e4) / 6e4)] = 1.8; const cst = { calib: { pct: 40, at, resets: new Date(now + 3 * 864e5).toISOString() }, k: 2 };
+  const ce = C.estimate(cst, cm, now, C.DEFAULT_CONFIG); assert.ok(ce.est >= 39.99 && ce.est < 41, "Codex estimate equals the reading: " + ce.est);
+  cm.fine[Math.floor((now + 6e4) / 6e4)] = 1; const ce2 = C.estimate(cst, cm, now + 12e4, C.DEFAULT_CONFIG); assert.ok(ce2.est > 41.5 && ce2.est < 42.5, "Codex counts spend after the reading (2 per $1): " + ce2.est);
+  assert.ok(Math.abs(C.spendSince({ hours: {}, fine: { [Math.floor(Date.now() / 6e4) - 1]: 3 } }, Date.now() - 30 * 6e4) - 3) < 1e-9);
 });
 
 console.log(`${n} passing`);
