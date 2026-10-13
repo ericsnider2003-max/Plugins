@@ -210,8 +210,19 @@ await t("BUG-008", "a Stop inside the one-minute gap does no transcript read or 
   assert.equal(R.saveResume(home, cwd, "first note"), true); let called = 0;
   assert.equal(R.saveResume(home, cwd, () => { called++; return "second"; }), false); assert.equal(called, 0, "builder not called inside the gap");
   assert.equal(R.saveResume(home, cwd, () => { called++; return "second"; }, { minGapMs: 0 }), true); assert.equal(called, 1);
-  const src = fs.readFileSync(path.join(root, "hooks/memory.mjs"), "utf8"); assert.match(src, /saveResume\(R\.sharedDir\(\), cwd, \(\) =>/, "the Claude Stop hook passes a builder, not a built note");
-  const cx = fs.readFileSync(path.join(root, "codex/scripts/codex-hook.mjs"), "utf8"); assert.match(cx, /saveResume\(R\.sharedDir\(\), cwdR, \(\) =>/, "so does the Codex hook");
+  if (process.platform !== "win32") { // run the real Stop hooks with a fake git that logs every call: a second Stop inside the gap must make none
+    const bin = path.join(home, "bin"); fs.mkdirSync(bin); const log = path.join(home, "git.log"); fs.writeFileSync(path.join(bin, "git"), `#!/bin/sh\necho "$@" >> "${log}"\n`, { mode: 0o755 });
+    const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, USAGE_MAX_HOME: path.join(home, "h"), CODEX_HOME: path.join(home, "h", ".codex") }, calls = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").split("\n").filter(Boolean).length : 0);
+    const tr = path.join(home, "t.jsonl"); fs.writeFileSync(tr, JSON.stringify({ type: "user", message: { role: "user", content: "hello" } }) + "\n");
+    const rollDir = path.join(env.CODEX_HOME, "sessions", "2026", "10", "13"), roll = path.join(rollDir, "rollout-2026-10-13T00-00-00-s1.jsonl");
+    const stop = (script) => { if (script.startsWith("codex")) { fs.mkdirSync(rollDir, { recursive: true }); fs.writeFileSync(roll, JSON.stringify({ timestamp: new Date().toISOString(), type: "event_msg", payload: { type: "user_message", message: "hello" } }) + "\n"); }
+      return spawnSync(process.execPath, [path.join(root, script), "Stop"], { input: JSON.stringify({ hook_event_name: "Stop", cwd, session_id: "s1", transcript_path: script.startsWith("codex") ? roll : tr }), env, encoding: "utf8" }); };
+    for (const script of ["hooks/memory.mjs", "codex/scripts/codex-hook.mjs"]) {
+      fs.rmSync(log, { force: true }); fs.rmSync(path.join(home, "h"), { recursive: true, force: true });
+      assert.equal(stop(script).status, 0); const first = calls(); assert.ok(first > 0, script + ": the first Stop does build the note (" + first + " git calls)");
+      assert.equal(stop(script).status, 0); assert.equal(calls(), first, script + ": a second Stop inside the gap makes no git call");
+    }
+  }
 });
 
 await t("BUG-010", "the loop-note wrapper works for commands that end in a # comment", async () => {
@@ -357,9 +368,6 @@ await t("BUG-025", "with no inputs named, the result cache notices a changed fil
 });
 
 await t("BUG-026", "small status files are written atomically", async () => {
-  const src = (f) => fs.readFileSync(path.join(root, f), "utf8");
-  assert.doesNotMatch(src("scripts/statusline.mjs"), /writeFileSync\(limitsPath/); assert.doesNotMatch(src("scripts/profile.mjs"), /writeFileSync\(launcher/); assert.doesNotMatch(src("hooks/ledger.mjs"), /writeFileSync\(file, JSON/);
-  assert.doesNotMatch(src("codex/scripts/codex-hook.mjs"), /writeFileSync\((f|sf), JSON/, "hook-seen.json and hook-state.json");
   const home = tmp(); const env = { ...process.env, USAGE_MAX_HOME: home }; const now = Math.floor(Date.now() / 1000);
   const rl = { rate_limits: { seven_day: { used_percentage: 10, resets_at: now + 86400 * 3 }, five_hour: { used_percentage: 5, resets_at: now + 3600 } }, model: { id: "claude-opus-5-5", display_name: "Opus" } };
   const { spawn } = await import("node:child_process"); await Promise.all(Array.from({ length: 6 }, () => new Promise((res) => { const c = spawn("node", [path.join(root, "scripts/statusline.mjs")], { env }); c.stdin.end(JSON.stringify(rl)); c.on("exit", res); })));

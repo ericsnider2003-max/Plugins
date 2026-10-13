@@ -1,6 +1,6 @@
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import assert from "node:assert/strict"; import { spawnSync } from "node:child_process"; import { fileURLToPath, pathToFileURL } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const home = fs.mkdtempSync(path.join(os.tmpdir(), "umg-")); process.env.USAGE_MAX_HOME = home;
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "umg-")); process.env.USAGE_MAX_HOME = home; delete process.env.CODEX_HOME; // a CODEX_HOME in your own environment must not leak in: the default then follows USAGE_MAX_HOME, never the real ~/.codex
 const dir = path.join(home, ".claude", "usage-max"); fs.mkdirSync(dir, { recursive: true });
 const G = await import(pathToFileURL(path.join(root, "scripts/guard.mjs")).href);
 const { scan, archive } = await import(pathToFileURL(path.join(root, "scripts/ctxfiles.mjs")).href);
@@ -264,7 +264,7 @@ await t("codex: warnings tighten as the plan runs low, never blame another sessi
   assert.ok(!/started in this folder/.test(run("a1"))); assert.ok(!/started in this folder/.test(run("a2"))); assert.match(run("a3"), /3 Codex sessions started in this folder within 3 minutes/); assert.ok(!/started in this folder/.test(run("a4")), "once per burst");
 });
 await t("codex doctor: flags only the UPLOADED copy of usage-max, not the normal marketplace install", async () => {
-  const { spawnSync } = await import("node:child_process"); const mk = (toml) => { const h = fs.mkdtempSync(path.join(os.tmpdir(), "dd-")); fs.mkdirSync(path.join(h, ".codex"), { recursive: true }); fs.writeFileSync(path.join(h, ".codex", "config.toml"), toml); return spawnSync(process.execPath, [path.join(root, "codex/scripts/codex-governor.mjs"), "doctor"], { env: { ...process.env, USAGE_MAX_HOME: h, PLUGIN_ROOT: "" }, encoding: "utf8" }).stdout; };
+  const { spawnSync } = await import("node:child_process"); const mk = (toml) => { const h = fs.mkdtempSync(path.join(os.tmpdir(), "dd-")); fs.mkdirSync(path.join(h, ".codex"), { recursive: true }); fs.writeFileSync(path.join(h, ".codex", "config.toml"), toml); return spawnSync(process.execPath, [path.join(root, "codex/scripts/codex-governor.mjs"), "doctor"], { env: { ...process.env, USAGE_MAX_HOME: h, CODEX_HOME: path.join(h, ".codex"), PLUGIN_ROOT: "" }, encoding: "utf8" }).stdout; };
   assert.match(mk('[hooks.state."usage-max@eric-plugins:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /ok\s+Codex's usage-max entries come from the marketplace install only/);
   assert.match(mk('[hooks.state."usage-max@synced:hooks/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /FIX\s+Codex still trusts Claude-only hooks from an uploaded\/local copy/);
   assert.match(mk('[plugins."usage-max@local-desktop-app-uploads"]\n[hooks.state."usage-max@local-desktop-app-uploads:codex/hooks.json:stop:0:0"]\ntrusted_hash = "a"\n'), /ok\s+Codex's usage-max entries come from the marketplace install only/, "the current desktop upload (Codex hooks only) is not an old copy");

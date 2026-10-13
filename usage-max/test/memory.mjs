@@ -1,6 +1,6 @@
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import assert from "node:assert/strict"; import { spawnSync, execFileSync } from "node:child_process"; import { fileURLToPath, pathToFileURL } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const home = fs.mkdtempSync(path.join(os.tmpdir(), "umm-")); process.env.USAGE_MAX_HOME = home;
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "umm-")); process.env.USAGE_MAX_HOME = home; delete process.env.CODEX_HOME; // a CODEX_HOME in your own environment must not leak in: the default then follows USAGE_MAX_HOME, never the real ~/.codex
 const proj = path.join(home, "proj"); fs.mkdirSync(proj, { recursive: true });
 const imp = (f) => import(pathToFileURL(path.join(root, f)).href);
 const M = await imp("scripts/memory.mjs"), R = await imp("scripts/resume.mjs"), P = await imp("scripts/pack.mjs"), G = await imp("scripts/guard.mjs");
