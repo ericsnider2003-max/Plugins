@@ -9,7 +9,7 @@
       "name": "usage-max",
       "source": "./usage-max",
       "description": "Keep every AI plan lasting to reset: automatic budget governor, model routing, context diet, and usage reports for Claude Code (plus a Codex port).",
-      "version": "0.20.0"
+      "version": "0.20.1"
     }
   ]
 }

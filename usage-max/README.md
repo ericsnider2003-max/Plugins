@@ -2,6 +2,10 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.20.1 (Oct 13 2026) — trimmed output streams
+- **Long commands show output while they run, not only at the end.** The first 30 lines appear at once, error and warning lines appear as they scroll past, and the last 60 lines at the end, so the final text is the same as before. If a command is stopped or stalls (5 seconds of quiet, or 30 seconds since the oldest held line), what was held is shown right away, and on a stop signal the complete copy is saved first. Nothing is ever lost: the complete output is kept (up to 64 MB) and saved; if it cannot be saved, the lines that were left out are printed instead. Output over half a gigabyte no longer turns a success into a failure.
+- Still open: passing typed `/usage-max` text as data (needs a check in the real app).
+
 ## 0.20.0 (Oct 13 2026) — clean-up that does itself, honest reports, memory that you approve
 - **`doctor --fix` now cleans up for you.** Older uploaded copies of usage-max are moved (not deleted) to `~/.usage-max/old-copies/<time>/` with a `RESTORE.txt`, their entries in settings are switched off, and leftover Codex plugin/hook-trust entries for old copies are removed from `config.toml`. Every edit is backed up, locked and atomic; your own settings, other plugins and the running copy are never touched; running it twice changes nothing. Plain `doctor` stays read-only and says what `--fix` would do.
 - **`usage-max blocks`** shows your usage in 5-hour blocks (like the popular ccusage tool): per block messages, tokens and list-price cost, plus the active block's burn rate and a clearly labelled projection.

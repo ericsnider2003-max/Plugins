@@ -25,6 +25,7 @@ jobs:
           node usage-max/test/fix-y.mjs
           node usage-max/test/fix-z.mjs
           node usage-max/test/fix-m.mjs
+          node usage-max/test/fix-s.mjs
           node usage-max/test/win.mjs
       - name: Codex tests
         run: node usage-max/codex/test/run.mjs
@@ -57,6 +58,7 @@ jobs:
           node usage-max/test/fix-y.mjs
           node usage-max/test/fix-z.mjs
           node usage-max/test/fix-m.mjs
+          node usage-max/test/fix-s.mjs
           node usage-max/test/win.mjs
       - name: Codex tests
         run: node usage-max/codex/test/run.mjs

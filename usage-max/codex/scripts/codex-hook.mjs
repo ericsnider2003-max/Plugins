@@ -20,7 +20,7 @@ let R = null; try { R = await import("./resume.mjs"); } catch { try { R = await 
 let SL = null; try { SL = await import("./sessionlog.mjs"); } catch { try { SL = await import("../../scripts/sessionlog.mjs"); } catch {} } // session log (rollout format as parsed by resume.mjs); absent = silently off
 let M = null; try { M = await import("./memory.mjs"); } catch { try { M = await import("../../scripts/memory.mjs"); } catch {} }
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
-const LONG = /(^|\s)(-w|--watch\w*(=\S+)?|--serve|--dev)(\s|$)|:watch\b|\b(watch|serve|dev|start)\b/i; // never ends: the trimmer would show nothing until it does
+const LONG = /(^|\s)(-w|--watch\w*(=\S+)?|--serve|--dev)(\s|$)|:watch\b|\b(watch|serve|dev|start)\b/i; // never ends: the trimmer streams, but would keep cutting what a watcher prints down to a small window
 const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
 export function rewrite(cmd, runPath, platform = process.platform) {
   if (typeof cmd !== "string" || process.env.USAGE_MAX_TRIM === "off") return null;
