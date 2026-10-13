@@ -106,6 +106,7 @@ async function doctor(fix = false) {
     try { if (fs.existsSync(path.join(home, ".usage-max-codex", "bin"))) { const { syncBin } = await import("../codex/scripts/sync.mjs"); const r = syncBin({ root, home }); if (r.changed) console.log(`refreshed the Codex scripts in ~/.usage-max-codex/bin to ${r.version} (config.toml and your hooks are untouched)\n`); } } catch {}
   }
   const out = []; const ok = (m) => out.push(`  ok   ${m}`); const bad = (m, fix) => out.push(`  FIX  ${m}${fix ? `\n       -> ${fix}` : ""}`);
+  { const { cleanupClaude } = await import("./cleanup-old.mjs"); out.push(...cleanupClaude({ home, root, fix }).lines); } // older uploaded copies: --fix moves them aside (backed up, reversible); without it, only says what --fix would do
   const st = json(path.join(home, ".claude", "settings.json")); const gov = json(path.join(home, ".claude", "usage-max", "governor.json")) || {}; const lim = json(path.join(home, ".claude", "usage-max", "limits.json"));
   cloudNote();
   console.log("usage-max doctor — Claude Code");
@@ -133,7 +134,7 @@ async function doctor(fix = false) {
   bg.length ? bad(`${bg.length} job(s) can keep spending your plan while you are away: ${bg.slice(0, 3).map((b) => b.text).join(" | ")}`, "usage-max rescue halt   (lists how to stop each kind; nothing is stopped for you)") : ok("no scheduled claude/codex jobs or headless runs found");
   console.log(out.join("\n"));
   console.log("\nusage-max doctor — Codex");
-  return run(C("codex-governor.mjs"), ["doctor"]);
+  return run(C("codex-governor.mjs"), fix ? ["doctor", "--fix"] : ["doctor"]);
 }
 
 function rescue(args) {
