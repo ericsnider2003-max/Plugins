@@ -188,11 +188,20 @@ export function recall(mem, query, { max = 3, budget = 1500, seen = new Set(), l
 export function extractDirective(prompt) {
   const p = String(prompt || "").slice(0, 1400);
   // only when the prompt BEGINS with it (pasted emails/changelogs are not instructions); the note runs to the end of its paragraph, so a
-  // two-line "remember: ..." is kept whole. A secret is returned too, so decide() refuses it WITH a message instead of the hook staying silent.
-  const m = p.match(/^\s*(?:please\s+)?(?:remember(?:\s+that|:)|from now on|going forward|always remember)[:,]?\s+([\s\S]{10,1200}?)(?:\n[ \t]*\n|$)/i);
+  // two-line "remember: ..." is kept whole. A secret is returned too, so saveDirective() refuses it WITH a message instead of the hook staying silent.
+  // "From now on" / "going forward" alone is an ordinary request ("from now on, email bob@x.com when done"): it counts only with a colon or
+  // an explicit remember word ("From now on: ...", "From now on, remember that ...").
+  const lead = String.raw`(?:(?:always\s+)?remember(?:\s+that|:)|always\s+remember|(?:from now on|going forward)(?:\s*:|,?\s+(?:please\s+)?(?:always\s+)?remember\b(?:\s+that|:)?))`;
+  const m = p.match(new RegExp(String.raw`^\s*(?:please\s+)?${lead}[:,]?\s+([\s\S]{10,1200}?)(?:\n[ \t]*\n|$)`, "i"));
   return m ? norm(m[1]) : null;
 }
 
+// Decisions are committed to the repo and injected into every prompt: no secrets and no personal data (an email address) go in unasked.
+export const looksPersonal = (t) => looksSecret(t) || /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/.test(String(t || ""));
+export function saveDirective(mem, text, now = new Date()) {
+  if (looksPersonal(text)) return { error: "that contains personal data (an email address) or a secret; not saved (memory is committed and injected into prompts). Say where it lives instead, without the value." };
+  return decide(mem, directiveKey(text), text, now);
+}
 export const directiveKey = (text) => "note-" + String(text).toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).slice(0, 4).join("-") + "-" + (() => { let h = 5381; for (const c of String(text)) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(36).slice(0, 5); })();
 
 // ---- per-session "already injected" memory (state lives outside the repo)

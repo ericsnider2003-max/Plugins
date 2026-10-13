@@ -33,4 +33,23 @@ await t("BUG-049", "the Codex installer exits non-zero and lists what failed whe
   assert.ok(fs.existsSync(path.join(bad.ch, "skills", "usage-max", "SKILL.md")), "the other steps still ran");
 });
 
+await t("BUG-051", "only an explicit remember word or colon saves a decision, and personal data is refused", async () => {
+  const home = sandbox(), M = await imp("scripts/memory.mjs");
+  const proj = path.join(home, "proj"); fs.mkdirSync(proj); const mem = M.init(proj); const dec = path.join(mem, "decisions.md");
+  const hook = (prompt) => spawnSync("node", [path.join(root, "hooks/memory.mjs")], { input: JSON.stringify({ hook_event_name: "UserPromptSubmit", cwd: proj, session_id: "s", prompt }), encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: home, USAGE_MAX_HOST: "claude" } });
+  const before = fs.readFileSync(dec, "utf8");
+  for (const p of ["From now on, please email the report to bob@example.com every Friday", "From now on I would like shorter answers when you explain things", "Going forward we will bill monthly and keep a ledger of it", "From now on please use my address jane.doe@example.org for the invoices"]) {
+    assert.equal(M.extractDirective(p), null, "an ordinary request is not a decision: " + p);
+    const r = hook(p); assert.doesNotMatch(r.stdout, /saved to project memory/); assert.equal(fs.readFileSync(dec, "utf8"), before, "nothing written for: " + p);
+  }
+  for (const p of ["remember: use pnpm in this repo please", "From now on: run lint before every commit", "From now on, remember that we ship on Thursdays", "Going forward, always remember to run the type check"]) {
+    assert.ok(M.extractDirective(p), "explicit forms still extract: " + p);
+  }
+  const ok = hook("remember: use pnpm in this repo please"); assert.match(ok.stdout, /saved to project memory/); assert.match(fs.readFileSync(dec, "utf8"), /use pnpm in this repo please/);
+  const mid = fs.readFileSync(dec, "utf8");
+  for (const p of ["remember: send invoices to bob@example.com", "From now on: the deploy token is ghp_" + "a".repeat(36), "remember: use the key sk-ant-api03-" + "b".repeat(30) + " for the API"]) {
+    const r = hook(p); assert.match(r.stdout, /not saved/, "refused with a message: " + p); assert.equal(fs.readFileSync(dec, "utf8"), mid, "personal data never reaches decisions.md: " + p);
+  }
+});
+
 console.log(`${n} passing`);
