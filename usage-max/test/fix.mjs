@@ -432,4 +432,16 @@ await t("BUG-031", "spend just before a reading is not counted again after it (C
   assert.ok(Math.abs(C.spendSince({ hours: {}, fine: { [Math.floor(Date.now() / 6e4) - 1]: 3 } }, Date.now() - 30 * 6e4) - 3) < 1e-9);
 });
 
+await t("BUG-032", "a busy settings file is retried, not recorded as applied", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.USAGE_MAX_LIMITS_PATH = path.join(home, "none.json");
+  const G = await imp("scripts/governor.mjs"); const sf = path.join(home, ".claude", "settings.json"); fs.mkdirSync(path.dirname(sf), { recursive: true }); fs.writeFileSync(sf, "{}");
+  fs.mkdirSync(path.join(home, ".claude", "usage-max"), { recursive: true }); fs.writeFileSync(path.join(home, ".claude", "usage-max", "governor.json"), JSON.stringify({ override: "red", history: [], snaps: [] }));
+  fs.mkdirSync(sf + ".lock"); // another tool holds the settings file
+  let st = G.evaluate({ meter: { cum: 0, buckets: {}, fine: {}, offsets: {} } });
+  assert.notEqual(st.appliedKey, "red", "not recorded as applied while the file was busy"); assert.equal(JSON.parse(fs.readFileSync(sf, "utf8")).model, undefined);
+  fs.rmdirSync(sf + ".lock");
+  st = G.evaluate({ meter: { cum: 0, buckets: {}, fine: {}, offsets: {} } });
+  assert.equal(st.appliedKey, "red"); assert.ok(JSON.parse(fs.readFileSync(sf, "utf8")).model, "the next evaluation applied it");
+});
+
 console.log(`${n} passing`);

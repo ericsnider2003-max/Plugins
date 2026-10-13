@@ -187,7 +187,7 @@ export function timeToEmpty(l) {
 }
 
 // Write the mode's model/effort into user settings (new sessions only). Returns true (changed), false
-// (already right / management off) or null (no settings.json yet: nothing was applied; profile.mjs creates it).
+// (already right / management off), null (no settings.json yet: nothing was applied; profile.mjs creates it) or "busy" (another tool holds the file).
 export function applySettings(mode, config) {
   if (!config.manageSettings) return false;
   const want = config.modes[mode];
@@ -205,7 +205,7 @@ export function applySettings(mode, config) {
     writeJsonAtomic(file, s);
     return true;
   });
-  return r.ok ? r.value : false; // busy: nothing was changed, the next evaluation tries again
+  return r.ok ? r.value : "busy"; // busy: nothing was changed and nothing is recorded as applied, so the next evaluation tries again
 }
 
 // Mode floor from the 5-hour window. A projection from the first minutes of a window is noise (4% after 7 minutes "projects" 171%),
@@ -261,7 +261,7 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
   state.last.projected = projected;
   const key = state.mode === "green" && state.surplus ? "surplus" : state.mode;
   if (changed || state.appliedKey !== key) {
-    try { if (applySettings(key, config) !== null) { state.appliedKey = key; state.appliedMode = state.mode; } } catch {}
+    try { const ar = applySettings(key, config); if (ar !== null && ar !== "busy") { state.appliedKey = key; state.appliedMode = state.mode; } } catch (e) { writeFailures.push("settings.json: " + (e.code || e.message)); }
   }
   const fp5 = (readJson(files().limits, null) || {}).five_hour;
   writeSelf("claude", { ...(state.calib ? { readingPct: state.calib.pct, readingAt: state.calib.at } : {}), dataAt: state.calib && state.calib.at ? new Date(state.calib.at).toISOString() : null, mode: state.mode, surplus: Boolean(state.surplus), estPct: est.estPct, hoursLeft: est.hoursLeft, fivePct: fp5 && typeof fp5.used_percentage === "number" ? fp5.used_percentage : null });
