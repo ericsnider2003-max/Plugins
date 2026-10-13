@@ -41,4 +41,19 @@ await t("BUG-039", "usage-check uses the weekly reset saved with calibrate (Frid
   assert.equal(JSON.parse(run("scripts/usage-check.mjs", ["--json"], home).stdout).weeklyResetSource, "default", "a long-expired calibration is ignored");
 });
 
+await t("BUG-042", "a message that carries only per-step iterations is priced, equal to the sum of its steps", async () => {
+  sandbox();
+  const P = await imp("scripts/pricing.mjs"), L = await imp("scripts/lib.mjs");
+  const step = (i, o, r, w) => ({ input_tokens: i, output_tokens: o, cache_read_input_tokens: r, cache_creation_input_tokens: w });
+  const steps = [step(1000, 500, 20000, 3000), step(10, 2000, 30000, 0), { ...step(0, 100, 0, 4000), cache_creation: { ephemeral_5m_input_tokens: 1000, ephemeral_1h_input_tokens: 3000 } }];
+  for (const model of ["claude-opus-5-5", "claude-haiku-5-5"]) {
+    const only = P.recordCost({ model, usage: { iterations: steps } });
+    const sum = steps.reduce((a, u) => a + P.recordCost({ model, usage: u }), 0);
+    assert.ok(only > 0, model + " must not be free, got " + only); assert.ok(Math.abs(only - sum) < 1e-12, `${model}: ${only} vs ${sum}`);
+  }
+  const u = L.normalizeUsage({ iterations: steps }); assert.equal(u.output, 2600, "normalizeUsage counts the same steps");
+  const top = { input_tokens: 5, output_tokens: 7, iterations: steps };
+  assert.equal(P.recordCost({ model: "claude-opus-5-5", usage: top }), P.recordCost({ model: "claude-opus-5-5", usage: { input_tokens: 5, output_tokens: 7 } }), "top-level fields still win when present");
+});
+
 console.log(`${n} passing`);
