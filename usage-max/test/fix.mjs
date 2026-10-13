@@ -602,4 +602,17 @@ await t("IMP-003", "the synced Codex folder is complete: every file it copies fi
   const G = await imp("codex/scripts/codex-governor.mjs"); assert.equal(G.spendLast, undefined); assert.equal(G.markApplied, undefined);
 });
 
+await t("BUG-053", "syncing notes into AGENTS.md keeps its line endings and encoding, writes atomically and keeps the old copy outside the repo", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const Mem = await imp("scripts/memory.mjs");
+  const mem = path.join(home, "repo", ".memory"); fs.mkdirSync(path.join(mem, "topics"), { recursive: true }); fs.writeFileSync(path.join(mem, "decisions.md"), "- 2026-10-01 | db | postgres\n");
+  const f = path.join(home, "repo", "AGENTS.md"), crlf = "# Team rules\r\n\r\nBe kind.\r\n";
+  fs.writeFileSync(f, crlf); const r = Mem.syncFile(mem, f, {}); assert.equal(r.changed, true, JSON.stringify(r));
+  const out = fs.readFileSync(f, "utf8"); assert.equal((out.match(/(?<!\r)\n/g) || []).length, 0, "no bare line feeds in a CRLF file"); assert.ok(out.startsWith(crlf), "the user's text is untouched");
+  const kept = fs.readdirSync(path.join(home, ".usage-max", "sync-backups")); assert.equal(kept.length, 1); assert.equal(fs.readFileSync(path.join(home, ".usage-max", "sync-backups", kept[0]), "utf8"), crlf, "the previous version is kept");
+  assert.deepEqual(fs.readdirSync(path.join(home, "repo")).filter((n) => n.includes("backup")), [], "nothing dirties the repo");
+  const u = path.join(home, "repo", "CLAUDE.md"); fs.writeFileSync(u, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("# Rules\r\n", "utf16le")]));
+  assert.equal(Mem.syncFile(mem, u, {}).changed, true); const b = fs.readFileSync(u); assert.ok(b[0] === 0xff && b[1] === 0xfe, "still UTF-16 with its byte-order mark"); assert.match(b.subarray(2).toString("utf16le"), /^# Rules\r\n/);
+  const again = Mem.syncFile(mem, f, {}); assert.equal(again.changed, false, "second sync is a no-op");
+});
+
 console.log(`${n} passing`);
