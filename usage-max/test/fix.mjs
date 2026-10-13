@@ -634,4 +634,10 @@ await t("BUG-055", "a failed save of a small status file leaves no temp file beh
   assert.throws(() => M.writeJsonAtomic(f, { a: 1 })); assert.deepEqual(fs.readdirSync(d).filter((n) => n.endsWith(".tmp")), []);
 });
 
+await t("BUG-056", "pace gives no advice for a window that already reset", async () => {
+  const L = await imp("scripts/lib.mjs"), now = Date.now();
+  assert.equal(L.pace({ used_percentage: 40, resets_at: Math.floor((now - 3 * 36e5) / 1000) }, 7 * 86400, now), null);
+  assert.ok(L.pace({ used_percentage: 40, resets_at: Math.floor((now + 3 * 864e5) / 1000) }, 7 * 86400, now), "a running window still gets one");
+});
+
 console.log(`${n} passing`);

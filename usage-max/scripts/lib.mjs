@@ -351,6 +351,7 @@ export function formatNumber(value) {
 export function pace(win, windowSeconds, nowMs = Date.now()) {
   if (!win || typeof win.used_percentage !== "number" || !win.resets_at) return null;
   const end = win.resets_at * 1000;
+  if (end <= nowMs) return null; // the window has already reset: its numbers say nothing about the one that is running now
   const start = end - windowSeconds * 1000;
   const elapsed = Math.min(Math.max((nowMs - start) / (windowSeconds * 1000), 0), 1);
   const used = win.used_percentage;
