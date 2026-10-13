@@ -32,4 +32,11 @@ export function trim(text, { head = 30, tail = 60, max = 160 } = {}) {
   if (last < lines.length - 1) out.push(`[usage-max: ${lines.length - 1 - last} lines trimmed]`);
   return out.join("\n");
 }
-if (process.argv[1] && process.argv[1].endsWith("trim.mjs")) { const raw = fs.readFileSync(0, "utf8"), out = trim(raw); process.stdout.write(out); if (out !== raw) { const sf = saveFull(raw); if (sf) process.stdout.write(`\n[usage-max: output was trimmed; the complete output is saved at ${sf.replace(/\\/g, "/")}]`); } }
+// Prints the trimmed text only when the complete output was saved first: if the copy cannot be saved (disk full, read-only folder, filter missing), the whole output
+// is printed instead, because trimmed text with no copy and no hint would lose it for good.
+export function renderTrimmed(raw, opts, save = saveFull) {
+  const out = trim(raw, opts); if (out === raw) return { text: raw, trimmed: false };
+  const sf = save(raw); if (!sf) return { text: raw, trimmed: false, saveFailed: true };
+  return { text: `${out}\n[usage-max: output was trimmed; the complete output is saved at ${sf.replace(/\\/g, "/")}]`, trimmed: true, out };
+}
+if (process.argv[1] && process.argv[1].endsWith("trim.mjs")) process.stdout.write(renderTrimmed(fs.readFileSync(0, "utf8")).text);

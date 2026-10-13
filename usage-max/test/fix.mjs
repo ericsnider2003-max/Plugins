@@ -543,4 +543,17 @@ await t("BUG-052", "prompt suggestions are not switched off, and an older switch
   assert.deepEqual(P.handBack(home), [], "a switch-off you chose yourself stays"); assert.equal(JSON.parse(fs.readFileSync(sf, "utf8")).promptSuggestionEnabled, false);
 });
 
+await t("BUG-046", "trimmed output is never printed without a saved copy: when the copy cannot be saved the whole output is shown", async () => {
+  const big = Array.from({ length: 400 }, (_, i) => `line ${i}`).join("\n") + "\n";
+  const blocked = tmp(); const notDir = path.join(blocked, "file"); fs.writeFileSync(notDir, "x"); // a file where the data folder must go: nothing can be saved
+  const run = (script, home, input) => spawnSync(process.execPath, [path.join(root, script)], { input, encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: path.join(home, ".codex") }, maxBuffer: 1 << 24 });
+  for (const sc of ["scripts/trim.mjs", "codex/scripts/trim.mjs"]) {
+    assert.equal(run(sc, notDir, big).stdout, big, sc + ": whole output when it cannot be saved");
+    const ok = run(sc, tmp(), big).stdout; assert.match(ok, /output was trimmed; the complete output is saved at /, sc); assert.ok(ok.length < big.length);
+  }
+  const gen = path.join(blocked, "gen.js"); fs.writeFileSync(gen, "for (let i = 0; i < 400; i++) console.log('line ' + i);\n");
+  const rt = spawnSync(process.execPath, [path.join(root, "codex/scripts/run-trimmed.mjs"), "run", "node", gen.replace(/\\/g, "/")], { encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: notDir, CODEX_HOME: path.join(blocked, ".codex") } });
+  assert.equal(rt.stdout.replace(/\r\n/g, "\n"), big, "run-trimmed: whole output when it cannot be saved");
+});
+
 console.log(`${n} passing`);
