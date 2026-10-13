@@ -18,9 +18,11 @@ export function writeJsonAtomic(file, value) {
   try { target = fs.realpathSync(file); mode = fs.statSync(target).mode & 0o777; } catch {} // follow symlinks (stow/chezmoi), keep the file mode
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
-  if (mode !== null) { try { fs.chmodSync(tmp, mode); } catch {} }
-  fs.renameSync(tmp, target);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
+    if (mode !== null) { try { fs.chmodSync(tmp, mode); } catch (e) { void e; } }
+    fs.renameSync(tmp, target);
+  } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch (e2) { void e2; } throw e; } // a failed rename (virus scanner, sync tool) must not leave a stray temp file behind
 }
 
 export { recordCost };

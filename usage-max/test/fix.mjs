@@ -629,4 +629,9 @@ await t("BUG-054", "a huge unbroken line in CLAUDE.md does not stall the scan, a
   assert.ok((r.rows || r.files || []).some((x) => String(x.file).endsWith("a.md") && x.via), "the real import is followed");
 });
 
+await t("BUG-055", "a failed save of a small status file leaves no temp file behind", async () => {
+  const M = await imp("scripts/meter.mjs"); const d = tmp(), f = path.join(d, "s.json"); fs.mkdirSync(f); // renaming onto a folder fails
+  assert.throws(() => M.writeJsonAtomic(f, { a: 1 })); assert.deepEqual(fs.readdirSync(d).filter((n) => n.endsWith(".tmp")), []);
+});
+
 console.log(`${n} passing`);
