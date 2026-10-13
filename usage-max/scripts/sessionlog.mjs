@@ -59,6 +59,9 @@ export function genuineText(raw) {
 }
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
+// every string inside a parsed record (depth-limited)
+function* stringsOf(v, depth = 0) { if (typeof v === "string") yield v; else if (depth < 6 && v && typeof v === "object") for (const x of Object.values(v)) yield* stringsOf(x, depth + 1); }
+
 // One transcript line -> { users: [{text, time}], files: [paths] }. `tool` is the host that wrote it.
 export function parseLine(s, tool = "claude") {
   const out = { users: [], files: [] }; let o; try { o = JSON.parse(s); } catch (e) { ignore(e); return out; }
@@ -67,7 +70,7 @@ export function parseLine(s, tool = "claude") {
   if (tool === "codex") {
     const pl = o.payload || {};
     if (o.type === "event_msg" && pl.type === "user_message") { const t = genuineText(pl.message); if (t) out.users.push({ text: t, time }); }
-    if (/apply_patch|\*\*\* (Update|Add) File/.test(s)) for (const m of s.matchAll(/\*\*\* (?:Update|Add) File: ([^"\\\n]+)/g)) out.files.push(m[1].trim());
+    if (/apply_patch|\*\*\* (Update|Add) File/.test(s)) for (const text of stringsOf(o)) for (const m of text.matchAll(/\*\*\* (?:Update|Add) File: ([^\r\n]+)/g)) out.files.push(m[1].trim()); // read from the decoded text, so Windows paths keep their backslashes
     return out;
   }
   const m = o.message; if (!m || typeof m !== "object") return out;
