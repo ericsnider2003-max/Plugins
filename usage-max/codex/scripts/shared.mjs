@@ -15,6 +15,7 @@ export const readOther = () => rd().claude || null;
 export const isFresh = (e, now = Date.now(), maxAgeMs = 6 * 3600e3) => { const t = e && Date.parse(e.updatedAt), d = e && e.dataAt ? Date.parse(e.dataAt) : t; return !!t && Number.isFinite(d) && now - t >= 0 && now - t <= maxAgeMs && now - d <= maxAgeMs; };
 export function balanceAdvice(self, other, now = Date.now()) {
   if (!self || !other || !isFresh(other, now)) return null;
+  if (typeof other.estPct !== "number" || !Number.isFinite(other.estPct)) return null; // an unknown week % must not read as "~0% used"
   if ((self.mode === "amber" || self.mode === "red") && other.mode === "green") return `usage-max balance: Claude has headroom (week ~${Math.round(other.estPct)}% used, ${other.surplus ? "surplus" : "GREEN"}). Tell the user it can take the large implementation/review work instead of Codex (your plan is ${self.mode.toUpperCase()}).`;
   return null;
 }

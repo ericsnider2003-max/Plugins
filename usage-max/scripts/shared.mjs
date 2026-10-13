@@ -34,8 +34,9 @@ export const isFresh = (entry, now = Date.now(), maxAgeMs = 6 * 3600e3) => {
 // Pure. self/other are shared entries; names are for the message only.
 export function balanceAdvice(self, other, now = Date.now(), { selfName = "Claude", otherName = "Codex", dispatch = "" } = {}) {
   if (!self || !other || !isFresh(other, now)) return null;
+  if (typeof other.estPct !== "number" || !Number.isFinite(other.estPct)) return null; // an unknown week % must not read as "~0% used"
   if ((self.mode === "amber" || self.mode === "red") && other.mode === "green") {
-    return `usage-max balance: ${otherName} has headroom (week ~${Math.round(other.estPct ?? 0)}% used, ${other.surplus ? "surplus" : "GREEN"}) while your ${selfName} plan is ${self.mode.toUpperCase()}. Shift large implementation/review work to ${otherName}${dispatch}.`;
+    return `usage-max balance: ${otherName} has headroom (week ~${Math.round(other.estPct)}% used, ${other.surplus ? "surplus" : "GREEN"}) while your ${selfName} plan is ${self.mode.toUpperCase()}. Shift large implementation/review work to ${otherName}${dispatch}.`;
   }
   return null;
 }
