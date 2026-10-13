@@ -106,6 +106,7 @@ async function doctor(fix = false) {
     try { if (fs.existsSync(path.join(home, ".usage-max-codex", "bin"))) { const { syncBin } = await import("../codex/scripts/sync.mjs"); const r = syncBin({ root, home }); if (r.changed) console.log(`refreshed the Codex scripts in ~/.usage-max-codex/bin to ${r.version} (config.toml and your hooks are untouched)\n`); } } catch {}
   }
   const out = []; const ok = (m) => out.push(`  ok   ${m}`); const bad = (m, fix) => out.push(`  FIX  ${m}${fix ? `\n       -> ${fix}` : ""}`);
+  { const { cleanupClaude } = await import("./cleanup-old.mjs"); out.push(...cleanupClaude({ home, root, fix }).lines); } // older uploaded copies: --fix moves them aside (backed up, reversible); without it, only says what --fix would do
   const st = json(path.join(home, ".claude", "settings.json")); const gov = json(path.join(home, ".claude", "usage-max", "governor.json")) || {}; const lim = json(path.join(home, ".claude", "usage-max", "limits.json"));
   cloudNote();
   console.log("usage-max doctor — Claude Code");
@@ -133,7 +134,7 @@ async function doctor(fix = false) {
   bg.length ? bad(`${bg.length} job(s) can keep spending your plan while you are away: ${bg.slice(0, 3).map((b) => b.text).join(" | ")}`, "usage-max rescue halt   (lists how to stop each kind; nothing is stopped for you)") : ok("no scheduled claude/codex jobs or headless runs found");
   console.log(out.join("\n"));
   console.log("\nusage-max doctor — Codex");
-  return run(C("codex-governor.mjs"), ["doctor"]);
+  return run(C("codex-governor.mjs"), fix ? ["doctor", "--fix"] : ["doctor"]);
 }
 
 function rescue(args) {
@@ -160,6 +161,7 @@ const map = {
   gate: () => run(S("governor.mjs"), ["gate"]),
   check: () => run(S("usage-check.mjs"), ["--write-status", path.join(home, ".claude", "usage-max", "status.json"), ...rest]),
   diagnose: () => run(S("diagnose.mjs"), rest),
+  blocks: () => run(S("blocks.mjs"), rest),
   audit: () => { const a = run(S("audit.mjs"), rest); return a || run(S("inventory.mjs"), rest); },
   diet: () => run(S("plugin-diet.mjs"), rest),
   rescue: () => rescue(rest),
@@ -197,5 +199,5 @@ const map = {
   handoff: () => map.route()
 };
 // Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
-if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here safety memory pack resume context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status blocks savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here safety memory pack resume context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
 process.exit(await map[sub]());

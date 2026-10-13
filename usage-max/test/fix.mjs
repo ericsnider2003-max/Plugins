@@ -376,10 +376,14 @@ await t("BUG-026", "small status files are written atomically", async () => {
   assert.ok(JSON.parse(fs.readFileSync(path.join(home, ".usage-max-codex/hook-seen.json"), "utf8")).Stop, "hook-seen written"); assert.deepEqual(fs.readdirSync(path.join(home, ".usage-max-codex")).filter((x) => x.endsWith(".tmp")), []);
 });
 
-await t("BUG-027", "the calibrate launcher never lets typed text run as a command", async () => {
+await t("BUG-027", "the calibrate launcher never lets typed text run as a command: it arrives as data and is checked by usage-max", async () => {
   const c = fs.readFileSync(path.join(root, "..", "install/kit/4-CALIBRATE-CLAUDE.cmd"), "utf8");
-  assert.match(c, /setlocal EnableDelayedExpansion/); assert.match(c, /findstr \/r \/x "\[0-9\]\[0-9\]\*/, "the percent must be a plain number"); assert.match(c, /calibrate "!PCT!" --resets "!RST!"/, "typed values are expanded late and quoted");
-  assert.doesNotMatch(c, /calibrate %PCT%/, "no unquoted use of what was typed");
+  assert.match(c, /calibrate --from-env/, "typed values are never on the command line"); assert.doesNotMatch(c, /calibrate "?%|calibrate "?!/, "no use of what was typed on a command line"); assert.doesNotMatch(c, /\|\s*findstr/, "no pipe built from what was typed");
+  // the check itself runs in usage-max: a bad percent or a date without a time is refused and nothing is saved
+  const home = tmp(); const run = (pct, rst) => spawnSync(process.execPath, [path.join(root, "scripts/governor.mjs"), "calibrate", "--from-env"], { env: { ...process.env, USAGE_MAX_HOME: home, USAGE_MAX_LIMITS_PATH: path.join(home, "none.json"), USAGE_MAX_PCT: pct, USAGE_MAX_RESETS: rst }, encoding: "utf8" });
+  const future = new Date(Date.now() + 3 * 864e5).toISOString();
+  for (const [pct, rst] of [["67&echo pwned>pwned.txt", future], ["abc", future], ["", future], ["67", "2026-10-17"], ["67", "x & y"], ["67", ""]]) { const r = run(pct, rst); assert.notEqual(r.status, 0, `${pct} / ${rst}: ${r.stdout}`); }
+  const ok = run("67%", future); assert.equal(ok.status, 0, ok.stdout + ok.stderr); assert.ok(JSON.parse(fs.readFileSync(path.join(home, ".claude", "usage-max", "governor.json"), "utf8")).calib.pct === 67);
 });
 
 await t("BUG-028", "calibration prices a message once even when two transcript files hold it", async () => {
@@ -556,12 +560,12 @@ await t("BUG-046", "trimmed output is never printed without a saved copy: when t
   const blocked = tmp(); const notDir = path.join(blocked, "file"); fs.writeFileSync(notDir, "x"); // a file where the data folder must go: nothing can be saved
   const run = (script, home, input) => spawnSync(process.execPath, [path.join(root, script)], { input, encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: path.join(home, ".codex") }, maxBuffer: 1 << 24 });
   for (const sc of ["scripts/trim.mjs", "codex/scripts/trim.mjs"]) {
-    assert.equal(run(sc, notDir, big).stdout, big, sc + ": whole output when it cannot be saved");
+    const whole = run(sc, notDir, big); assert.ok(whole.stdout === big, `${sc}: whole output when it cannot be saved (got ${whole.stdout.length} chars, wanted ${big.length}; status ${whole.status}; stderr ${JSON.stringify(String(whole.stderr).slice(0, 200))}; start ${JSON.stringify(whole.stdout.slice(0, 60))})`);
     const ok = run(sc, tmp(), big).stdout; assert.match(ok, /output was trimmed; the complete output is saved at /, sc); assert.ok(ok.length < big.length);
   }
   const gen = path.join(blocked, "gen.js"); fs.writeFileSync(gen, "for (let i = 0; i < 400; i++) console.log('line ' + i);\n");
-  const rt = spawnSync(process.execPath, [path.join(root, "codex/scripts/run-trimmed.mjs"), "run", "node", gen.replace(/\\/g, "/")], { encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: notDir, CODEX_HOME: path.join(blocked, ".codex") } });
-  assert.equal(rt.stdout.replace(/\r\n/g, "\n"), big, "run-trimmed: whole output when it cannot be saved");
+  const rt = spawnSync(process.execPath, [path.join(root, "codex/scripts/run-trimmed.mjs"), "run", "node", "gen.js"], { encoding: "utf8", cwd: blocked, env: { ...process.env, USAGE_MAX_HOME: notDir, CODEX_HOME: path.join(blocked, ".codex") } });
+  assert.ok(rt.stdout.replace(/\r\n/g, "\n") === big, `run-trimmed: whole output when it cannot be saved (got ${rt.stdout.length} chars; status ${rt.status}; stderr ${JSON.stringify(String(rt.stderr).slice(0, 200))}; start ${JSON.stringify(rt.stdout.slice(0, 60))})`);
 });
 
 await t("BUG-048", "editing a linked or private file keeps the link and the permissions", async () => {

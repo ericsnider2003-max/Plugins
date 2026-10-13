@@ -22,6 +22,10 @@ jobs:
           node usage-max/test/fix.mjs
           node usage-max/test/fix-w.mjs
           node usage-max/test/fix-x.mjs
+          node usage-max/test/fix-y.mjs
+          node usage-max/test/fix-z.mjs
+          node usage-max/test/fix-m.mjs
+          node usage-max/test/win.mjs
       - name: Codex tests
         run: node usage-max/codex/test/run.mjs
       - name: Build the desktop kit and plugin zip
@@ -41,6 +45,7 @@ jobs:
       - name: Static checks
         run: node usage-max/scripts/check.mjs
       - name: Claude plugin tests
+        shell: bash  # PowerShell only reports the LAST command's exit code, which hid earlier failures
         run: |
           node usage-max/test/run.mjs
           node usage-max/test/new.mjs
@@ -49,5 +54,9 @@ jobs:
           node usage-max/test/fix.mjs
           node usage-max/test/fix-w.mjs
           node usage-max/test/fix-x.mjs
+          node usage-max/test/fix-y.mjs
+          node usage-max/test/fix-z.mjs
+          node usage-max/test/fix-m.mjs
+          node usage-max/test/win.mjs
       - name: Codex tests
         run: node usage-max/codex/test/run.mjs

@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { listJsonlFiles, normalizeUsage, parseTimestamp, createDeduper, parseDays, DAYS_MESSAGE } from "./lib.mjs";
 import { priceFor, turnCost, replayTtl } from "./pricing.mjs";
+import { detectCacheBreaks, mergeBreaks, formatCacheBreaks } from "./cachebreak.mjs";
 
 function arg(name, fallback = null) {
   const i = process.argv.indexOf(`--${name}`);
@@ -26,19 +27,26 @@ const scope = { hub: 0, subagent: 0 };
 const ctxSamples = [];
 const capSavings = Object.fromEntries(windows.map((w) => [w, 0]));
 let idleMissCost = 0, idleMisses = 0, firstTurnCtx = [], unknownModels = new Set();
-const sessions = {};
+const sessions = {}, breakResults = [];
 const ttl = { actual: 0, sim5m: 0, byProject: {} };
 let baselineTokens = [], mainTurns = 0;
 
+const boundaries = new Map(); // file -> line numbers of compaction/summary records
 const dedupe = createDeduper(); // a message repeated across files (sub-agent copies, resumed sessions) counts once, at its largest output
 for (const file of await listJsonlFiles(dir)) {
   try { if (fs.statSync(file).mtimeMs < since) continue; } catch (e) { continue; } // untouched since before the window: nothing in it
+  let lineNo = 0;
   for (const line of fs.readFileSync(file, "utf8").split("\n")) {
-    if (!line.includes('"assistant"')) continue;
+    lineNo++;
+    if (!line.includes('"assistant"')) { // a compaction/summary record: remember where it sits, so the cache-break check can tell a compaction from other causes
+      if (line.includes("compact_boundary") || line.includes("isCompactSummary") || line.includes('"type":"summary"')) { if (!boundaries.has(file)) boundaries.set(file, []); boundaries.get(file).push(lineNo); }
+      continue;
+    }
     let r; try { r = JSON.parse(line); } catch { continue; }
     if (r.type !== "assistant" || !r.message || !r.message.model || r.message.model === "<synthetic>") continue;
     const t = parseTimestamp(r.timestamp);
-    dedupe.add(r.message, { file, t, model: r.message.model, u: normalizeUsage(r.message.usage), side: r.isSidechain === true || file.includes(`${path.sep}subagents${path.sep}`) || file.includes("/subagents/") });
+    const cc = r.message.usage && r.message.usage.cache_creation;
+    dedupe.add(r.message, { file, t, lineNo, oneHour: !!(cc && Number(cc.ephemeral_1h_input_tokens) > 0), model: r.message.model, u: normalizeUsage(r.message.usage), side: r.isSidechain === true || file.includes(`${path.sep}subagents${path.sep}`) || file.includes("/subagents/") });
   }
 }
 const recsByFile = new Map();
@@ -58,6 +66,11 @@ for (const [file, recs] of recsByFile) {
     const b = (ttl.byProject[proj] = ttl.byProject[proj] || { sessions: 0, actual: 0, sim5m: 0 });
     b.sessions += 1; b.actual += rep.actual; b.sim5m += rep.sim5m;
     mainTurns += mainRecs.length;
+  }
+  { // cache breaks: main-loop turns of this transcript in order (a subagent has its own cache)
+    const main = recs.filter((r) => !r.side), bs = boundaries.get(file) || [];
+    const turns = main.map((r, i) => ({ t: r.t, model: r.model, u: r.u, oneHour: r.oneHour, boundaryBefore: i > 0 && bs.some((b) => b > main[i - 1].lineNo && b < r.lineNo) }));
+    const res = detectCacheBreaks(turns); for (const b of res.breaks) b.file = path.basename(file, ".jsonl").slice(0, 8); breakResults.push(res);
   }
   let prevT = 0, first = true;
   for (const r of recs) {
@@ -94,10 +107,12 @@ const report = {
   hubContext: { p50: q(ctxSamples, 0.5), p90: q(ctxSamples, 0.9), p99: q(ctxSamples, 0.99), max: q(ctxSamples, 1), over200k: ctxSamples.filter((c) => c > 200000).length, turns: ctxSamples.length },
   sessionStartContext: { median: q(firstTurnCtx, 0.5), sessions: firstTurnCtx.length },
   idleMisses: { count: idleMisses, writeCost: idleMissCost },
+  cacheBreaks: null,
   autoCompactCapSavings: capSavings,
   unknownModels: [...unknownModels],
   ttlReplay: ttl
 };
+report.cacheBreaks = mergeBreaks(breakResults);
 if (process.argv.includes("--json")) { console.log(JSON.stringify(report, null, 2)); process.exit(0); }
 
 console.log(`usage-max diagnose — last ${days}d, ${totals.turns} turns, ${usd(totals.cost)} at list price (proxy for plan usage)`);
@@ -111,6 +126,7 @@ console.log(`main session vs subagents: ${usd(scope.hub)} ${pct(scope.hub)} / ${
 console.log(`main-session context per turn: p50 ${k(report.hubContext.p50)} p90 ${k(report.hubContext.p90)} p99 ${k(report.hubContext.p99)} max ${k(report.hubContext.max)}; turns >200k: ${report.hubContext.over200k}/${report.hubContext.turns}`);
 console.log(`session start overhead (first-turn context, median): ${k(report.sessionStartContext.median)} over ${report.sessionStartContext.sessions} sessions`);
 console.log(`idle cache misses (>${IDLE_MS / 60000}min gap then full re-write): ${idleMisses}, ${usd(idleMissCost)} ${pct(idleMissCost)}`);
+for (const line of formatCacheBreaks(report.cacheBreaks, { when: (t) => new Date(t).toLocaleString(), where: (b) => (b.file ? `session ${b.file}` : "") })) console.log(line);
 console.log(`auto-compact cap what-if (upper bound on cache-read savings):`);
 for (const w of windows) console.log(`  cap ${k(w)}: save up to ${usd(capSavings[w])} ${pct(capSavings[w])}`);
 // Ranked levers with estimated weekly savings at list price.

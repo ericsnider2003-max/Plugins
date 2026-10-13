@@ -2,6 +2,14 @@
 
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
+## 0.20.0 (Oct 13 2026) — clean-up that does itself, honest reports, memory that you approve
+- **`doctor --fix` now cleans up for you.** Older uploaded copies of usage-max are moved (not deleted) to `~/.usage-max/old-copies/<time>/` with a `RESTORE.txt`, their entries in settings are switched off, and leftover Codex plugin/hook-trust entries for old copies are removed from `config.toml`. Every edit is backed up, locked and atomic; your own settings, other plugins and the running copy are never touched; running it twice changes nothing. Plain `doctor` stays read-only and says what `--fix` would do.
+- **`usage-max blocks`** shows your usage in 5-hour blocks (like the popular ccusage tool): per block messages, tokens and list-price cost, plus the active block's burn rate and a clearly labelled projection.
+- **Reports say what each number is built on** (measured from your transcripts / estimate / list-price equivalent), `savings` shows a recent-pace line, and `diagnose` has a **cache-break detector**: how many times the cache was thrown away mid-session, the likely cause (idle longer than the cache lifetime, model switch, compaction, or unexplained) and the extra cost versus a cache hit.
+- **Memory you approve, with fallbacks so nothing depends on a list being complete.** Every Stop appends your requests (redacted, 200 characters each) to a private log outside your repo; `usage-max memory suggestions` lists up to 8 candidate notes from it, one line each; `--accept 1,3` or `--accept all` saves exactly those, `--dismiss` hides them for good; nothing is ever saved without that. At the start of a fresh session one short line (at most once per set, silent otherwise) tells you candidates are waiting. `usage-max memory search <words>` searches the log, your notes and your past conversations when a list missed something.
+- **Windows launchers are now tested** in CI (`4-CALIBRATE-CLAUDE`, `2-INSTALL-CODEX`, `3-CHECK-EVERYTHING`: typed text stays text, missing Node.js and missing files are reported plainly, failures exit non-zero), and the Windows CI job now stops at the first failing test (it used to report only the last command's result).
+- Still open: live streaming of trimmed output, and passing typed `/usage-max` text as data (both need a check in the real app first).
+
 ## 0.19.1 (Oct 13 2026) — safety: nothing lost, nothing switched off
 - **Prompt suggestions are no longer switched off** by the strict profile (it was a product feature). If an older version wrote that switch-off, it is handed back; a switch-off you chose yourself stays.
 - **Trimmed command output always has a saved copy.** If the complete output cannot be saved (full disk, read-only folder), the whole output is shown instead of a trimmed version with no copy.

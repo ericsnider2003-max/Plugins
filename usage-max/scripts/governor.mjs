@@ -302,11 +302,12 @@ function fmt(n, d = 1) { return n === null || n === undefined || !Number.isFinit
 
 async function cli() {
   const [cmd = "status", ...rest] = process.argv.slice(2);
+  if (cmd === "calibrate" && rest[0] === "--from-env") rest.splice(0, rest.length, process.env.USAGE_MAX_PCT || "", "--resets", process.env.USAGE_MAX_RESETS || ""); // from the Windows launcher: typed text arrives as data, never on a command line
   const flag = (n) => { const i = rest.indexOf(`--${n}`); return i > -1 ? rest[i + 1] : null; };
   const config = loadConfig();
   if (cmd === "calibrate") {
-    const pct = Number(String(rest[0] || "").replace(/%/g, "").trim());
-    if (!Number.isFinite(pct)) { console.log("usage: calibrate <weekly % from Settings > Usage> [--resets <ISO date or epoch seconds>]"); process.exit(1); }
+    const rawPct = String(rest[0] || "").replace(/%/g, "").trim(), pct = /^\d+(\.\d+)?$/.test(rawPct) ? Number(rawPct) : NaN; // a blank answer is not 0%
+    if (!Number.isFinite(pct) || pct > 100) { console.log("usage: calibrate <weekly % from Settings > Usage> [--resets <ISO date or epoch seconds>]"); process.exit(1); }
     let resetsAt = flag("resets");
     if (resetsAt) { const pr = parseResetTime(resetsAt); if (pr.error) { console.log("not calibrated: " + pr.error); process.exit(1); } if (pr.note) console.log("note: " + pr.note); resetsAt = Math.floor(pr.ms / 1000); }
     const lim = readJson(files().limits, null);
