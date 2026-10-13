@@ -396,4 +396,17 @@ await t("BUG-030", "the static checks pass on a checkout with Windows line endin
   const r = spawnSync("node", [path.join(copy, "usage-max/scripts/check.mjs")], { encoding: "utf8" }); assert.equal(r.status, 0, (r.stdout || "").split("\n").filter((l) => /FAIL/.test(l)).join("\n"));
 });
 
+await t("V0181", "estimates say what they are built on; a Codex week with no new reading is not reported as 0% with surplus", async () => {
+  const G = await imp("scripts/governor.mjs"); const now = Date.now();
+  assert.match(G.readingNote(4, now - 9 * 36e5, "manual", now), /last real reading 4% 9h ago, manual/); assert.match(G.readingNote(NaN, NaN, null), /no real reading yet/); assert.match(G.readingNote(4, now - 3 * 864e5, "plan", now), /3 days ago, from the status line/);
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; process.env.CODEX_HOME = path.join(home, ".codex");
+  const C = await imp("codex/scripts/codex-governor.mjs"); const cfg = C.DEFAULT_CONFIG; const m = { hours: {} };
+  const old = { calib: { pct: 77, at: now - 9 * 864e5, resets: new Date(now - 2 * 864e5).toISOString(), source: "plan" }, k: 1 };
+  const e = C.estimate(old, m, now, cfg); assert.equal(e.rolled, true, "the reading is from a window that already ended");
+  const fresh = { calib: { pct: 10, at: now - 36e5, resets: new Date(now + 3 * 864e5).toISOString(), source: "plan" }, k: 1 }; assert.equal(C.estimate(fresh, m, now, cfg).rolled, false);
+  fs.mkdirSync(path.join(home, ".usage-max-codex"), { recursive: true }); fs.writeFileSync(path.join(home, ".usage-max-codex/governor.json"), JSON.stringify({ mode: "green", ...old }));
+  const r = C.evaluate(now, true); assert.equal(r.surplus, false, "no surplus invented from a guess");
+  const sh = JSON.parse(fs.readFileSync(path.join(home, ".usage-max/shared.json"), "utf8")).codex; assert.equal(sh.estPct, null, "shared status says unknown, not 0%"); assert.equal(sh.readingPct, 77);
+});
+
 console.log(`${n} passing`);

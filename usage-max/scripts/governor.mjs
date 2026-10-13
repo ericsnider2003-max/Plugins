@@ -217,6 +217,13 @@ export function fiveHourFloor(fp) {
   return fp.projected > 140 && fp.elapsed >= 0.25 ? "red" : "amber";
 }
 
+// "last real reading 4% 9h ago (manual)": an estimate always says what it is built on, so nobody repeats it as a fact.
+export function readingNote(pct, at, source, now = Date.now()) {
+  if (!Number.isFinite(pct) || !Number.isFinite(at)) return "; no real reading yet";
+  const h = Math.max(0, (now - at) / 3600e3), age = h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)} days`;
+  return `; last real reading ${Math.round(pct)}% ${age} ago${source ? `, ${source === "plan" ? "from the status line" : source}` : ""}`;
+}
+
 // One evaluation pass: absorb snapshot, estimate, decide, enforce on change. Returns the new state.
 export function evaluate({ meter, nowMs = Date.now() } = {}) {
   const config = loadConfig();
@@ -238,7 +245,7 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
     if (rank[floor] > rank[d.mode]) d = { ...d, mode: floor, reason: `5-hour window ${Math.round(fp.used)}%, projected ${Math.round(fp.projected)}%` };
   }
   const changed = d.mode !== state.mode;
-  state.last = { at: new Date(nowMs).toISOString(), ...est, ...d };
+  state.last = { at: new Date(nowMs).toISOString(), ...est, ...d, ...(state.calib ? { readingPct: state.calib.pct, readingAt: state.calib.at, readingSource: state.calib.source } : {}) }; // the last REAL plan reading the estimate is built on
   if (changed) {
     state.history.push({ at: state.last.at, from: state.mode, to: d.mode, estPct: est.estPct, ratio: d.ratio });
     state.mode = d.mode;
@@ -257,7 +264,7 @@ export function evaluate({ meter, nowMs = Date.now() } = {}) {
     try { if (applySettings(key, config) !== null) { state.appliedKey = key; state.appliedMode = state.mode; } } catch {}
   }
   const fp5 = (readJson(files().limits, null) || {}).five_hour;
-  writeSelf("claude", { dataAt: state.calib && state.calib.at ? new Date(state.calib.at).toISOString() : null, mode: state.mode, surplus: Boolean(state.surplus), estPct: est.estPct, hoursLeft: est.hoursLeft, fivePct: fp5 && typeof fp5.used_percentage === "number" ? fp5.used_percentage : null });
+  writeSelf("claude", { ...(state.calib ? { readingPct: state.calib.pct, readingAt: state.calib.at } : {}), dataAt: state.calib && state.calib.at ? new Date(state.calib.at).toISOString() : null, mode: state.mode, surplus: Boolean(state.surplus), estPct: est.estPct, hoursLeft: est.hoursLeft, fivePct: fp5 && typeof fp5.used_percentage === "number" ? fp5.used_percentage : null });
   saveState(state);
   return state;
 }
@@ -311,7 +318,7 @@ async function cli() {
   if (s.surplus) console.log(`  surplus: projected ~${fmt(l.projected, 0)}% at reset — ~${fmt(100 - l.projected, 0)}% of the week would go unused, so higher effort is allowed on hard problems`);
   const tte = timeToEmpty(l);
   if (tte) console.log(`  WARNING: at this pace the plan runs out in ~${fmt(tte.hours, 0)}h, but it resets in ${fmt(tte.resetIn, 0)}h`);
-  console.log(`  week ~${fmt(l.estPct)}% (est.), ${fmt(l.hoursLeft, 0)}h to reset, target ${config.target}%`);
+  console.log(`  week ~${fmt(l.estPct)}% (est.${readingNote(l.readingPct, l.readingAt, l.readingSource)}), ${fmt(l.hoursLeft, 0)}h to reset, target ${config.target}%`);
   console.log(`  burn ${fmt(l.ratePerHour, 2)}%/h over last ${config.burnWindowHours}h${l.rateSource ? ` (from ${l.rateSource})` : ""} vs sustainable ${fmt(l.allowedPerHour, 2)}%/h → ${fmt(l.ratio, 2)}× ${l.ratio > 1 ? "(over)" : "(ok)"}`);
   const hasSettings = fs.existsSync(files().settings);
   { // pace planner: what the plan can sustain per day, what you actually used lately, and allowance about to expire

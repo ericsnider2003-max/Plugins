@@ -99,13 +99,13 @@ export function decide({ estPct, hoursLeft, ratePerHour, prevMode = "green", cfg
 }
 export function estimate(state, m, now, cfg) {
   const c = state.calib; if (!c) return null;
-  const P = 7 * 864e5; let rs = Date.parse(c.resets), at = c.at, pct = c.pct;
+  const P = 7 * 864e5; let rs = Date.parse(c.resets), at = c.at, pct = c.pct; const rolled = rs <= now;
   if (rs <= now) { rs += (Math.floor((now - rs) / P) + 1) * P; at = rs - P; pct = 0; } // weekly reset passed: new window from prev reset, 0%
   const est = Math.min(100, pct + (state.k || 0) * spendSince(m, at));
   const hoursLeft = (rs - now) / 36e5;
   const from = Math.max(now - cfg.burnWindowHours * 36e5, rs - P); // spend before this window began is not this window's burn
   const rate = (state.k || 0) * spendSince(m, from) / Math.max((now - from) / 36e5, 1);
-  return { est, hoursLeft, rate };
+  return { est, hoursLeft, rate, rolled }; // rolled: the reading is from a window that has ended; this week's % is a guess until Codex reports again
 }
 // Real plan numbers straight from Codex's own logs: the long window (>= ~7 days) calibrates the weekly estimate
 // (no manual `calibrate` needed), the short window (<= ~10 h, the 5-hour cap) becomes an extra guard.
@@ -141,10 +141,10 @@ export function evaluate(now = Date.now(), force = false) {
     const floor = fiveFloor(st.five, now); const rank = { green: 0, amber: 1, red: 2 }; if (rank[floor] > rank[mode]) mode = floor;
   }
   const fl = fiveFloor(st.five, now); let surplus = false;
-  if (mode === "green" && e && fl === "green") { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12) : proj < 80 && e.hoursLeft > 12; e.projected = proj; }
+  if (mode === "green" && e && fl === "green" && !e.rolled) { const proj = e.est + e.rate * e.hoursLeft; surplus = st.surplus ? !(proj > 90 || e.hoursLeft <= 12) : proj < 80 && e.hoursLeft > 12; e.projected = proj; }
   if (mode !== st.mode) { st.history = [...(Array.isArray(st.history) ? st.history : []), { at: new Date(now).toISOString(), from: st.mode, to: mode }].slice(-200); }
   st.mode = mode; st.surplus = surplus; st.appliedKey = st.appliedKey || null; wj(sf, st);
-  try { writeSelf({ dataAt: st.calib && st.calib.at ? new Date(st.calib.at).toISOString() : null, mode, surplus, estPct: e?.est ?? null, hoursLeft: e?.hoursLeft ?? null, fivePct: st.five?.pct ?? null, updatedAt: new Date(now).toISOString() }); } catch (e) { writeFailures.push("shared.json: " + (e.code || e.message)); }
+  try { writeSelf({ ...(st.calib ? { readingPct: st.calib.pct, readingAt: st.calib.at } : {}), dataAt: st.calib && st.calib.at ? new Date(st.calib.at).toISOString() : null, mode, surplus, estPct: e && !e.rolled ? e.est : null, hoursLeft: e?.hoursLeft ?? null, fivePct: st.five?.pct ?? null, updatedAt: new Date(now).toISOString() }); } catch (e) { writeFailures.push("shared.json: " + (e.code || e.message)); }
   return { mode, surplus, e, st, cfg };
 }
 export function calibrate(pct, resets, now = Date.now()) {
@@ -224,8 +224,10 @@ export function doctor(home = codexHome(), platform = process.platform) {
   const rd = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return ""; } };
   const cfg = loadConfig(); const toml = rd(path.join(home, "config.toml")); const hooks = rd(path.join(home, "hooks.json")); const gs = j(path.join(dataDir(), "governor.json"), {}); const seen = j(path.join(dataDir(), "hook-seen.json"), {});
   { const src = {}; for (const m of toml.matchAll(/^\s*\[(?:hooks\.state|plugins)\.[^\]\n]*?usage-max@([\w.-]+)[^\]\n]*\]/gm)) src[m[1]] = (src[m[1]] || 0) + 1;
-    const total = Object.values(src).reduce((a, b) => a + b, 0), list = Object.entries(src).map(([k, v]) => `usage-max@${k} x${v}`).join(", "), old = Object.keys(src).filter((k) => /synced|upload|local/i.test(k));
-    old.length ? bad(`Codex still has hook/plugin entries for the UPLOADED copy of usage-max (${list}). That old copy (0.1.x) runs Claude-only hooks inside Codex and can disrupt turns`, "remove the old usage-max plugin in Codex's plugin list, then install the current one (it ships Codex-specific hooks)") : ok(total ? `Codex's usage-max entries come from the marketplace install only (${list})` : "no usage-max plugin entries in Codex config"); }
+    const total = Object.values(src).reduce((a, b) => a + b, 0), list = Object.entries(src).map(([k, v]) => `usage-max@${k} x${v}`).join(", "), // Only an entry that trusts CLAUDE's hook file (hooks/hooks.json, not codex/hooks.json) under an uploaded/local name means Claude-only hooks run inside Codex.
+      // The current desktop upload is also called "...uploads", so the name alone is not proof of an old copy.
+      claudeHooks = new Set([...toml.matchAll(/^\s*\[hooks\.state\.[^\]\n]*?usage-max@([\w.-]+):(?!codex\/)hooks\/hooks\.json:[^\]\n]*\]/gm)].map((m) => m[1])), old = Object.keys(src).filter((k) => /synced|upload|local/i.test(k) && claudeHooks.has(k));
+    old.length ? bad(`Codex still trusts Claude-only hooks from an uploaded/local copy of usage-max (${list}). Those run inside Codex and can disrupt turns`, "remove that usage-max entry in Codex's plugin list (or its [hooks.state.\"usage-max@...:hooks/hooks.json:...\"] tables in config.toml), then install the current one (it ships Codex-specific hooks)") : ok(total ? `Codex's usage-max entries come from the marketplace install only (${list})` : "no usage-max plugin entries in Codex config"); }
 
   /codex-hook\.mjs/.test(hooks) ? ok("hooks.json has the usage-max hooks") : bad("hooks not installed", "node scripts/install.mjs");
   { const bin = binDir().replace(/\\/g, "/"); const paths = [...hooks.matchAll(/"?([^"\s]*)codex-hook\.mjs/g)].map((m) => m[1].replace(/\\\\/g, "/").replace(/\\/g, "/"));
@@ -297,7 +299,7 @@ if (isMain) {
   const mc = cfg.modes[mode === "green" && surplus ? "surplus" : mode];
   console.log(`mode=${mode.toUpperCase()}${surplus ? "+SURPLUS" : ""}${st.override ? " (manual)" : ""}  new sessions: ${mc.model || "(your model)"} @ ${mc.effort}`);
   if (st.calib && st.calib.source === "plan") console.log(`plan (from Codex rate_limits): weekly ${st.calib.pct}% as of ${new Date(st.calib.at).toLocaleString()}${st.five ? `, 5h window ${st.five.pct}%` : ""}`);
-  console.log(e ? `est plan ${e.est.toFixed(1)}%  hours to reset ${e.hoursLeft.toFixed(1)}  burn ${e.rate.toFixed(2)}%/h  sustainable ${(Math.max(0, cfg.target - e.est) / Math.max(e.hoursLeft, .5)).toFixed(2)}%/h` : "not calibrated: run `calibrate <pct> --resets <ISO>` using the % shown by /status");
+  console.log(e ? `est plan ${e.rolled ? "unknown (new week, no reading from Codex yet; mode assumes a fresh week)" : e.est.toFixed(1) + "%"}  hours to reset ${e.hoursLeft.toFixed(1)}  burn ${e.rate.toFixed(2)}%/h  sustainable ${(Math.max(0, cfg.target - e.est) / Math.max(e.hoursLeft, .5)).toFixed(2)}%/h` : "not calibrated: run `calibrate <pct> --resets <ISO>` using the % shown by /status");
   if (surplus && e) { const p = e.projected; console.log(`surplus: projected ~${Math.round(p)}% at reset, ~${Math.round(100 - p)}% of the week would go unused — higher effort allowed on hard problems`); }
   { const o = readOther(); if (o && isFresh(o)) console.log(`claude plan: ${o.mode}${o.surplus ? "+surplus" : ""}${typeof o.estPct === "number" ? `, week ~${Math.round(o.estPct)}% used` : ""}${typeof o.hoursLeft === "number" ? `, ${Math.round(o.hoursLeft)}h to reset` : ""}`); }
   if (cmd === "gate") process.exit({ green: 0, amber: 10, red: 20 }[mode]);

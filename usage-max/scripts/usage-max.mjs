@@ -93,7 +93,7 @@ function cloudNote() {
 
 function balance() {
   const sh = json(path.join(home, ".usage-max", "shared.json")) || {};
-  const line = (n, e) => (e ? `${n}: ${String(e.mode).toUpperCase()}${e.surplus ? "+SURPLUS" : ""}  week ~${e.estPct == null ? "?" : Math.round(e.estPct)}%  5h ${e.fivePct == null ? "?" : Math.round(e.fivePct)}%  (${Math.round((Date.now() - Date.parse(e.updatedAt)) / 60000)} min ago)` : `${n}: no data yet`);
+  const line = (n, e) => (e ? `${n}: ${String(e.mode).toUpperCase()}${e.surplus ? "+SURPLUS" : ""}  week ~${e.estPct == null ? "?" : Math.round(e.estPct)}%${e.readingAt ? ` (estimate: last real reading ${Math.round(e.readingPct)}% ${Math.round((Date.now() - e.readingAt) / 36e5)}h ago)` : ""}  5h ${e.fivePct == null ? "?" : Math.round(e.fivePct)}%  (${Math.round((Date.now() - Date.parse(e.updatedAt)) / 60000)} min ago)` : `${n}: no data yet`);
   console.log(line("Claude", sh.claude)); console.log(line("Codex ", sh.codex));
   const g = (e) => e && Date.now() - Date.parse(e.updatedAt) < 6 * 3600e3 ? e.mode : null;
   const a = g(sh.claude), b = g(sh.codex);
