@@ -42,12 +42,12 @@ await t("WIN-2", "4-CALIBRATE-CLAUDE never lets typed text run as a command", as
     const sb = sandbox(), r = launch(sb, "4-CALIBRATE-CLAUDE.cmd", `${pct}\nOct 11 2026 11:00 AM\n\n`);
     assert.equal(r.args, null, `percent ${JSON.stringify(pct)} must be refused, the tool was called with ${JSON.stringify(r.args)}`); assert.notEqual(r.status, 0, pct); assert.ok(!fs.existsSync(path.join(sb.dir, "pwned.txt")), "nothing was run: " + pct);
   }
-  // the reset text may contain command characters; they stay text (inside quotes, expanded late), and a quote mark is refused
-  for (const rst of ["Oct 11 2026 11:00 AM & echo pwned>pwned.txt", "Oct 11 | dir", "Oct 11 2026 %PATH% 11:00", "Oct 11 2026 11:00 AM!", "Oct 11 ^ 2026 11:00"]) {
+  // the reset text may only use letters, digits, spaces and : , . / + - ; anything else (command characters, quotes) is refused and nothing runs
+  for (const rst of ["Oct 11 2026 11:00 AM & echo pwned>pwned.txt", "Oct 11 | dir", "Oct 11 2026 %PATH% 11:00", "Oct 11 2026 11:00 AM!", "Oct 11 ^ 2026 11:00", "Oct 11 (2026) 11:00"]) {
     const sb = sandbox(), r = launch(sb, "4-CALIBRATE-CLAUDE.cmd", `67\n${rst}\n\n`);
-    assert.ok(!fs.existsSync(path.join(sb.dir, "pwned.txt")), "nothing was run: " + rst);
-    if (r.args) assert.equal(r.args[4], rst, "arrives as one intact argument: " + rst);
+    assert.ok(!fs.existsSync(path.join(sb.dir, "pwned.txt")), "nothing was run: " + rst); assert.equal(r.args, null, "refused: " + rst); assert.notEqual(r.status, 0, rst);
   }
+  for (const rst of ["2026-10-17T20:00:00-04:00", "10/17/2026 8:00 PM", "Sat, Oct 17 2026 8:00 PM"]) { const ok = launch(sandbox(), "4-CALIBRATE-CLAUDE.cmd", `67\n${rst}\n\n`); assert.ok(ok.args && ok.args[4] === rst, "accepted intact: " + rst + " -> " + JSON.stringify(ok.args)); }
   const q = sandbox(), rq = launch(q, "4-CALIBRATE-CLAUDE.cmd", '67\nOct 11 "2026" 11:00 AM\n\n'); assert.equal(rq.args, null, "a quote mark is refused"); assert.notEqual(rq.status, 0);
 });
 
