@@ -98,7 +98,6 @@ function compact(m, nowMs) {
 }
 const share = (start, width, ms, c) => (start + width > ms ? c * Math.min(1, (start + width - ms) / width) : 0); // a bucket that straddles `ms` counts only its later share
 export const spendSince = (m, ms) => Object.entries(m.hours || {}).reduce((a, [h, c]) => a + share(h * 36e5, 36e5, ms, c), 0) + Object.entries(m.fine || {}).reduce((a, [k, c]) => a + share(k * 6e4, 6e4, ms, c), 0);
-export const spendLast = (m, hrs, now = Date.now()) => spendSince(m, now - hrs * 36e5);
 
 export function decide({ estPct, hoursLeft, ratePerHour, prevMode = "green", cfg }) {
   if (estPct >= cfg.redAtPercent && hoursLeft > 6) return "red";
@@ -207,7 +206,6 @@ export function writeProfiles(cfg = loadConfig()) {
 }
 export function markInstalled(now = Date.now()) { govUpdate((st) => { for (const [k, v] of Object.entries({ mode: "green", override: null, calib: null, k: null })) if (!(k in st)) st[k] = v; if (!st.installedAt) st.installedAt = new Date(now).toISOString(); }); }
 export const modeKey = (mode, surplus) => mode + (surplus ? "+s" : "");
-export function markApplied(key) { const sf = path.join(dataDir(), "governor.json"); const st = j(sf, {}); st.appliedKey = key; wj(sf, st); }
 // Old defaults are removed ONLY when (a) usage-max once applied a mode on this machine (governor.json has appliedKey, i.e. it is the one that wrote them),
 // (b) the line is a top-level key (above the first [table]) holding exactly the old default, and (c) you did not ask for that limit under "tuning".
 export function legacyRemovals(text, cfg = loadConfig()) {

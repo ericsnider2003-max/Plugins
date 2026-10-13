@@ -591,4 +591,15 @@ await t("BUG-050", "big transcripts are read in pieces and big prompts do not sl
   const t0 = Date.now(), r = Mem.recall(mem, big, { loose: true }); assert.ok(Date.now() - t0 < 1500, "fast on an 11 MB prompt: " + (Date.now() - t0) + " ms"); assert.match(r.text, /billing worker/, "still finds the note");
 });
 
+await t("IMP-003", "the synced Codex folder is complete: every file it copies finds the files it imports; dead helpers are gone", async () => {
+  const S = await imp("codex/scripts/sync.mjs"), home = tmp(); const r = S.syncBin({ root, home, force: true });
+  assert.equal(r.changed, true); assert.equal(r.missing, undefined, "nothing failed to copy: " + JSON.stringify(r.missing));
+  const bin = path.join(S.binDir(home), "scripts"); const have = new Set(fs.readdirSync(bin));
+  for (const f of fs.readdirSync(bin).filter((x) => x.endsWith(".mjs"))) {
+    const src = fs.readFileSync(path.join(bin, f), "utf8");
+    for (const m of src.matchAll(/(?:from\s*|import\(\s*)["'](\.\/[^"']+)["']/g)) assert.ok(have.has(m[1].slice(2)), `${f} imports ${m[1]} which is not in the synced folder`);
+  }
+  const G = await imp("codex/scripts/codex-governor.mjs"); assert.equal(G.spendLast, undefined); assert.equal(G.markApplied, undefined);
+});
+
 console.log(`${n} passing`);
