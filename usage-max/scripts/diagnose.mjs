@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listJsonlFiles, normalizeUsage, parseTimestamp, createDeduper } from "./lib.mjs";
+import { listJsonlFiles, normalizeUsage, parseTimestamp, createDeduper, parseDays, DAYS_MESSAGE } from "./lib.mjs";
 import { priceFor, turnCost, replayTtl } from "./pricing.mjs";
 
 function arg(name, fallback = null) {
@@ -14,7 +14,8 @@ function arg(name, fallback = null) {
 }
 const home = process.env.USAGE_MAX_HOME || os.homedir();
 const dir = arg("projects-dir", path.join(home, ".claude", "projects"));
-const days = Number(arg("days", 7));
+const days = parseDays(arg("days", 7));
+if (days === null) { console.error(DAYS_MESSAGE); process.exit(2); }
 const since = Date.now() - days * 86400000;
 const IDLE_MS = Number(arg("idle-minutes", 60)) * 60000;
 const windows = [100000, 150000, 200000, 300000, 400000];

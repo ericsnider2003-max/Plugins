@@ -647,4 +647,13 @@ await t("BUG-057", "the status line shows no cap warning in the first tenth of a
   assert.match(line({ used_percentage: 80, resets_at: now + 2 * 3600 }), /5h 80%.*cap in/, "a real warning still shows");
 });
 
+await t("BUG-058", "a mistyped number of days is refused, not read as all history", async () => {
+  const L = await imp("scripts/lib.mjs"); assert.equal(L.parseDays("7"), 7); assert.equal(L.parseDays(undefined), 7); assert.equal(L.parseDays("0.5"), 0.5);
+  for (const bad of ["7x", "0", "-3", "abc", "", "1e9", "99999"]) assert.equal(L.parseDays(bad), null, bad);
+  const home = tmp(); for (const [script, args] of [["scripts/diagnose.mjs", ["--days", "7x"]], ["scripts/savings.mjs", ["--days", "0x"]]]) {
+    const r = spawnSync(process.execPath, [path.join(root, script), ...args, "--projects-dir", path.join(home, "none")], { env: { ...process.env, USAGE_MAX_HOME: home }, encoding: "utf8" });
+    assert.equal(r.status, 2, script + ": " + r.stdout + r.stderr); assert.match(r.stderr, /--days needs a plain number/);
+  }
+});
+
 console.log(`${n} passing`);
