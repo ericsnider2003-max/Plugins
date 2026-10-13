@@ -444,4 +444,15 @@ await t("BUG-032", "a busy settings file is retried, not recorded as applied", a
   assert.equal(st.appliedKey, "red"); assert.ok(JSON.parse(fs.readFileSync(sf, "utf8")).model, "the next evaluation applied it");
 });
 
+await t("BUG-033", "a burst after a single reading shows in the burn rate", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const G = await imp("scripts/governor.mjs"); const M = await imp("scripts/meter.mjs");
+  const now = Date.now(), reset = Math.floor((now + 6 * 864e5) / 1000);
+  const meter = { cum: 30, offsets: {}, buckets: {}, fine: { [new Date(Math.floor((now - 30 * 6e4) / 6e4) * 6e4).toISOString()]: 30 } };
+  const st = { k: 1, calib: { pct: 4, at: now - 36e5, cumAt: 0, resetsAt: reset, source: "manual" }, snaps: [{ at: now - 36e5, pct: 4, resetsAt: reset }] };
+  const e = G.estimate(st, meter, now, G.DEFAULT_CONFIG);
+  assert.ok(e.ratePerHour >= 2.4, "burst counted: " + e.ratePerHour); assert.equal(e.rateSource, "recent local spend");
+  assert.equal(G.decide({ ...e, prevMode: "green", config: G.DEFAULT_CONFIG }).mode, "red");
+  const calm = G.estimate({ ...st, k: 1 }, { cum: 0, offsets: {}, buckets: {}, fine: {} }, now, G.DEFAULT_CONFIG); assert.equal(calm.rateSource, "average so far");
+});
+
 console.log(`${n} passing`);

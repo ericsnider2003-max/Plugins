@@ -134,6 +134,10 @@ export function estimate(state, meter, nowMs = Date.now(), config = DEFAULT_CONF
     const elapsedH = Math.max(168 - hoursLeft, 6);
     ratePerHour = c.pct / elapsedH;
     rateSource = "average so far";
+    // ...but a burst since the reading must show: the fastest of the average and the recent local spend (scaled to plan %) counts, so a heavy hour is not averaged away over the week.
+    const wh = Math.min(config.burnWindowHours, Math.max(168 - hoursLeft, 1));
+    const recent = state.k && meter.buckets ? state.k * spendInLast(meter, wh, nowMs) / wh : 0;
+    if (recent > ratePerHour) { ratePerHour = recent; rateSource = "recent local spend"; }
   }
   return { estPct, hoursLeft, ratePerHour: ratePerHour === null ? 0 : ratePerHour, rateSource: rateSource || "none yet", ...(c.source === "rolled" ? { note: "new window, no plan reading yet" } : {}) };
 }
