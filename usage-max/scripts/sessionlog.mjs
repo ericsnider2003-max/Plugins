@@ -88,8 +88,9 @@ function wanted(line, tool) {
   if (line.includes('"tool_result"')) return false;
   return line.includes('"user"') || (line.includes('"tool_use"') && (line.includes("Edit") || line.includes("Write")));
 }
+const realOf = (q) => { try { return fs.realpathSync.native(q); } catch (e) { return path.resolve(q); } }; // short (8.3) and long Windows names, links and drive-letter case all compare equal
 const projectRel = (root, cwd, p) => {
-  const abs = path.isAbsolute(p) ? p : path.resolve(cwd, p); const rel = path.relative(root, abs);
+  const abs = path.isAbsolute(p) ? p : path.resolve(cwd, p); const rel = path.relative(realOf(root), path.join(realOf(path.dirname(abs)), path.basename(abs)));
   if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return null; return rel.replace(/\\/g, "/");
 };
 
