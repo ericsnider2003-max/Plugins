@@ -2,7 +2,7 @@
 import fs from "node:fs"; import os from "node:os"; import path from "node:path";
 export const binDir = (home = process.env.USAGE_MAX_HOME || os.homedir()) => path.join(home, ".usage-max-codex", "bin");
 // Files from the Claude side's scripts/ that the Codex side imports (a test checks that every relative import of a copied file resolves).
-export const SHARED_FILES = ["memory.mjs", "resume.mjs"];
+export const SHARED_FILES = ["memory.mjs", "resume.mjs", "sessionlog.mjs"];
 // root = plugin root (dir containing codex/ and .claude-plugin/)
 export function syncBin({ root, home, force = false } = {}) {
   try {
