@@ -455,4 +455,17 @@ await t("BUG-033", "a burst after a single reading shows in the burn rate", asyn
   const calm = G.estimate({ ...st, k: 1 }, { cum: 0, offsets: {}, buckets: {}, fine: {} }, now, G.DEFAULT_CONFIG); assert.equal(calm.rateSource, "average so far");
 });
 
+await t("BUG-034", "typed-in readings with almost no spend do not wreck the conversion rate", async () => {
+  const home = tmp(); process.env.USAGE_MAX_HOME = home; const G = await imp("scripts/governor.mjs");
+  assert.equal(G.kFromCalibration(undefined, 3, 0.05).k, 0, "3% over 5 cents is not k=60"); assert.equal(G.kFromCalibration(0.13, 3, 0.05).k, 0.13);
+  assert.equal(G.kFromCalibration(0.13, 0, 10).k, 0.13, "a 0% reading keeps what was learned"); assert.equal(G.kFromCalibration(undefined, 0, 10).k, 0);
+  const ok = G.kFromCalibration(0.13, 40, 300); assert.ok(ok.learned && Math.abs(ok.k - 40 / 300) < 1e-9);
+  // end to end: calibrate 3% with no history keeps the old rate
+  const ud = path.join(home, ".claude", "usage-max"); fs.mkdirSync(ud, { recursive: true }); fs.writeFileSync(path.join(ud, "governor.json"), JSON.stringify({ mode: "green", k: 0.134, history: [], snaps: [] }));
+  const proj = path.join(home, ".claude", "projects", "p"); fs.mkdirSync(proj, { recursive: true });
+  fs.writeFileSync(path.join(proj, "s.jsonl"), JSON.stringify({ type: "assistant", timestamp: new Date().toISOString(), message: { id: "z1", model: "claude-haiku-5-5", usage: { input_tokens: 1000, output_tokens: 10 } } }) + "\n");
+  const r = spawnSync(process.execPath, [path.join(root, "scripts/governor.mjs"), "calibrate", "3", "--resets", new Date(Date.now() + 3 * 864e5).toISOString()], { env: { ...process.env, USAGE_MAX_HOME: home, USAGE_MAX_LIMITS_PATH: path.join(home, "none.json") }, encoding: "utf8" });
+  assert.equal(JSON.parse(fs.readFileSync(path.join(ud, "governor.json"), "utf8")).k, 0.134, r.stdout + r.stderr);
+});
+
 console.log(`${n} passing`);

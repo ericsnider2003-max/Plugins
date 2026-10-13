@@ -82,6 +82,11 @@ export function decide({ estPct, hoursLeft, ratePerHour, prevMode, config }) {
 // local spend) from real deltas instead of needing a manual `calibrate`.
 // meterCum is the meter total NOW; the reading was taken earlier, so the spend recorded since then belongs AFTER the reading and is taken off the
 // baseline (opts.meter + opts.nowMs); otherwise the next estimate would leave out the turns between the reading and this call.
+// k (plan % per list-price dollar) from a typed-in reading and the spend that week: nothing learned from almost no spend, and a 0% reading keeps what was learned
+export function kFromCalibration(oldK, pct, spend) {
+  if (!(pct >= 1) || !(spend >= Math.max(1, pct / 5))) return { k: oldK || 0, learned: false };
+  return { k: pct / spend, learned: true };
+}
 export function absorbSnapshot(state, limits, meterCum, opts = {}) {
   const sd = limits && limits.seven_day;
   if (!sd || typeof sd.used_percentage !== "number" || !sd.resets_at) return false;
@@ -295,10 +300,10 @@ async function cli() {
     state.snaps = [...(state.snaps || []).filter((x) => x.resetsAt === resetsAt).slice(-199), { at: now, pct, resetsAt }];
     if (windowSpend > 0) {
       saveMeter(meter);
-      state.k = pct / windowSpend;
+      const lk = kFromCalibration(state.k, pct, windowSpend); state.k = lk.k;
       state.calib = { pct, at: now, cumAt: 0, resetsAt, source: "manual" };
       saveState(state);
-      console.log(`calibrated: ${pct}% of the week = $${windowSpend.toFixed(2)} local list-price spend → k=${state.k.toFixed(4)} %/$ (resets ${new Date(resetsAt * 1000).toString()})`);
+      console.log(`calibrated: ${pct}% of the week${lk.learned ? ` = $${windowSpend.toFixed(2)} local list-price spend → k=${state.k.toFixed(4)} %/$` : `; only $${windowSpend.toFixed(2)} of local spend, too little to learn from, so the conversion rate stays ${state.k ? state.k.toFixed(4) + " %/$" : "unset"}`} (resets ${new Date(resetsAt * 1000).toString()})`);
     } else {
       // No local Claude Code history here (cloud/desktop sessions). Still useful: remember the reading and the reset time.
       state.calib = { pct, at: now, cumAt: loadMeter().cum || 0, resetsAt, source: "manual" };
