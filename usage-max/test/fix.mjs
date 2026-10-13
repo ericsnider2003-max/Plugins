@@ -622,4 +622,11 @@ await t("SEC-008", "a backup manifest cannot send a file outside the Codex or da
   for (const bad of ["codex/..\\..\\AppData\\Roaming\\Startup\\x.cmd", "codex/C:\\evil.txt", "codex/C:evil.txt", "codex/../x", "codex/a/../../x", "/etc/passwd", "codex//x", "codex/./x", "codex/", "codex", "other/x", "codex/a\0b", "data\\x", 5, null]) assert.equal(B.target(bad), null, "refused: " + JSON.stringify(bad));
 });
 
+await t("BUG-054", "a huge unbroken line in CLAUDE.md does not stall the scan, and real @imports are still found", async () => {
+  const { scan } = await imp("scripts/ctxfiles.mjs"); const d = tmp(); fs.mkdirSync(path.join(d, "docs")); fs.writeFileSync(path.join(d, "docs", "a.md"), "# a\n");
+  fs.writeFileSync(path.join(d, "CLAUDE.md"), "See @docs/a.md for rules.\n" + "See @" + "a".repeat(30000) + "\n");
+  const t0 = Date.now(), r = scan({ home: path.join(d, "h"), cwd: d }); assert.ok(Date.now() - t0 < 400, "fast: " + (Date.now() - t0) + " ms");
+  assert.ok((r.rows || r.files || []).some((x) => String(x.file).endsWith("a.md") && x.via), "the real import is followed");
+});
+
 console.log(`${n} passing`);
