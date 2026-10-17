@@ -1,5 +1,11 @@
 # usage-max
 
+## 0.21.3 — provider safety guards
+
+- Added provider limit-shape drift quarantine: a changed quota-window schema is withheld from governance until reviewed.
+- Added account identity matching guards so a capture cannot silently attach to the wrong local account slot.
+- Added focused regression tests for both safety boundaries.
+
 ## 0.21.2 — complete distributable package
 - Includes the browser adapter in the uploadable plugin ZIP as well as the runtime registry, contracts, and desktop MCPB bundle.
 

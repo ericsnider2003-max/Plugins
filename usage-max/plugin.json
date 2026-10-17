@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "usage-max",
-  "version": "0.21.2",
+  "version": "0.21.3",
   "description": "Observe AI provider usage, preserve task continuity, and fail closed before autonomous work can overrun an allowance.",
   "author": {
     "name": "usage-max"

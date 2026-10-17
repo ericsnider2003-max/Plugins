@@ -33,7 +33,7 @@ export async function readCodexRateLimits({ command = null, args = ["app-server"
   const child = spawnImpl(command, args, { stdio: ["pipe", "pipe", "ignore"] });
   const initializeId = 1; const readId = 2;
   const send = (id, method, params = {}) => child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
-  send(initializeId, "initialize", { clientInfo: { name: "usage-max", version: "0.21.2" } });
+  send(initializeId, "initialize", { clientInfo: { name: "usage-max", version: "0.21.3" } });
   const init = await readJsonLines(child, initializeId, timeoutMs);
   if (init.error) throw new Error(`Codex app-server initialize failed: ${init.error.message || "unknown error"}`);
   send(readId, "account/rateLimits/read");
@@ -50,7 +50,7 @@ export async function readCodexAccountUsage({ command = null, args = ["app-serve
   command ||= resolveCodexCommand();
   const child = spawnImpl(command, args, { stdio: ["pipe", "pipe", "ignore"] });
   const send = (id, method, values = {}) => child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params: values })}\n`);
-  send(1, "initialize", { clientInfo: { name: "usage-max", version: "0.21.2" } });
+  send(1, "initialize", { clientInfo: { name: "usage-max", version: "0.21.3" } });
   const init = await readJsonLines(child, 1, timeoutMs);
   if (init.error) throw new Error(`Codex app-server initialize failed: ${init.error.message || "unknown error"}`);
   send(2, "account/usage/read", params);

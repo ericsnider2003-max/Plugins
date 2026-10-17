@@ -9,6 +9,7 @@ import { defaultObservationLedger, ingestCaptures } from "./provider-ingest.mjs"
 import { readCodexRateLimits, readCodexAccountUsage } from "../codex/scripts/codex-app-server.mjs";
 import { loadAccounts, resolveAccount } from "./accounts.mjs";
 import { appendAccountActivity, activityLedgerFile } from "./account-activity.mjs";
+import { compareLimitShape } from "./provider-shape.mjs";
 
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CLAUDE_BETA = "oauth-2025-04-20";
@@ -174,13 +175,23 @@ export async function captureProviderLimits({ home = os.homedir(), refreshClaude
     try { const m = latestCodexModel(path.join(home, ".codex")); if (m) { captures.codex = { ...captures.codex, model: m.model, effort: m.effort || null, modelSource: m.source }; freshCaptures.codex = captures.codex; } }
     catch (e) { warnings.push(`Codex model identity: ${e.message}`); }
   }
+  const schemaDrift = [];
+  for (const provider of ["claude", "codex"]) {
+    if (!freshCaptures[provider] || !old.captures?.[provider]) continue;
+    const comparison = compareLimitShape(old.captures[provider], freshCaptures[provider]);
+    if (comparison.changed) {
+      schemaDrift.push({ provider, reason: comparison.reason, previous: comparison.previous, current: comparison.current });
+      delete freshCaptures[provider];
+      warnings.push(`${provider}: provider limit shape changed; capture quarantined until reviewed`);
+    }
+  }
   let accountActivity = null;
   if (codexActivityLive) {
     try { accountActivity = await fetchCodexAccountActivityLive(); if (write && accountActivity) appendAccountActivity(activityLedgerFile(home), accountActivity); }
     catch (e) { warnings.push(`Codex account activity unavailable: ${e.message}`); }
   }
   const captureStatus = Object.fromEntries(["claude", "codex"].map((provider) => [provider, captureSources[provider] === "local-fallback" ? "local-fallback" : freshCaptures[provider] ? "fresh" : captures[provider] ? "cached-stale" : "missing"]));
-  const result = { capturedAt: new Date().toISOString(), captures, freshCaptures, captureStatus, captureSources, accountActivity, warnings };
+  const result = { capturedAt: new Date().toISOString(), captures, freshCaptures, captureStatus, captureSources, accountActivity, schemaDrift, warnings };
   if (write) { fs.mkdirSync(dataDir, { recursive: true }); fs.writeFileSync(cachePath, `${JSON.stringify(result, null, 2)}\n`, { mode: 0o600 });
       const c = freshCaptures.claude;
     if (c?.rate_limits) { const limits = { capturedAt: c.capturedAt, source: c.source, ...c.rate_limits }; fs.mkdirSync(path.join(home, ".claude", "usage-max"), { recursive: true }); fs.writeFileSync(path.join(home, ".claude", "usage-max", "limits.json"), `${JSON.stringify(limits, null, 2)}\n`, { mode: 0o600 }); }

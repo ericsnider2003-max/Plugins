@@ -38,11 +38,19 @@ export function setAllAccountRouting(file, { enabled = false, reason = "emergenc
 }
 
 export function resolveAccount(registry, { provider, surface, home = null, providerAccountId = null } = {}) {
+  return resolveAccountMatch(registry, { provider, surface, home, providerAccountId }).account;
+}
+
+export function resolveAccountMatch(registry, { provider, surface, home = null, providerAccountId = null } = {}) {
   const candidates = (registry?.accounts || []).filter((x) => x.provider === provider && x.surfaces.includes(surface));
+  if (!candidates.length) return { account: null, reason: "no-account-for-surface" };
   const matched = candidates.filter((x) => (providerAccountId && x.providerAccountId ? x.providerAccountId === providerAccountId : true) && (home ? x.homeFingerprint === fingerprint(home) : true));
-  if (matched.length !== 1) return null;
+  if (matched.length !== 1) {
+    const identityMismatch = candidates.some((x) => providerAccountId && x.providerAccountId && x.providerAccountId !== providerAccountId) || candidates.some((x) => home && x.homeFingerprint !== fingerprint(home));
+    return { account: null, reason: identityMismatch ? "account-identity-mismatch" : "ambiguous-account" };
+  }
   const account = matched[0];
-  return { slot: account.slot, approved: Boolean(account.approved && account.enabled), providerAccountId: account.providerAccountId || null, routingEnabled: account.routingEnabled !== false, cooldownUntil: account.cooldownUntil || null };
+  return { account: { slot: account.slot, approved: Boolean(account.approved && account.enabled), providerAccountId: account.providerAccountId || null, routingEnabled: account.routingEnabled !== false, cooldownUntil: account.cooldownUntil || null }, reason: null };
 }
 
 export { fingerprint as accountHomeFingerprint };
