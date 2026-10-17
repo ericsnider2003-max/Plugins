@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "usage-max": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/usage-max-mcp-server.mjs"],
+      "env": {
+        "USAGE_MAX_HOME": "${HOME}"
+      }
+    }
+  }
+}

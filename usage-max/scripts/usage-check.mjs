@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { summarizeProjects, modelFamily, weeklyStart, resolveResetSpec, ceilingStatus, formatNumber, pace } from "./lib.mjs";
+import { summarizeProjects, modelFamily, weeklyStart, resolveResetSpec, ceilingStatus, formatNumber, pace, roundDecimal, fixedDecimal } from "./lib.mjs";
 
 function arg(name, fallback = null) {
   const index = process.argv.indexOf(`--${name}`);
@@ -89,7 +89,7 @@ async function main() {
   const livePace = limits ? pace(limits.seven_day, 7 * 86400, now.getTime()) : null;
   if (weeklyUsed === null && livePace) {
     projection = {
-      weeklyUsedPercent: livePace.used, source: `plan, captured ${limits.capturedAt}${readingAgeHours > 6 ? ` (${readingAgeHours >= 48 ? Math.round(readingAgeHours / 24) + " days" : Math.round(readingAgeHours) + " hours"} old: STALE, open Claude Code for a fresh reading)` : ""}`, stale: readingAgeHours > 6, readingAgeHours: Number(readingAgeHours.toFixed(1)),
+      weeklyUsedPercent: livePace.used, source: `plan, captured ${limits.capturedAt}${readingAgeHours > 6 ? ` (${readingAgeHours >= 48 ? Math.round(readingAgeHours / 24) + " days" : Math.round(readingAgeHours) + " hours"} old: STALE, open Claude Code for a fresh reading)` : ""}`, stale: readingAgeHours > 6, readingAgeHours: roundDecimal(readingAgeHours, 1),
       dailyPercent: livePace.elapsed > 0 ? livePace.used / (livePace.elapsed * 7) : null,
       projectedAtReset: livePace.projected, state: livePace.state, hoursToReset: livePace.hoursLeft,
       projectedDaysLeft: livePace.capInHours === null ? null : livePace.capInHours / 24,
@@ -112,7 +112,7 @@ async function main() {
     projectsDir: dir,
     weeklyResetLocal: reset.toString(),
     weeklyResetSource: resetSpec.source,
-    daysSinceReset: Number(days.toFixed(2)),
+    daysSinceReset: roundDecimal(days, 2),
     weekly: {
       files: weekly.files,
       assistantTurns: weekly.assistantTurns,
@@ -121,7 +121,7 @@ async function main() {
       cost: weekly.ranges.all.cost,
       costPerDay: weekly.ranges.all.cost / days,
       last5hCost: weekly.ranges.last5h.cost,
-      cacheShare: Number(cacheShare.toFixed(4)),
+      cacheShare: roundDecimal(cacheShare, 4),
       last5hContext: weekly.ranges.last5h.context,
       burnContextPerDay: Math.round(burnPerDay)
     },
@@ -135,7 +135,7 @@ async function main() {
   // %/day uses the governor's calibration (plan % per list-price dollar) when it has one.
   let govK = null;
   try { govK = JSON.parse(fs.readFileSync(path.join(homeDir(), ".claude", "usage-max", "governor.json"), "utf8")).k || null; } catch {}
-  result.weekly.pctPerDay = govK ? Number((govK * result.weekly.costPerDay).toFixed(2)) : null;
+  result.weekly.pctPerDay = govK ? roundDecimal(govK * result.weekly.costPerDay, 2) : null;
   result.weekly.checkpoint = result.weekly.pctPerDay === null ? null : result.weekly.pctPerDay <= 14 ? "ok (<=14%/day)" : "OVER 14%/day";
   const statusFile = arg("write-status", null);
   if (statusFile) {
@@ -156,20 +156,20 @@ async function main() {
   }
   console.log(`usage-max usage-check: ${result.generatedAt}`);
   console.log(`reset: ${result.weeklyResetLocal} (${result.daysSinceReset}d ago, source=${result.weeklyResetSource}; set with --reset "sun 07:00", USAGE_MAX_RESET, or ~/.claude/usage-max/config.json)`);
-  console.log(`weekly tokens: context=${formatNumber(result.weekly.context)} cacheShare=${(result.weekly.cacheShare * 100).toFixed(1)}% burn/day=${formatNumber(result.weekly.burnContextPerDay)} last5h=${formatNumber(result.weekly.last5hContext)}`);
-  console.log(`weekly spend (list price, deduped): $${result.weekly.cost.toFixed(2)} = $${result.weekly.costPerDay.toFixed(2)}/day, last 5h $${result.weekly.last5hCost.toFixed(2)}${result.weekly.pctPerDay === null ? "; %/day unknown until the budget is calibrated" : `; ~${result.weekly.pctPerDay}%/day -> ${result.weekly.checkpoint}`}`);
+  console.log(`weekly tokens: context=${formatNumber(result.weekly.context)} cacheShare=${fixedDecimal(result.weekly.cacheShare * 100, 1)}% burn/day=${formatNumber(result.weekly.burnContextPerDay)} last5h=${formatNumber(result.weekly.last5hContext)}`);
+  console.log(`weekly spend (list price, deduped): $${fixedDecimal(result.weekly.cost, 2)} = $${fixedDecimal(result.weekly.costPerDay, 2)}/day, last 5h $${fixedDecimal(result.weekly.last5hCost, 2)}${result.weekly.pctPerDay === null ? "; %/day unknown until the budget is calibrated" : `; ~${fixedDecimal(result.weekly.pctPerDay, 2)}%/day -> ${result.weekly.checkpoint}`}`);
   console.log("models this week:");
   for (const row of result.models) {
-    console.log(`  ${row.model}: turns=${row.turns} sidechain=${row.sidechainTurns} context=${formatNumber(row.context)} cost=$${row.cost.toFixed(2)} last5h=${formatNumber(row.last5hContext)}`);
+    console.log(`  ${row.model}: turns=${row.turns} sidechain=${row.sidechainTurns} context=${formatNumber(row.context)} cost=$${fixedDecimal(row.cost, 2)} last5h=${formatNumber(row.last5hContext)}`);
   }
   const c = result.compliance;
   console.log(`compliance: status=${c.status} ceiling=opus-5.5 above=${c.aboveCeiling.length ? c.aboveCeiling.map((r) => `${r.model}(${r.turns})`).join(",") : "none"} sidechainOpus=${c.sidechainOpusTurns} unknown=${c.unknownModels.length ? c.unknownModels.map((r) => r.model).join(",") : "none"} hubOpusTurns=${c.actualOpusTurns}${c.declaredOpusTurns === null ? "" : ` declared=${c.declaredOpusTurns}`}`);
   if (result.projection.state) {
     const pj = result.projection;
-    const verdict = pj.state === "over" ? `OVER PACE — cap ${pj.projectedCapDate}, ${(pj.hoursToReset - pj.projectedDaysLeft * 24).toFixed(0)}h before reset` : pj.state === "under" ? `UNDER PACE — ~${Math.round(100 - pj.projectedAtReset)}% of the week would go unused; spend more` : "on pace";
+    const verdict = pj.state === "over" ? `OVER PACE — cap ${pj.projectedCapDate}, ${fixedDecimal(pj.hoursToReset - pj.projectedDaysLeft * 24, 0)}h before reset` : pj.state === "under" ? `UNDER PACE — ~${Math.round(100 - pj.projectedAtReset)}% of the week would go unused; spend more` : "on pace";
     console.log(`plan: week ${pj.weeklyUsedPercent}% used, ${pj.hoursToReset.toFixed(0)}h to reset, projected ~${Math.round(pj.projectedAtReset)}% at reset → ${verdict}${pj.fiveHourUsedPercent === null ? "" : `; 5h window ${pj.fiveHourUsedPercent}%`} (source: ${pj.source})`);
   } else if (result.projection.weeklyUsedPercent !== null) {
-    console.log(`projection: used=${result.projection.weeklyUsedPercent}% daily=${result.projection.dailyPercent === null ? "n/a" : result.projection.dailyPercent.toFixed(2)}% left=${result.projection.projectedDaysLeft === null ? "n/a" : result.projection.projectedDaysLeft.toFixed(1)}d cap=${result.projection.projectedCapDate || "n/a"}`);
+    console.log(`projection: used=${result.projection.weeklyUsedPercent}% daily=${result.projection.dailyPercent === null ? "n/a" : fixedDecimal(result.projection.dailyPercent, 2)}% left=${result.projection.projectedDaysLeft === null ? "n/a" : fixedDecimal(result.projection.projectedDaysLeft, 1)}d cap=${result.projection.projectedCapDate || "n/a"}`);
   } else {
     console.log("projection: no plan snapshot yet — it appears after the status line renders once in a logged-in session (or pass --weekly-used-percent)");
   }

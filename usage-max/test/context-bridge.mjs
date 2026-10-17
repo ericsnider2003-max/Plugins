@@ -1,0 +1,30 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createTask } from "../scripts/task-state.mjs";
+import { saveTask } from "../scripts/task-store.mjs";
+import { refreshAutomaticBundles, readContextBundle, verifyContextBundle, writeContextBundle } from "../scripts/context-bridge.mjs";
+
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-context-bridge-"));
+const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-context-workspace-"));
+fs.writeFileSync(path.join(workspace, "README.md"), "stable evidence\n");
+const taskFile = path.join(home, ".usage-max", "tasks.jsonl");
+let task = createTask({ taskId: "bridge-001", idempotencyKey: "bridge-idem", now: "2026-10-15T08:00:00Z", provider: "openai", surface: "codex-cli" });
+task = { ...task, state: "paused_for_usage", contextBridge: { enabled: true, workspaceRoot: workspace, files: ["README.md"], decisions: ["preserve the API"], nextActions: ["run the focused test"], acceptanceCriteria: ["tests pass"], constraints: ["no credentials"] } };
+saveTask(taskFile, task);
+
+const first = refreshAutomaticBundles({ home, now: Date.parse("2026-10-15T08:01:00Z") });
+assert.equal(first.refreshed, 1);
+const bundle = readContextBundle(home, task.taskId);
+assert.equal(bundle.safety.transcriptIncluded, false);
+assert.equal(bundle.safety.credentialsIncluded, false);
+assert.deepEqual(verifyContextBundle(bundle, { workspaceRoot: workspace, files: ["README.md"], checkpoint: task.checkpoint, effects: task.effects, acceptanceCriteria: ["tests pass"] }).ready, true);
+const md = fs.readFileSync(path.join(home, ".usage-max", "context-bridge", "bridge-001.md"), "utf8");
+assert.doesNotMatch(md, /stable evidence/);
+assert.match(md, /focused test/);
+const same = writeContextBundle({ home, task, workspaceRoot: workspace, files: ["README.md"], decisions: ["preserve the API"], nextActions: ["run the focused test"], acceptanceCriteria: ["tests pass"], constraints: ["no credentials"], now: Date.parse("2026-10-15T09:00:00Z") });
+assert.equal(same.changed, false, "timestamp-only refresh must not rewrite or create usage churn");
+fs.writeFileSync(path.join(workspace, "README.md"), "changed evidence\n");
+assert.equal(verifyContextBundle(bundle, { workspaceRoot: workspace, files: ["README.md"], checkpoint: task.checkpoint, effects: task.effects, acceptanceCriteria: ["tests pass"] }).ready, false);
+console.log("context bridge tests passed");

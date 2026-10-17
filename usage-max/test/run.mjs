@@ -329,6 +329,14 @@ check("statusline live model + compact", bigOut.trim(), "usage-max Sonnet 5.5 ·
   check("diet/eval-cache/trim tests", r.status, 0);
   if (r.status !== 0) console.error(r.stdout + r.stderr);
 }
+
+// Keep the newer control-plane tests inside the canonical offline suite too.
+// They run in child processes because each is a standalone executable test.
+for (const file of ["contracts.mjs", "identity.mjs", "provider-ingest.mjs", "observation-authority.mjs", "producer-attestation.mjs", "account-activity.mjs", "codex-account-usage.mjs", "collector-queue.mjs", "readiness.mjs", "readiness-cli.mjs", "plan-audit.mjs", "surface-trial.mjs", "trial-preflight.mjs", "activation.mjs", "process-discovery.mjs", "adapter-policy.mjs", "repo-handoff.mjs", "context-bridge.mjs", "cross-provider.mjs", "rollout.mjs", "recovery.mjs", "trust-milestone.mjs", "auto-account-notice.mjs", "control-report.mjs", "dashboard.mjs", "service-runner.mjs", "host-runtime.mjs", "task-finalizer.mjs", "repository-checks.mjs", "compatibility-doctor.mjs", "reservations.mjs", "health.mjs", "failure-health.mjs", "rounding.mjs", "auto-observe.mjs", "subagents.mjs", "summary.mjs", "task-policy.mjs", "predictive-budget.mjs", "execution-profile.mjs", "usage-advisor.mjs", "managed-worker.mjs", "unattended-supervisor.mjs", "claude-headless-adapter.mjs", "worker-adapters.mjs", "notifications-hook.mjs", "codex-notifications.mjs", "attachment-server.mjs", "browser-adapter.mjs", "browser-native-host.mjs", "mcp-server.mjs", "mcp-http-server.mjs", "capability-dossier.mjs", "mcpb.mjs", "static-check.mjs", "task-health-notices.mjs", "task-console.mjs", "service.mjs"]) {
+  const result = spawnSync(process.execPath, [path.join(root, "test", file)], { encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: SANDBOX_HOME } });
+  if (result.status !== 0) { failures += 1; console.error(`FAIL control-plane suite: ${file}\n${result.stdout || ""}${result.stderr || ""}`); }
+  else console.log(`pass control-plane suite: ${file}`);
+}
 if (failures > 0) {
   console.error(`\n${failures} offline test(s) failed`);
   process.exit(1);

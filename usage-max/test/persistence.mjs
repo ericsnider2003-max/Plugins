@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createTask, transitionTask } from "../scripts/task-state.mjs";
+import { loadTasks, saveTask, taskSnapshot } from "../scripts/task-store.mjs";
+import { claudeCaptureObservation, codexCaptureObservation, unavailableObservation } from "../scripts/observation-adapters.mjs";
+const d = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-persist-"));
+const tasks = path.join(d, "tasks.jsonl");
+let t = createTask({ taskId: "task-persist-001", idempotencyKey: "idem-persist-001", now: "2026-10-15T08:00:00Z" });
+saveTask(tasks, t); t = transitionTask(t, "admitted", "2026-10-15T08:01:00Z"); saveTask(tasks, t);
+assert.equal(taskSnapshot(tasks, t.taskId).state, "admitted"); assert.equal(loadTasks(tasks).size, 1);
+assert.throws(() => saveTask(tasks, { ...t, updatedAt: "2026-10-15T07:00:00Z" }), /older/);
+const corrupt = path.join(d, "corrupt.jsonl"); fs.writeFileSync(corrupt, "{not-json}\n"); assert.throws(() => loadTasks(corrupt), /task history is corrupt at line 1/);
+const c = claudeCaptureObservation({ capturedAt: "2026-10-15T08:00:00Z", source: "claude-api", rate_limits: { five_hour: { used_percentage: 20, resets_at: 1792051200 } } }, { accountSlot: "anthropic-primary", approved: true });
+assert.equal(c.state, "governing"); assert.equal(c.authority, "provider");
+const x = codexCaptureObservation({ capturedAt: "2026-10-15T08:00:00Z", source: "codex-rollout", rate_limits: {} }, { accountSlot: "openai-primary", approved: true });
+assert.equal(x.state, "observing"); assert.equal(x.authority, "local-activity");
+assert.equal(unavailableObservation("openai", "chatgpt", "adapter missing").state, "unavailable");
+console.log("persistence and adapter tests passed");

@@ -1,5 +1,119 @@
 # usage-max
 
+## 0.21.0 — cross-surface provider limits and lifecycle repair
+
+Status reviewed 2026-10-16: the control-plane rebuild remains observation-only until the filed trial and host-attachment gates pass.
+Last updated: 2026-10-16.
+
+## Provider limits (desktop, Cowork and Codex)
+
+## Control-plane commands
+
+`usage-max report` shows one combined evidence/coverage/task/trial report.
+`usage-max plan-audit` reports the nine implementation-plan phases, evidence
+paths, current gates, and blockers without changing runtime state.
+`usage-max surfaces` shows which host surfaces are supported or unavailable.
+`usage-max service run` starts the bounded observation controller; use
+`--once` for a single tick. It never launches a model worker or enables live
+enforcement. Approved host adapters may write redacted captures to
+`~/.usage-max/attachments/<surface>.json`; credentials and private UI scraping
+are not accepted.
+
+`usage-max dashboard` writes a local HTML evidence view; it does not activate
+enforcement or contact a provider.
+
+`usage-max compatibility` reports missing contracts, stale provider evidence,
+unknown observed models, and surfaces without a trusted attachment. A review
+result never authorizes routing or enforcement.
+
+`usage-max health` combines service state, surface capability, trial state,
+compatibility findings, pending notices, and the next safe action in one
+read-only report.
+
+The provider-neutral context bridge is local and opt-in per task. It writes a
+small JSON/Markdown continuity bundle containing task state, decisions, next
+actions, acceptance criteria, checkpoint/effect identities, and selected file
+digests. It makes no model or provider calls and never copies transcripts,
+prompts, responses, credentials, or tokens. Enable and verify it with:
+
+```text
+node scripts/usage-max.mjs continuity enable <taskId> --workspace <dir> --files a,b --decisions "..." --next "..."
+node scripts/usage-max.mjs continuity refresh
+node scripts/usage-max.mjs continuity verify <taskId> --workspace <dir>
+```
+
+Verification fails closed when evidence diverges. Unattached web/mobile
+conversation history remains unavailable; the bridge cannot reconstruct hidden
+provider state without an export or structured attachment. Full design and
+handoff details live in `docs/research-provider-neutral-context-2026-10-15.md`.
+
+The portable root `mcp.json` registers `mcp/usage-max-mcp-server.mjs` for
+supported local desktop hosts; `plugin.json` declares the local-executor
+requirement. The compatibility `.mcp.json` is retained for hosts that import
+that legacy filename. Its read-only MCP tools expose the same status, redacted
+observations, notices, and durable task state to ChatGPT Desktop/Codex without
+credentials, network access, provider control, account switching, or
+enforcement.
+
+`usage-max subagents status` shows the durable subagent registry. The
+observation service marks missing-heartbeat workers failed after the configured
+timeout and leaves a review notice instead of silently retrying them.
+
+`usage-max summary --days 1` produces a read-only operating summary for recent
+observations, models, authority, tasks, subagents, notices, and follow-up work.
+
+`usage-max advisor` exposes observation-only context, model/effort, subagent-ROI,
+and redundant-read diagnostics. It never changes provider settings or launches
+workers; callers may import `scripts/usage-advisor.mjs` with task-local evidence.
+
+Managed task execution persists task/effect snapshots automatically around an
+injected worker. Provider workers are not launched implicitly.
+
+Task records can declare dependencies and a bounded retry policy. Dependencies
+must complete before admission; retries use recorded backoff and default to
+zero automatic retries unless explicitly configured.
+
+`usage-max workers` shows the provider worker boundaries. Launch planning is
+fail-closed unless a supported attachment and reviewed rollout gate are both
+present; the observation service never launches a provider worker.
+
+`usage-max activation` reports whether the automatic Claude/Codex hooks,
+optional browser adapter, attachment receiver, and observation service are
+ready. `usage-max trial preflight <surface> <task>` refuses to begin a trial
+until fresh approved provider evidence and known model identity are present.
+`usage-max trial status` shows the latest trial rows with metric counts and
+rollout-gate status; `usage-max trial raw` shows append-only trial history.
+
+`node scripts/activation-cli.mjs install` prints a dry-run per-user Windows
+startup plan for the observation-only service. Apply it only with
+`install --apply`; remove it with `activation-cli.mjs remove`.
+
+For a live Codex capture, `node scripts/accounts-cli.mjs add-observed <slot> openai codex-cli <configured-home>` can register the observed provider identity without copying it manually. The slot remains disabled until `node scripts/accounts-cli.mjs approve <slot>` is run explicitly.
+
+Provider identity is explicit: ChatGPT is OpenAI; Claude Cowork is Anthropic.
+Their account bindings and handoff decisions are kept separate.
+
+Supported Claude Code and Codex hooks also perform a bounded observation-only
+tick automatically at session start and prompt submission. This does not start
+a worker, refresh provider limits, change models, or enable enforcement.
+The long-running observation service uses a per-home ownership lock, rejects a
+second active controller, and recovers an ownerless stale lock.
+
+`usage-max attachments serve` starts the loopback-only receiver used by the
+optional `browser-adapter/` extension. The extension observes only visible
+model labels and never sends cookies, prompts, replies, or credentials.
+
+Status reviewed after the latest filing refresh: visible ChatGPT model capture
+is available; allowance remains unknown unless a structured provider signal is
+observed.
+
+`node scripts/usage-max.mjs providers` refreshes account-level limits without
+spending a model turn. Claude uses the official CLI only to refresh an expired
+OAuth token, then makes a read-only usage request; Codex uses the latest local
+`rate_limits` event. The cache stores percentages, reset times, source and
+capture time only—never credentials. If a provider is unavailable, the last
+good capture remains available and the warning names the missing source.
+
 Route every task to the smallest capable model tier and prove the savings from local transcripts. Ceiling: Opus 5.5. No fable. Zero Claude usage spent building or verifying this plugin.
 
 ## 0.20.1 (Oct 13 2026) — trimmed output streams
@@ -245,6 +359,8 @@ Everything is `/usage-max <sub>` (no argument = `status`). The same entry works 
 | `check` · `diagnose` · `audit` · `diet` | local-transcript reports: burn by model, ranked savings, leaks, startup context per plugin |
 | `rescue [apply [--write] \| migrate \| halt]` | apply the profile, move background work to bounded one-shots, emergency stop |
 | `balance` | Claude vs Codex headroom |
+| `evidence [--json]` | measured/provider/local/unattributed observation counts and surface coverage from the local ledger |
+| `continuity refresh|enable|disable|write|verify` | local no-model context bridge; idempotent refresh and fail-closed resume evidence |
 | `codex <doctor\|status\|install\|models\|calibrate\|mode\|diet>` | the Codex side |
 | `route <task>` · `handoff` | model-driven: tier a task / write `handoff.md` |
 
@@ -253,7 +369,7 @@ Under it: three subagents (`usage-max-scout` Haiku 5.5, `-worker` Sonnet 5.5, `-
 ## Components
 
 - [scripts/usage-max.mjs](scripts/usage-max.mjs) — the dispatcher; [commands/usage-max.md](commands/usage-max.md) — the one slash command
-- [agents/](agents/), [skills/routing](skills/routing/SKILL.md), [hooks/](hooks/) (fail-open), [scripts/](scripts/), [profiles/](profiles/), [codex/](codex/), [test/](test/)
+- [agents/](agents/), [skills/routing](skills/routing/SKILL.md), [hooks/](hooks/) (fail-open), [scripts/](scripts/), [contracts/](contracts/), [profiles/](profiles/), [codex/](codex/), [test/](test/)
 
 ## Maximize the plan (measured, Oct 7 2026)
 

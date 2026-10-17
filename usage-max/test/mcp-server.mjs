@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
+const portable = JSON.parse(fs.readFileSync(path.resolve("plugin.json"), "utf8"));
+const portableMcp = JSON.parse(fs.readFileSync(path.resolve("mcp.json"), "utf8"));
+const mcpb = JSON.parse(fs.readFileSync(path.resolve("mcpb/manifest.json"), "utf8"));
+assert.equal(portable.name, "usage-max");
+assert.equal(portable.extensions["com.openai"].requires_local_executor, true);
+assert.equal(portableMcp.mcpServers["usage-max"].type, "stdio");
+assert.match(portableMcp.mcpServers["usage-max"].args[0], /\$\{PLUGIN_ROOT\}\/mcp\/usage-max-mcp-server\.mjs$/);
+assert.equal(mcpb.name, "usage-max"); assert.equal(mcpb.server.type, "node"); assert.equal(mcpb.server.mcp_config.env.USAGE_MAX_HOME, "${HOME}"); assert.equal(mcpb.tools.length, 9);
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-mcp-")); fs.mkdirSync(path.join(home, ".usage-max"), { recursive: true });
+const server = spawn(process.execPath, [path.resolve("mcp/usage-max-mcp-server.mjs")], { env: { ...process.env, USAGE_MAX_HOME: home }, stdio: ["pipe", "pipe", "pipe"] });
+let buffer = ""; const messages = []; server.stdout.on("data", (chunk) => { buffer += chunk; for (const line of buffer.split(/\r?\n/).slice(0, -1)) messages.push(JSON.parse(line)); buffer = buffer.slice(buffer.lastIndexOf("\n") + 1); });
+const ask = (id, method, params = {}) => new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error(`MCP response timeout: ${method}`)), 20000); const check = () => { const found = messages.find((x) => x.id === id); if (found) { clearTimeout(timer); resolve(found); } else setTimeout(check, 10); }; server.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`); check(); });
+const initialized = await ask(1, "initialize"); assert.equal(initialized.result.serverInfo.name, "usage-max-mcp-server"); assert.ok(initialized.result.capabilities.resources); assert.match(initialized.result.instructions, /consult usage_max_get_status/); assert.match(initialized.result.instructions, /read-only server/);
+const listed = await ask(2, "tools/list"); assert.equal(listed.result.tools.length, 9); assert.ok(listed.result.tools.every((x) => x.name.startsWith("usage_max_"))); assert.ok(listed.result.tools.some((x) => x.name === "usage_max_list_accounts")); assert.ok(listed.result.tools.some((x) => x.name === "usage_max_query_architecture"));
+const resources = await ask(3, "resources/list"); assert.deepEqual(resources.result.resources.map((x) => x.uri), ["usage-max://status", "usage-max://notices"]);
+fs.writeFileSync(path.join(home, ".usage-max", "accounts.json"), JSON.stringify({ contract: "usage-max.account-registry.v1", version: 1, accounts: [{ contract: "usage-max.account-slot.v1", slot: "openai-test", provider: "openai", providerAccountId: "provider-secret-id", surfaces: ["codex-desktop"], homeFingerprint: "home-secret-fingerprint", approved: false, enabled: false, routingEnabled: false, cooldownUntil: "2026-10-15T19:00:00Z", approvedAt: null, notes: "accessToken=do-not-return" }] }));
+const status = await ask(4, "tools/call", { name: "usage_max_get_status", arguments: {} }); assert.equal(status.result.structuredContent.enforcementEnabled, false); assert.equal(status.result.structuredContent.processHints.processes, undefined); assert.ok(Object.hasOwn(status.result.structuredContent.processHints, "runtimeCapabilities")); assert.deepEqual(status.result.structuredContent.accounts, { total: 1, approved: 0, pendingApproval: 1, enabled: 0, routingEnabled: 0 });
+const resourceStatus = await ask(5, "resources/read", { uri: "usage-max://status" }); assert.equal(JSON.parse(resourceStatus.result.contents[0].text).enforcementEnabled, false);
+const resourceNotices = await ask(6, "resources/read", { uri: "usage-max://notices" }); assert.equal(JSON.parse(resourceNotices.result.contents[0].text).total, 0);
+const observations = await ask(7, "tools/call", { name: "usage_max_list_observations", arguments: {} }); assert.equal(observations.result.structuredContent.total, 0); const accounts = await ask(8, "tools/call", { name: "usage_max_list_accounts", arguments: {} }); assert.equal(accounts.result.structuredContent.total, 1); assert.deepEqual(accounts.result.structuredContent.accounts[0], { slot: "openai-test", provider: "openai", surfaces: ["codex-desktop"], providerAccountIdPresent: true, approved: false, enabled: false, routingEnabled: false, cooldownUntil: "2026-10-15T19:00:00Z", approvedAt: null }); assert.doesNotMatch(JSON.stringify(accounts.result), /provider-secret-id|home-secret-fingerprint|accessToken|do-not-return/);
+const architecture = await ask(9, "tools/call", { name: "usage_max_get_architecture", arguments: {} }); assert.equal(architecture.result.structuredContent.ready, false); assert.match(architecture.result.structuredContent.reason, /architecture graph unavailable/); assert.doesNotMatch(JSON.stringify(architecture.result), /provider-secret-id|home-secret-fingerprint|accessToken|do-not-return/); server.kill(); console.log("MCP server tests passed");

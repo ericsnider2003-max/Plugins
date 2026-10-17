@@ -12,6 +12,7 @@ import { underCodex } from "../scripts/host.mjs";
 import { readOther, balanceAdvice } from "../scripts/shared.mjs";
 import { readJson, dataDir } from "../scripts/meter.mjs";
 import { agentStart, bump, loadQueue } from "../scripts/guard.mjs";
+import { recordFailure } from "../scripts/failure-health.mjs";
 
 async function readStdin() {
   if (process.stdin.isTTY) return "";
@@ -88,6 +89,7 @@ try {
     }
   }
   process.exitCode = 0;
-} catch {
+} catch (error) {
+  try { recordFailure({ home: process.env.USAGE_MAX_HOME || process.env.USERPROFILE || process.env.HOME, component: "claude-budget-hook", event: process.env.HOOK_EVENT_NAME || "dispatch", error }); } catch (recordError) { void recordError; }
   process.exitCode = 0;
 }

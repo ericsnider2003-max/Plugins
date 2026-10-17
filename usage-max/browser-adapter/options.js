@@ -1,0 +1,1 @@
+chrome.storage.local.get(["endpoint", "token"], (x) => { endpoint.value = x.endpoint || ""; token.value = x.token || ""; }); save.onclick = () => chrome.storage.local.set({ endpoint: endpoint.value.trim(), token: token.value.trim() });

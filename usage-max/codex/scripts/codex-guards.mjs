@@ -53,6 +53,6 @@ export const nudgeAt = (mode) => (mode === "red" ? 60000 : mode === "amber" ? 90
 export function nudge(ctx, at = NUDGE_AT) {
   if (!ctx || ctx < at) return null; const level = ctx >= at + 80000 ? 2 : 1, k = Math.round(ctx / 1000);
   return { level, text: level === 1
-    ? `usage-max: this session now carries about ${k}k tokens and re-reads all of it on EVERY call, which is most of the plan use. When this task reaches a good stopping point, tell the user in one sentence that a fresh session (/new, with a 5-line summary of where things stand) will cost several times less per step.`
-    : `usage-max: this session carries about ${k}k tokens per call, far past the point where continuing pays. Tell the user now, in one sentence, to start a fresh session (/new) with a short summary: every further step here costs several times more than it would there.` };
+    ? `usage-max: this session now carries about ${k}k tokens and re-reads all of it on EVERY call, which is most of the plan use. When this task reaches a good stopping point, tell the user in one sentence that a fresh session (/new) may cost less per step; use a project-sized handoff sized to the work.`
+    : `usage-max: this session carries about ${k}k tokens per call, far past the point where continuing pays. Tell the user now, in one sentence, to start a fresh session (/new) with a project-sized handoff that preserves the important state; every further step here costs several times more than it would there.` };
 }

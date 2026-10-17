@@ -8,6 +8,19 @@ export function asNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+// Usage estimates are display/projection values, but their rounding must be
+// deterministic at decimal boundaries. All callers pass non-provider numbers.
+export function roundDecimal(value, places = 2) {
+  const n = Number(value); const p = Number(places);
+  if (!Number.isFinite(n) || !Number.isInteger(p) || p < 0 || p > 12) return null;
+  const factor = 10 ** p; const magnitude = Math.abs(n); const epsilon = Number.EPSILON * Math.max(1, magnitude * factor) * 4;
+  return Math.sign(n) * Math.round((magnitude + epsilon) * factor) / factor;
+}
+
+export function fixedDecimal(value, places = 2) {
+  const rounded = roundDecimal(value, places); return rounded === null ? "?" : rounded.toFixed(places);
+}
+
 export function normalizeUsage(usage) {
   const zero = {
     input: 0,

@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { chooseExecutionProfile, executionProfiles, profileAllowed, decideModelEffort } from "../scripts/execution-profile.mjs";
+assert.equal(chooseExecutionProfile({ difficulty: "low", reworkRisk: "low", qualityRequired: "low", remainingPercent: 80 }).profile, "cheap");
+assert.equal(chooseExecutionProfile({ difficulty: "high", reworkRisk: "high", qualityRequired: "high", remainingPercent: 80 }).profile, "thorough");
+assert.equal(chooseExecutionProfile({ difficulty: "low", reworkRisk: "low", qualityRequired: "low", deadlineMs: 30 * 60 * 1000 }).profile, "standard");
+assert.equal(chooseExecutionProfile({ difficulty: "standard", reworkRisk: "standard", qualityRequired: "standard", remainingPercent: 10 }).profile, "standard");
+assert.equal(profileAllowed({ qualityRequired: "high" }, { profile: "standard" }).allowed, false);
+assert.equal(profileAllowed({ qualityRequired: "standard" }, { profile: "thorough" }).allowed, true);
+assert.equal(executionProfiles().length, 3);
+assert.equal(decideModelEffort({ requestedModel: "gpt-5.6-luna", observedModel: "gpt-5.6-luna", observedEffort: "medium", now: "2026-10-15T08:00:00Z" }).status, "unchanged");
+assert.equal(decideModelEffort({ requestedModel: "gpt-5.6-luna", observedModel: "gpt-5.6-sol", provider: "openai", surface: "codex-cli", now: "2026-10-15T08:00:00Z" }).status, "unavailable");
+assert.equal(decideModelEffort({ observedModel: "claude-sonnet-4-5", observedEffort: "standard", now: "2026-10-15T08:00:00Z" }).status, "observed");
+console.log("execution profile tests passed");

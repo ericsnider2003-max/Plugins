@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { createTask, transitionTask, acquireLease, releaseLease, recordEffect, canComplete } from "../scripts/task-state.mjs";
+import { summarizeCoverage } from "../scripts/coverage.mjs";
+let t = createTask({ taskId: "task-control-001", idempotencyKey: "idem-control-001", now: "2026-10-15T08:00:00Z" });
+const routed = createTask({ taskId: "task-route-001", idempotencyKey: "idem-route-001", provider: "openai", surface: "codex-cli", accountSlot: "codex-primary", requestedModel: "gpt-5.6-luna", requestedEffort: "medium" });
+assert.equal(routed.provider, "openai"); assert.equal(routed.surface, "codex-cli"); assert.equal(routed.accountSlot, "codex-primary"); assert.equal(routed.requestedModel, "gpt-5.6-luna");
+t = transitionTask(t, "admitted");
+t = transitionTask(t, "running");
+t = acquireLease(t, "worker-1", "2026-10-15T09:00:00Z");
+t = recordEffect(t, { effectId: "effect-1", kind: "write-checkpoint", state: "committed", resultDigest: "digest-1" });
+t = transitionTask(t, "verifying");
+assert.equal(canComplete(t), true);
+assert.throws(() => transitionTask(t, "running"), /invalid task transition/);
+assert.equal(recordEffect(t, { effectId: "effect-1", kind: "write-checkpoint", state: "planned" }).effects[0].state, "committed");
+t = releaseLease(t);
+assert.equal(t.lease, null);
+const report = summarizeCoverage([{ surface: "claude-code", state: "governing", authority: "provider", capturedAt: "2026-10-15T08:00:00Z" }, { surface: "codex-cli", state: "observing", authority: "local-activity", capturedAt: "2026-10-15T07:00:00Z" }, { surface: "chatgpt", state: "unavailable", authority: "unattributed", capturedAt: "2026-10-15T08:00:00Z" }], { now: Date.parse("2026-10-15T08:05:00Z") });
+assert.equal(report.surfaces["chatgpt"].authority, "unattributed");
+const newest = summarizeCoverage([{ surface: "chatgpt", state: "governing", authority: "provider", capturedAt: "2026-10-15T08:05:00Z", model: { canonical: "gpt-5.4", known: true, effort: "high" } }, { surface: "chatgpt", state: "observing", authority: "unattributed", capturedAt: "2026-10-15T08:00:00Z", model: { canonical: "gpt-4o", known: true, effort: "medium" }, data: { modelSelection: "thinking" } }], { now: Date.parse("2026-10-15T08:06:00Z") });
+assert.equal(newest.surfaces.chatgpt.model, "gpt-5.4"); assert.equal(newest.surfaces.chatgpt.authority, "provider"); assert.equal(newest.surfaces.chatgpt.effort, "high");
+const selectedOnly = summarizeCoverage([{ surface: "chatgpt", state: "observing", authority: "unattributed", capturedAt: "2026-10-15T08:05:00Z", model: { canonical: null, known: false }, data: { modelSelection: "instant" } }], { now: Date.parse("2026-10-15T08:06:00Z") });
+assert.equal(selectedOnly.surfaces.chatgpt.model, null); assert.equal(selectedOnly.surfaces.chatgpt.modelKnown, false); assert.equal(selectedOnly.surfaces.chatgpt.modelSelection, "instant");
+assert.deepEqual(report.governed, ["claude-code"]);
+assert.ok(report.unattributed.includes("chatgpt"));
+assert.equal(report.surfaces["codex-cli"].freshness, "stale");
+console.log("control-plane tests passed");

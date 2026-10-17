@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import { openaiCaptureObservation } from "../scripts/observation-adapters.mjs";
+const visible = openaiCaptureObservation({ source: "browser-visible", capturedAt: "2026-10-15T08:00:00Z", model: "gpt-4o", effort: "high", rate_limits: { visible: { used_percentage: 42 } } }, { surface: "chatgpt", accountSlot: "chatgpt-observed", approved: true });
+assert.equal(visible.authority, "unattributed"); assert.equal(visible.state, "observing"); assert.equal(visible.confidence, "derived"); assert.equal(visible.providerEventAt, null); assert.equal(visible.model.effort, "high");
+const picker = openaiCaptureObservation({ source: "browser-visible", capturedAt: "2026-10-15T08:00:01Z", data: { modelSelection: "thinking", visibleSelectionSignal: true } }, { surface: "chatgpt", accountSlot: "chatgpt-observed", approved: true }); assert.equal(picker.model.canonical, null); assert.equal(picker.data.modelSelection, "thinking"); assert.equal(picker.authority, "unattributed");
+const attached = openaiCaptureObservation({ source: "supported-attachment", capturedAt: "2026-10-15T08:00:00Z", model: "gpt-4o", rate_limits: { weekly: { used_percentage: 42 } } }, { surface: "chatgpt", accountSlot: "chatgpt-primary", approved: true });
+assert.equal(attached.authority, "unattributed"); assert.equal(attached.state, "observing"); assert.equal(attached.data.authorityBasis, "unverified-attachment"); assert.equal(attached.providerEventAt, null);
+const trusted = openaiCaptureObservation({ source: "trusted-provider-adapter", capturedAt: "2026-10-15T08:00:00Z", model: "gpt-4o", rate_limits: { weekly: { used_percentage: 42 } } }, { surface: "chatgpt", accountSlot: "chatgpt-primary", approved: true, trustedProvider: true }); assert.equal(trusted.authority, "provider"); assert.equal(trusted.state, "governing");
+assert.equal(openaiCaptureObservation({ source: "supported-attachment", capturedAt: "2026-10-15T08:00:00Z", rate_limits: {} }, { surface: "chatgpt", approved: true }).state, "observing");
+console.log("observation authority tests passed");

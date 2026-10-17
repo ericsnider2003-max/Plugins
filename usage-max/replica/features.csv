@@ -1,0 +1,21 @@
+feature,baseline,competitor_evidence,0.21.0_result,verification
+Claude desktop/Cowork live limits,manual only,cctop and cc-usage provider adapters,read-only Claude provider capture,real machine capture 200
+Codex live limits,rollout-only,cctop and cc-usage normalized Codex limits,latest local rate_limits capture,provider test + real capture
+Provenance,implicit,cctop source/captured_at,source and capturedAt persisted,provider test
+Failure behavior,can look stale,cc-usage retains last good capture,retain cache and warn,manual inspection + code path
+Install lifecycle,mixed versions and stale trust,doctor patterns,orphan upload trust cleanup,cleanup test + actual config repair
+Browser-only surfaces,not integrated,local browser tracker/quota monitor,documented optional future adapter,no false live claim
+Provider/account identity,no durable binding,headroom and multi-account dashboards,implemented with explicit approval and fingerprinted slots,identity/account tests
+Live Codex rate limits,latest local event only,headroom/CodexMeter/app-server tools,implemented live-first with labelled fallback,provider and live-read evidence
+Replay-safe ledger,partial offsets and duplicate checks,AI Usage Tracker and Codex issue evidence,implemented append-only ledger with deduplication/quarantine,replay and fork fixtures
+Quota-window forensic checks,no invariant quarantine,OpenAI issue reports,implemented reset/backward/stale/conflict quarantine,observation-authority tests
+Coverage/unattributed usage,no shared-pool coverage view,AI Usage Tracker,implemented explicit coverage and unattributed lanes,coverage/dashboard tests
+Multi-device attribution,no,AI Usage Tracker,implemented local opt-in collector queue with freshness,collector tests
+Fail-closed routing,mostly fail-open,headroom,implemented provider/fresh/model/account/reserve gates,admission and cross-provider tests
+Evidence drill-down,CLI reports only,ClaudeCodeUsage and AI Usage Tracker,implemented dashboard/console/evidence/control reports,reporting tests
+Unattended admission control,batch gate only,agentpause and budget guards,implemented durable admission with task/deadline/concurrency/predictive gates,admission tests
+Durable task checkpoint,local handoff note only,LangGraph and Temporal patterns,implemented checkpoint/effect/lease/recovery protocol,task and recovery tests
+Heartbeat watchdog,limited repeated-tool guards,Heartbeat plugin,implemented watchdog/circuit/subagent lifecycle,trust-milestone tests
+Retry circuit breaker,no global retry budget,VERONICA-Core and guard libraries,implemented bounded retry/backoff/dead-letter notices,task-policy tests
+Reset-aware scheduler,no queue wake/resume,agentpause and autonomous-agent-runner,implemented fresh provider reset scheduling with local masking protection,scheduler/service tests
+Completion verifier,tests are manual/command-driven,durable agent workflows,implemented durable verification and escalation,finalizer tests

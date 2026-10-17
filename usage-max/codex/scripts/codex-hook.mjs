@@ -7,10 +7,12 @@
 //  PreToolUse Bash  -> trim noisy simple commands via updatedInput -> `node run-trimmed.mjs run <plain words>` (readable, any shell). Off: USAGE_MAX_TRIM=off or config.json trim:"off".
 //                      win32 only after `codex-governor.mjs selftest-trim` wrote trim-ok.json (or USAGE_MAX_TRIM=force).
 import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url";
+import { recordFailure } from "../../scripts/failure-health.mjs";
 // Helpers are loaded with guarded dynamic imports: a half-updated install (a copy that lacks a function, or a file) must make this hook do nothing,
 // never fail at startup in the middle of a Codex turn.
-const load = async (f) => { try { return await import(f); } catch { return null; } };
+const load = async (f) => { try { return await import(f); } catch (error) { try { recordFailure({ home: process.env.USAGE_MAX_HOME || process.env.USERPROFILE || process.env.HOME, component: "codex-hook", event: process.argv[2] || "load", error }); } catch (recordError) { void recordError; } return null; } };
 const CGOV = await load("./codex-governor.mjs"), SH = await load("./shared.mjs"), RTR = await load("./run-trimmed.mjs"), GU = await load("./codex-guards.mjs"), TC = await load("./trimcheck.mjs"), SF = await load("./safefile.mjs");
+const AO = await load("../../scripts/auto-observe.mjs");
 const { evaluate, applyMode, dataDir, modeKey, codexHome } = CGOV || {}; const { readOther, balanceAdvice } = SH || {}; const { guard, sessionContext, nudge, nudgeAt } = GU || {};
 export const wrap = RTR ? RTR.wrap : undefined;
 const writeAtomic = SF ? SF.writeAtomic : (f, t) => fs.writeFileSync(f, t); // atomic when the helper is there; a plain write is still better than none
@@ -22,6 +24,17 @@ let M = null; try { M = await import("./memory.mjs"); } catch { try { M = await 
 const NOISY = /^(npm|pnpm|yarn) (install|ci|i|test|run (test|build|lint))\b|^(pip3?|uv pip|poetry) install\b|^(pytest|python3? -m pytest|go test|cargo (test|build|check)|dotnet (test|build)|mvn |gradle |docker build|npx (jest|vitest|tsc|eslint)|tsc\b|make\b)/;
 const LONG = /(^|\s)(-w|--watch\w*(=\S+)?|--serve|--dev)(\s|$)|:watch\b|\b(watch|serve|dev|start)\b/i; // never ends: the trimmer streams, but would keep cutting what a watcher prints down to a small window
 const rj = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dataDir(), f), "utf8")); } catch { return null; } };
+function localNotifications() {
+  try {
+    const home = process.env.USAGE_MAX_HOME || process.env.USERPROFILE || process.env.HOME || "";
+    const f = path.join(home, ".usage-max", "notifications.jsonl"); if (!fs.existsSync(f)) return "";
+    const rows = fs.readFileSync(f, "utf8").split(/\r?\n/).filter(Boolean).map((x) => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean);
+    const pending = rows.filter((x) => !x.deliveredAt).slice(0, 5); if (!pending.length) return "";
+    const ids = new Set(pending.map((x) => x.noticeId)); const now = new Date().toISOString();
+    fs.writeFileSync(f, `${rows.map((x) => ids.has(x.noticeId) ? JSON.stringify({ ...x, deliveredAt: now, deliveredSurface: "codex" }) : JSON.stringify(x)).join("\n")}\n`, { encoding: "utf8", mode: 0o600 });
+    return pending.map((x) => `usage-max ${x.kind}: ${x.message}`).join("\n");
+  } catch { return ""; }
+}
 export function rewrite(cmd, runPath, platform = process.platform) {
   if (typeof cmd !== "string" || process.env.USAGE_MAX_TRIM === "off") return null;
   // Codex only honours a rewritten command together with permissionDecision "allow", which also skips Codex's own approval prompt for that command.
@@ -46,9 +59,10 @@ function memoryText(ev, input, sid) {
   if (r.text) { for (const k of r.keys) seen.add(k); M.saveSeen(sid, seen, sd); out.push(M.fenceNotes(r.text)); }
   return out.join("\n");
 }
-function main() {
+async function main() {
   if (process.env.PLUGIN_ROOT && userHooksInstalled()) return; // loaded as a plugin AND installed user-wide: the user-wide copy handles it
   const ev = process.argv[2]; let input = {}; try { input = JSON.parse(fs.readFileSync(0, "utf8") || "{}"); } catch {}
+  if (AO && (ev === "SessionStart" || ev === "UserPromptSubmit")) { try { await AO.autoObserve({ home: process.env.USAGE_MAX_HOME || process.env.USERPROFILE || process.env.HOME, input: { ...input, hook_event_name: ev, surface: "codex-cli" } }); } catch {} }
   seen(ev);
   if (ev === "PreToolUse") {
     if (input.tool_name !== "Bash" || !input.tool_input) return;
@@ -81,6 +95,7 @@ function main() {
   const { mode, surplus, cfg, st: gs, e: ge } = evaluate(); const key = modeKey(mode, surplus); if (key !== beforeKey) { try { applyMode(mode, cfg, surplus); } catch {} }
   const sid = input.session_id || "?"; st.sent = st.sent || {};
   if (ev === "SessionStart" || ev === "UserPromptSubmit") {
+    const notices = ev === "UserPromptSubmit" ? localNotifications() : ""; if (notices) process.stdout.write(notices + "\n");
     const k = `${sid}:${key}`;
     if (!st.sent[k]) {
       const plan = ev === "SessionStart" && gs.calib && gs.calib.source === "plan" && ge && !ge.rolled ? `usage-max plan: weekly ${Math.round(ge.est)}% used, ${Math.round(ge.hoursLeft)}h to reset${gs.five ? `, 5h window ${Math.round(gs.five.pct)}%` : ""}, mode ${mode.toUpperCase()}. ` : "";
@@ -96,4 +111,4 @@ function main() {
     process.stdout.write(JSON.stringify({ systemMessage: `usage-max: budget mode ${beforeKey.toUpperCase()} -> ${key.toUpperCase()}. New sessions use ${cfg.modes[surplus ? "surplus" : mode].model || "your model"} @ ${cfg.modes[surplus ? "surplus" : mode].effort}; use /model to change this one.` }));
   }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) { try { if (READY) main(); } catch (e) { process.exitCode = 0; } /* a hook must never break a turn */ process.exit(0); }
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) { try { if (READY) await main(); } catch (e) { try { recordFailure({ home: process.env.USAGE_MAX_HOME || process.env.USERPROFILE || process.env.HOME, component: "codex-hook", event: process.argv[2] || "dispatch", error: e }); } catch (recordError) { void recordError; } process.exitCode = 0; } /* a hook must never break a turn */ process.exit(0); }

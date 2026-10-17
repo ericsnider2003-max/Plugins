@@ -1,0 +1,2 @@
+.filing/ledger.jsonl merge=union eol=lf
+docs/INDEX.md merge=union eol=lf

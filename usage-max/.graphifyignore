@@ -1,0 +1,10 @@
+# Runtime state and audit output are evidence, not source topology.
+data/
+roundtrip/
+.filing/
+graphify-out/
+
+# Keep generated and temporary artifacts out of the architecture graph.
+*.log
+*.tmp
+*.bak

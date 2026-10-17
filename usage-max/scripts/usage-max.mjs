@@ -2,6 +2,7 @@
 // usage-max: the one entry point. `/usage-max <sub> ...` in Claude Code, or `node scripts/usage-max.mjs <sub> ...`.
 //   (none)|status   plan, mode, pace, surplus and the other plan's headroom
 //   doctor          is everything active? (Claude + Codex) and exactly what to fix
+//   providers [--no-refresh] [--json]  refresh provider-owned limits without spending a turn
 //   budget [...]    calibrate <pct> --resets <date> | mode <auto|green|amber|red>
 //   gate            exit 0/10/20 = green/amber/red for scripts
 //   check|diagnose|audit|diet [...]   reports from local transcripts
@@ -17,6 +18,20 @@
 //   offload status|<job> <file...>  run bounded jobs (summarize, commit, explain, docstrings, convert:<fmt>) on a model on THIS PC (Ollama): no plan usage, code stays local
 //   digest          what the guards did (counts) + Codex measured savings
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
+//   evidence       show measured/estimated/unattributed observation coverage from the local ledger
+//   accounts       list/register/approve/revoke configured account slots; never changes credentials
+//   adapters       list/enable/disable adapter policies or emergency-stop all adapters
+//   service        observation-only status/tick/stop; never launches a model worker
+//   compatibility  report missing contracts, stale provider evidence, unknown models, and unavailable surfaces
+//   health         one read-only status for service, surfaces, trials, compatibility, and notices
+//   subagents      inspect and reconcile durable subagent lifecycle records
+//   summary        daily/weekly read-only operating summary
+//   workers        list provider worker adapter boundaries
+//   activation     inspect automatic hook and attachment readiness
+//   readiness      read-only observation-trial and enforcement gate report
+//   mcpb [build]   build a clean read-only Claude Desktop/Cowork MCP bundle
+//   mcp-http       run the loopback read-only Streamable HTTP MCP bridge for ChatGPT/Secure MCP Tunnel
+//   dossier        show a read-only evidence/authority/remedy dossier for every surface
 //   chat-prefs      paste-once text for Claude.ai / Cowork / ChatGPT (chats have no hooks)
 //   enable-here [dir] [--lean a,b | --lean-auto]  (--lean: turn every other installed plugin off for that repo; --lean-auto: keep only what you used in 30 days) make every session on a repo load usage-max (writes <dir>/.claude/settings.json; commit it)
 //   safety [--fix]  what could shrink, hide or interrupt your work, whether it is on, who set it; --fix hands back only values usage-max wrote
@@ -25,6 +40,8 @@
 //   resume [--repo] show the resume point saved automatically for this folder by Claude Code or Codex (--repo: write a redacted .codex-tasks/RESUME.md for Codex cloud/mobile)
 //   codex <sub>     doctor|status|install|models|calibrate|mode|diet|diagnose|weights|gate (the Codex side)
 //   route|handoff   handled by the model (see commands/usage-max.md)
+//   continuity refresh|enable|disable|write|verify  local deterministic context bridge; never calls a model
+//   graph status|build|query|path|explain|god-nodes  native local architecture map; code-only and no model calls
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -33,6 +50,7 @@ import { fileURLToPath } from "node:url";
 
 import { oldSyncedCopies, DISABLE_OLD } from "./dupes.mjs";
 import { readJson as rj, writeJsonAtomic } from "./meter.mjs";
+import { fixedDecimal } from "./lib.mjs";
 import { MARKETPLACE } from "./profile.mjs";
 import * as G from "./guard.mjs";
 import { diet } from "./plugin-diet.mjs";
@@ -157,8 +175,16 @@ function status() {
 
 const map = {
   status, balance, doctor: () => doctor(rest.includes("--fix")), "enable-here": () => enableHere(rest),
+  providers: async () => { const { captureProviderLimits } = await import("./provider-limits.mjs"); const r = await captureProviderLimits({ home, refreshClaude: !rest.includes("--no-refresh") }); if (rest.includes("--json")) console.log(JSON.stringify(r, null, 2)); else { for (const [name, c] of Object.entries(r.captures)) console.log(`${name}: ${c.source}, captured ${c.capturedAt} [${r.captureStatus?.[name] || "unknown"}; source=${r.captureSources?.[name] || "cache"}]`); for (const name of ["claude", "codex"].filter((x) => !r.captures[x])) console.log(`${name}: missing [${r.captureStatus?.[name] || "missing"}]`); for (const w of r.warnings) console.log(`warning: ${w}`); } return r.warnings.length && !Object.keys(r.freshCaptures || {}).length ? 1 : 0; },
   budget: () => run(S("governor.mjs"), rest.length ? rest : ["status"]),
   gate: () => run(S("governor.mjs"), ["gate"]),
+  compatibility: () => run(S("compatibility-cli.mjs"), rest),
+  health: () => run(S("health-cli.mjs"), rest),
+  subagents: () => run(S("subagents-cli.mjs"), rest),
+  summary: () => run(S("summary-cli.mjs"), rest),
+  workers: () => run(S("workers-cli.mjs"), rest),
+  activation: () => run(S("activation-cli.mjs"), rest),
+  readiness: () => run(S("readiness-cli.mjs"), rest),
   check: () => run(S("usage-check.mjs"), ["--write-status", path.join(home, ".claude", "usage-max", "status.json"), ...rest]),
   diagnose: () => run(S("diagnose.mjs"), rest),
   blocks: () => run(S("blocks.mjs"), rest),
@@ -187,17 +213,39 @@ const map = {
     const f = rest[0]; const j = f && json(f); if (!j) { console.log("usage: usage-max crosscheck <ccusage-daily.json>  (export yourself with: ccusage daily --json > file; we never run it for you)"); return 1; }
     const theirs = Number(j.totals?.totalCost ?? (Array.isArray(j.daily) ? j.daily.reduce((a, d) => a + (Number(d.totalCost) || 0), 0) : NaN)); if (!Number.isFinite(theirs)) { console.log("could not find totalCost in that file (format unverified: expected totals.totalCost or daily[].totalCost)."); return 1; }
     const { claudeSavings } = await import("./savings.mjs"); const days = Number(rest[1]) || 7; const ours = (await claudeSavings({ dir: path.join(home, ".claude", "projects"), days })).total;
-    console.log(`ours ${ours.toFixed(2)} vs ccusage ${theirs.toFixed(2)} (list-price dollars, last ${days} days if you exported that range): ${theirs ? Math.round(100 * (ours - theirs) / theirs) : 0}% apart. Within ~10% means our meter agrees; larger gaps usually mean different date ranges or cache-write pricing.`); return 0;
+    console.log(`ours ${fixedDecimal(ours, 2)} vs ccusage ${fixedDecimal(theirs, 2)} (list-price dollars, last ${days} days if you exported that range): ${theirs ? Math.round(100 * (ours - theirs) / theirs) : 0}% apart. Within ~10% means our meter agrees; larger gaps usually mean different date ranges or cache-write pricing.`); return 0;
   },
   trim: async () => { const T = await import("./trimtest.mjs"); const d = dataDir(); if (rest[0] === "on" || rest[0] === "off") { T.setEnabled(d, rest[0] === "on"); console.log(`trim is now ${rest[0].toUpperCase()}`); return 0; } console.log(T.report(d)); return 0; },
   budgets: async () => (await import("./budgets.mjs")).run(rest, home),
   cap: () => { const f = G.capFile(dataDir()); if (!rest[0]) { const c = G.loadCap(dataDir()); console.log(c ? `session cap: $${c} (list price). Change: usage-max cap <usd> | off` : "session cap: off. Set one: usage-max cap 5"); return 0; } if (rest[0] === "off") { try { fs.rmSync(f); } catch {} console.log("session cap off"); return 0; } const v = Number(rest[0]); if (!(v > 0)) { console.log("usage: usage-max cap <dollars>|off"); return 1; } writeJsonAtomic(f, { usd: v }); console.log(`session cap $${v}: you will be warned at 80% and 100% in each session (new prompts only; nothing is blocked)`); return 0; },
   offload: async () => (await import("./offload.mjs")).main(rest),
   queue: () => queue(rest),
+  evidence: async () => { const { evidenceReport, formatEvidence } = await import("./evidence.mjs"); const f = path.join(dataDir(), "observations.jsonl"); const r = evidenceReport(f); if (rest.includes("--json")) console.log(JSON.stringify(r, null, 2)); else console.log(formatEvidence(r)); return 0; },
+  accounts: () => run(S("accounts-cli.mjs"), rest),
+  adapters: () => run(S("adapter-policy-cli.mjs"), rest),
+  service: () => run(S("worker-service-cli.mjs"), rest),
+  trial: () => run(S("trial-cli.mjs"), rest),
+  "plan-audit": async () => { const { implementationPlanAudit, formatPlanAudit } = await import("./plan-audit.mjs"); const r = implementationPlanAudit(); console.log(rest.includes("--json") ? JSON.stringify(r, null, 2) : formatPlanAudit(r)); return r.blockers.length ? 1 : 0; },
+  surfaces: async () => { const { manifest } = await import("./surface-adapters.mjs"); console.log(JSON.stringify(manifest(), null, 2)); return 0; },
+  report: async () => { const { controlReport, formatControlReport } = await import("./control-report.mjs"); const r = controlReport(home); console.log(rest.includes("--json") ? JSON.stringify(r, null, 2) : formatControlReport(r)); return 0; },
+  dashboard: async () => { const { writeDashboard } = await import("./dashboard.mjs"); console.log(`wrote ${writeDashboard(home)}`); return 0; },
+  console: () => run(S("task-console-cli.mjs"), rest),
+  attachments: () => run(S("attachment-cli.mjs"), rest),
+  mcpb: () => run(S("build-mcpb.mjs"), rest[0] === "build" ? rest.slice(1) : rest),
+  "mcp-http": () => run(path.join(root, "mcp", "usage-max-mcp-http-server.mjs"), rest),
+  dossier: () => run(S("capability-dossier-cli.mjs"), rest),
   "chat-prefs": () => { console.log(fs.readFileSync(path.join(root, "chat-preferences.md"), "utf8")); return 0; },
   route: () => { console.log("route/handoff are model tasks: follow commands/usage-max.md."); return 0; },
-  handoff: () => map.route()
+  handoff: () => map.route(),
+  continuity: () => run(S("context-bridge.mjs"), rest),
+  graph: () => run(S("architecture-graph.mjs"), rest),
+  advisor: async () => {
+    const { analyzeReads, assessSubagentROI, estimateContext, recommendModelEffort } = await import("./usage-advisor.mjs");
+    const result = { context: estimateContext({}), modelEffort: recommendModelEffort({}), subagents: assessSubagentROI({}), reads: analyzeReads([]), note: "observation-only defaults; supply task evidence to the library APIs for a useful recommendation" };
+    console.log(rest.includes("--json") ? JSON.stringify(result, null, 2) : ["usage-max advisors (observation-only)", `context: ${result.context.status}`, `model/effort: ${result.modelEffort.status} -> ${result.modelEffort.recommended.profile}`, `subagents: ${result.subagents.status}`, `reads: ${result.reads.status}`, result.note].join("\n"));
+    return 0;
+  }
 };
 // Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
-if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status blocks savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here safety memory pack resume context digest queue chat-prefs codex route handoff)\n`); process.exit(await map.status()); }
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status providers blocks savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here safety memory pack resume context continuity advisor digest queue evidence accounts service trial plan-audit surfaces report dashboard console attachments mcpb mcp-http dossier chat-prefs graph codex route handoff)\n`); process.exit(await map.status()); }
 process.exit(await map[sub]());

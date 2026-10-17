@@ -60,6 +60,18 @@ if (manifest) {
   if (missing === 0) pass("manifest component paths");
 }
 
+// 1b. Portable plugin/MCP manifests: keep the universal local-host package discoverable.
+const portableManifest = readJson(path.join(root, "plugin.json"));
+const portableMcp = readJson(path.join(root, "mcp.json"));
+const mcpbManifest = readJson(path.join(root, "mcpb", "manifest.json"));
+if (portableManifest && portableManifest.name === "usage-max" && portableManifest.version === manifest?.version && portableManifest.extensions?.["com.openai"]?.requires_local_executor === true) pass("portable plugin manifest");
+else fail("portable plugin manifest", "name/version/local-executor extension must match the Claude manifest");
+const portableServer = portableMcp?.mcpServers?.["usage-max"];
+if (portableServer?.type === "stdio" && portableServer.command === "node" && portableServer.cwd === "${PLUGIN_ROOT}" && portableServer.args?.length === 1 && portableServer.args[0] === "${PLUGIN_ROOT}/mcp/usage-max-mcp-server.mjs") pass("portable MCP manifest");
+else fail("portable MCP manifest", "expected a single local stdio usage-max server");
+if (mcpbManifest?.name === portableManifest?.name && mcpbManifest.version === portableManifest?.version && mcpbManifest.manifest_version === "0.1" && mcpbManifest.server?.type === "node" && mcpbManifest.server?.mcp_config?.env?.USAGE_MAX_HOME === "${HOME}") pass("portable MCPB manifest");
+else fail("portable MCPB manifest", "name/version/manifest-version/node/home projection must match");
+
 // 2. Agent frontmatter: name, description, tools, full model ID, no Agent tool.
 const expectedModels = {
   "scout.md": "claude-haiku-5-5",
@@ -145,7 +157,9 @@ if (fableViolations === 0) pass("no fable references");
 // 6b. Codex manifest: versions in sync, hooks file exists and has the Codex schema shape (deny_unknown_fields upstream).
 {
   const cx = readJson(path.join(root, ".codex-plugin", "plugin.json"));
-  const mk = readJson(path.join(root, "..", ".claude-plugin", "marketplace.json"));
+  const marketplaceFiles = [path.join(root, ".claude-plugin", "marketplace.json"), path.join(root, "..", ".claude-plugin", "marketplace.json")];
+  const marketplaceFile = marketplaceFiles.find((file) => fs.existsSync(file));
+  const mk = marketplaceFile ? readJson(marketplaceFile) : null;
   if (cx && manifest && cx.version === manifest.version && (!mk || mk.plugins.every((p) => p.version === manifest.version))) pass("versions in sync (claude, codex, marketplace)");
   else fail("versions out of sync", `claude ${manifest && manifest.version}, codex ${cx && cx.version}, marketplace ${mk && mk.plugins.map((p) => p.version)}`);
   const hf = cx && readJson(path.join(root, String(cx.hooks || "").replace(/^\.\//, "")));

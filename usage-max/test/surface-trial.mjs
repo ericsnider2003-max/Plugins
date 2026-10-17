@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { capabilities, manifest } from "../scripts/surface-adapters.mjs";
+import { routeNotifications } from "../scripts/notification-router.mjs";
+import { currentTrials, endTrial, evaluateTrial, readTrials, recordTrialMetric, startTrial } from "../scripts/trial.mjs";
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-trial-")); fs.mkdirSync(path.join(home, ".usage-max"), { recursive: true });
+assert.equal(capabilities("chatgpt", { approved: true }).observation, "unavailable");
+assert.equal(capabilities("chatgpt-desktop", { approved: true }).provider, "openai"); assert.equal(capabilities("chatgpt-desktop", { approved: true }).observation, "unavailable");
+assert.equal(capabilities("cowork", { approved: true }).provider, "anthropic");
+assert.equal(capabilities("cowork", { approved: true }).observation, "unavailable");
+assert.equal(capabilities("codex-cli", { approved: true }).observation, "unavailable");
+const attachment = { capture: async () => ({}), notify: async () => {}, launch: async () => ({}), handoff: async () => ({}), checkpoint: async () => ({}), resume: async () => ({}) };
+assert.equal(capabilities("chatgpt", { attachment, approved: true }).observation, "supplemental"); assert.equal(capabilities("chatgpt", { attachment, approved: true }).taskLaunch, "unavailable");
+assert.equal(capabilities("cowork", { attachment, approved: true }).observation, "supplemental");
+assert.equal(capabilities("codex-cli", { attachment, approved: true }).observation, "supported");
+assert.equal(capabilities("codex-cli", { attachment, approved: true }).taskLaunch, "supported"); assert.equal(capabilities("codex-cli", { attachment, approved: true }).control, "unavailable");
+assert.equal((await routeNotifications(path.join(home, ".usage-max", "missing.jsonl"), { surface: "codex-cli", attachment, approved: true })).state, "observing");
+const surfaces = manifest({ attachments: { "codex-cli": attachment }, approvals: { "codex-cli": true } }); assert.ok(surfaces.some((x) => x.surface === "codex-desktop")); assert.ok(surfaces.some((x) => x.surface === "claude-desktop")); assert.equal(surfaces.find((x) => x.surface === "codex-cli").observation, "supported");
+const started = startTrial(home, { surface: "codex-cli", taskId: "task-1", now: "2026-10-15T08:00:00Z" });
+recordTrialMetric(home, started.trialId, { progress: "observed" }, "2026-10-15T08:01:00Z");
+const ended = endTrial(home, started.trialId, { now: "2026-10-15T08:02:00Z" });
+assert.equal(ended.mode, "observation-only"); assert.equal(ended.state, "ended"); assert.equal(readTrials(home).length, 3);
+assert.equal(currentTrials(home).length, 1); assert.equal(currentTrials(home)[0].state, "ended");
+assert.equal(evaluateTrial(ended).ready, false); assert.equal(evaluateTrial({ ...ended, startedAt: "2026-10-14T08:00:00Z", endedAt: "2026-10-15T08:00:00Z", metrics: ["modelIdentity", "providerFreshness", "taskProgress", "completionEvidence", "recoveryEvidence"].map((name) => ({ name, passed: true })) }).ready, true);
+console.log("surface capabilities, notification routing, and trial tests passed");

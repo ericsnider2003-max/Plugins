@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+
+const root = process.cwd();
+const result = spawnSync(process.execPath, [path.join(root, "scripts", "usage-max.mjs"), "mcpb", "build", "--stage-only"], { encoding: "utf8" });
+assert.equal(result.status, 0, result.stderr);
+const report = JSON.parse(result.stdout.trim());
+assert.equal(report.enforcementEnabled, false);
+const manifest = JSON.parse(fs.readFileSync(path.join(report.stage, "manifest.json"), "utf8"));
+assert.equal(manifest.name, "usage-max");
+assert.equal(manifest.server.mcp_config.env.USAGE_MAX_HOME, "${HOME}");
+assert.ok(fs.existsSync(path.join(report.stage, "mcp", "usage-max-mcp-server.mjs")));
+assert.ok(fs.existsSync(path.join(report.stage, "scripts", "accounts.mjs")));
+assert.equal(fs.existsSync(path.join(report.stage, "scripts", "repository-actions.mjs")), false);
+assert.equal(fs.existsSync(path.join(report.stage, "scripts", "usage-max.mjs")), false);
+assert.equal(fs.existsSync(path.join(report.stage, ".usage-max")), false);
+assert.equal(fs.existsSync(path.join(report.stage, "scripts", "accounts.json")), false);
+fs.rmSync(report.stage, { recursive: true, force: true });
+console.log("MCPB builder tests passed");

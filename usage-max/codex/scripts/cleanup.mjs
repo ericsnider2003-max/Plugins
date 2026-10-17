@@ -1,6 +1,8 @@
 // `codex doctor --fix`: remove the leftover plugin / hook-trust entries of an OLD uploaded copy of usage-max from Codex's config.toml.
 // Only entries the doctor already calls stale are removed: Claude-only hook trust ([hooks.state."usage-max@<upload|synced|local name>:hooks/hooks.json:..."]),
 // and the [plugins."usage-max@<same name>"] table of such a copy when no Codex-specific (codex/hooks.json) trust remains for that name.
+// A removed upload can also leave only Codex-specific trust records behind; those
+// are orphaned when the matching plugin table is gone and are safe to remove.
 // Everything else (other plugins, comments, CRLF, the marketplace install, hooks.json) is left byte-for-byte. The edit goes through
 // safefile.editText: locked, atomic, backed up first. Running it again finds nothing and changes nothing.
 import path from "node:path";
@@ -52,10 +54,25 @@ export function removeLeftovers(text) {
     i++;
   }
   close(n);
+  // Codex has emitted quoted dotted table headers on Windows where the generic
+  // TOML key scanner can be conservative around a trailing quote. Recognize the
+  // exact managed trust-header shape as a fallback so stale uploads are still
+  // removable without broad TOML rewriting.
+  for (let line = 0; line < n; line++) {
+    const m = /^\s*\[hooks\.state\."(usage-max@[\w.-]+:(?:codex\/hooks\.json|hooks\/hooks\.json):[^\"]+)"\]\s*$/.exec(lines[line].replace(/\r$/, ""));
+    if (!m || items.some((it) => it.start === line && classify(it.segs))) continue;
+    let end = line + 1; while (end < n && !/^\s*\[/.test(lines[end])) end++;
+    items.push({ start: line, end: end - 1, segs: ["hooks", "state", m[1]], table: true });
+  }
   const cls = items.map((it) => ({ it, c: classify(it.segs) })).filter((x) => x.c);
   const codexTrust = new Set(cls.filter((x) => x.c.kind === "state" && !x.c.claudeOnly).map((x) => x.c.name));
-  const oldNames = new Set(cls.filter((x) => x.c.kind === "state" && x.c.claudeOnly && OLD_NAME.test(x.c.name)).map((x) => x.c.name));
-  const drop = cls.filter((x) => oldNames.has(x.c.name) && (x.c.kind === "state" ? x.c.claudeOnly : !codexTrust.has(x.c.name)));
+  const pluginNames = new Set(cls.filter((x) => x.c.kind === "plugin").map((x) => x.c.name));
+  const orphanUploads = new Set([...codexTrust].filter((name) => OLD_NAME.test(name) && !pluginNames.has(name)));
+  const oldNames = new Set([
+    ...cls.filter((x) => x.c.kind === "state" && x.c.claudeOnly && OLD_NAME.test(x.c.name)).map((x) => x.c.name),
+    ...orphanUploads
+  ]);
+  const drop = cls.filter((x) => oldNames.has(x.c.name) && (x.c.kind === "state" ? (x.c.claudeOnly || orphanUploads.has(x.c.name)) : !codexTrust.has(x.c.name)));
   if (!drop.length) return { next: String(text), removed: [], names: [] };
   const kill = new Array(n).fill(false);
   for (const { it } of drop) {

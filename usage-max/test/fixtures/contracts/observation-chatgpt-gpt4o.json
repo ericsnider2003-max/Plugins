@@ -1,0 +1,17 @@
+{
+  "contract": "usage-max.observation.v1",
+  "observationId": "chatgpt-gpt4o-001",
+  "provider": "openai",
+  "surface": "chatgpt",
+  "source": "supported-attachment-fixture",
+  "account": { "slot": "openai-primary", "approved": true },
+  "capturedAt": "2026-10-15T08:00:00Z",
+  "providerEventAt": "2026-10-15T08:00:00Z",
+  "authority": "provider",
+  "state": "governing",
+  "freshness": "fresh",
+  "confidence": "measured",
+  "window": { "id": "weekly", "kind": "weekly", "resetsAt": "2026-10-20T08:00:00Z", "usedPercentage": 42 },
+  "model": { "raw": "gpt-4o", "canonical": "gpt-4o", "known": true, "family": "4o", "effort": null },
+  "data": { "modelField": "conversation_model" }
+}

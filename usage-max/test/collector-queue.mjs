@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { appendCollectorEvent, collectorFreshness, collectorQueueFile, createCollectorEvent, readCollectorEvents, ingestCollectorQueue } from "../scripts/collector-queue.mjs";
+import { readLedger } from "../scripts/observation-ledger.mjs";
+const event = createCollectorEvent({ deviceId: "device-secret-id", provider: "openai", surface: "codex-cli", observedAt: "2026-10-15T08:00:00Z", receivedAt: "2026-10-15T08:01:00Z", capture: { model: "gpt-4o", authorization: "should-not-persist", data: { tokens: 42 } } });
+assert.match(event.deviceFingerprint, /^sha256-/); assert.equal(event.capture.authorization, "[redacted]"); assert.equal(event.clockSkewMs, 60000); assert.equal(collectorFreshness(event, { now: Date.parse("2026-10-15T08:05:00Z") }).freshness, "fresh");
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-collector-")); const file = collectorQueueFile(home); assert.equal(appendCollectorEvent(file, event).appended, true); assert.equal(appendCollectorEvent(file, event).duplicate, true); assert.equal(readCollectorEvents(file).length, 1); const ledger = path.join(home, ".usage-max", "observations.jsonl"); assert.equal(ingestCollectorQueue(file, ledger, { now: Date.parse("2026-10-15T08:05:00Z") }).length, 1); assert.equal(readLedger(ledger)[0].surface, "codex-cli");
+console.log("collector queue tests passed");

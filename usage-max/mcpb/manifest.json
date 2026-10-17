@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-v0.1.schema.json",
+  "manifest_version": "0.1",
+  "name": "usage-max",
+  "version": "0.21.0",
+  "description": "Read-only Usage-max status, evidence, notices, task state, account routing visibility, and native architecture navigation.",
+  "author": { "name": "usage-max" },
+  "license": "MIT",
+  "server": {
+    "type": "node",
+    "entry_point": "mcp/usage-max-mcp-server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/mcp/usage-max-mcp-server.mjs"],
+      "env": { "USAGE_MAX_HOME": "${HOME}" }
+    }
+  },
+  "tools": [
+    { "name": "usage_max_get_status", "description": "Read-only readiness and capability status." },
+    { "name": "usage_max_list_observations", "description": "Read bounded redacted observations." },
+    { "name": "usage_max_list_notices", "description": "Read bounded pending notices." },
+    { "name": "usage_max_get_tasks", "description": "Read the durable task projection." },
+    { "name": "usage_max_list_accounts", "description": "Read secret-free account-slot approval and routing state." },
+    { "name": "usage_max_get_architecture", "description": "Read native code-architecture graph status and statistics." },
+    { "name": "usage_max_query_architecture", "description": "Query the bounded native code-architecture graph." },
+    { "name": "usage_max_trace_architecture", "description": "Trace a bounded directed architecture path." },
+    { "name": "usage_max_explain_architecture", "description": "Explain a native architecture node and its connections." }
+  ],
+  "compatibility": { "platforms": ["win32", "darwin", "linux"], "runtimes": { "node": ">=18" } }
+}

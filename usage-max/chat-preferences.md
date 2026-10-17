@@ -1,5 +1,10 @@
 # Set once, works in every chat (no reminding)
 
+Last updated: 2026-10-16. Last reviewed after the latest filing refresh. The rebuilt control plane now observes Claude Code
+and Codex through supported hooks and can ingest redacted host attachments;
+these standing instructions remain only a fallback for chat surfaces without a
+supported host bridge. They do not make ChatGPT/Cowork automatically governed.
+
 Chat apps (Claude.ai, Cowork, ChatGPT) have no hooks, so a plugin cannot watch them. What they DO have is a place for standing
 instructions that is applied to every new chat automatically. Paste the block below there once.
 

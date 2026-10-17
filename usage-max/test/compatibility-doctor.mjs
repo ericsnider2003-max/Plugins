@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { appendObservation } from "../scripts/observation-ledger.mjs";
+import { compatibilityReport, formatCompatibilityReport } from "../scripts/compatibility-doctor.mjs";
+import { validateModelRegistry } from "../scripts/model-registry.mjs";
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-compat-"));
+fs.mkdirSync(path.join(home, ".usage-max"), { recursive: true });
+let report = compatibilityReport(home, { now: Date.parse("2026-10-15T08:00:00Z") });
+assert.equal(report.status, "pass");
+assert.equal(report.modelRegistry.ok, true); assert.ok(report.modelRegistry.models >= 1);
+appendObservation(path.join(home, ".usage-max", "observations.jsonl"), { observationId: "compat-unknown", surface: "codex-cli", provider: "openai", capturedAt: "2026-10-15T07:00:00Z", authority: "provider", model: { raw: "future-model", known: false } });
+report = compatibilityReport(home, { now: Date.parse("2026-10-15T08:00:00Z") });
+assert.equal(report.status, "review");
+assert.ok(report.findings.some((x) => x.kind === "model-unknown"));
+assert.ok(report.findings.some((x) => x.kind === "adapter-stale"));
+assert.match(formatCompatibilityReport(report), /routing must remain conservative/);
+const malformed = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-compat-malformed-"));
+fs.mkdirSync(path.join(malformed, ".usage-max"), { recursive: true });
+fs.writeFileSync(path.join(malformed, ".usage-max", "adapters.json"), "{not-json");
+report = compatibilityReport(malformed, { now: Date.parse("2026-10-15T08:00:00Z") });
+assert.equal(report.status, "error");
+assert.ok(report.findings.some((x) => x.kind === "adapter-policy-invalid"));
+assert.equal(validateModelRegistry({ contract: "usage-max.model-registry.v1", version: 1, models: [], loadError: "registry is unreadable" }).ok, false);
+console.log("compatibility doctor tests passed");

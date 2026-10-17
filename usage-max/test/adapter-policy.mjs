@@ -1,0 +1,22 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { adapterAllowed, emergencyDisableAdapters, loadAdapterPolicy, setAdapterEnabled } from "../scripts/adapter-policy.mjs";
+import { ingestAttachments } from "../scripts/attachments.mjs";
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-adapter-policy-")); fs.mkdirSync(path.join(home, ".usage-max", "attachments"), { recursive: true });
+assert.equal(adapterAllowed(home, "chatgpt", { source: "supported-attachment" }).allowed, true);
+assert.equal(loadAdapterPolicy(home).adapters["chatgpt-attachment"].authority, "supplemental");
+assert.equal(adapterAllowed(home, "chatgpt-desktop", { source: "openai-webmcp" }).allowed, true);
+assert.equal(adapterAllowed(home, "chatgpt-desktop", { source: "unregistered-source" }).allowed, false);
+assert.equal(adapterAllowed(home, "chatgpt", { source: "browser-visible" }).allowed, false);
+fs.writeFileSync(path.join(home, ".usage-max", "attachments", "chatgpt.json"), JSON.stringify({ surface: "chatgpt", capture: { source: "browser-visible", model: "gpt-4o" } }));
+assert.equal(ingestAttachments(home)[0].accepted, false);
+setAdapterEnabled(home, "chatgpt-browser", true, "test enable"); assert.equal(ingestAttachments(home)[0].accepted, true);
+fs.writeFileSync(path.join(home, ".usage-max", "attachments", "chatgpt-desktop.json"), JSON.stringify({ surface: "chatgpt-desktop", capture: { source: "unregistered-source", model: "gpt-4o" } })); assert.equal(ingestAttachments(home).find((x) => x.file === "chatgpt-desktop.json").accepted, false);
+emergencyDisableAdapters(home, "test emergency"); assert.equal(loadAdapterPolicy(home).adapters["chatgpt-browser"].enabled, false); assert.equal(loadAdapterPolicy(home).adapters["codex-app-server"].enabled, false);
+const malformed = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-adapter-malformed-")); fs.mkdirSync(path.join(malformed, ".usage-max"), { recursive: true }); fs.writeFileSync(path.join(malformed, ".usage-max", "adapters.json"), "{not-json");
+assert.equal(adapterAllowed(malformed, "codex-cli", { source: "codex-app-server" }).allowed, false);
+assert.match(adapterAllowed(malformed, "codex-cli", { source: "codex-app-server" }).reason, /invalid|unavailable|disabled|unreadable|read/i);
+console.log("adapter policy and kill-switch tests passed");
