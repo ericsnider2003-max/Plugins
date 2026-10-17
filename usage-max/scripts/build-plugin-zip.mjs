@@ -13,7 +13,7 @@ const outArg = args.indexOf("--out");
 const out = path.resolve(root, outArg >= 0 && args[outArg + 1] ? args[outArg + 1] : `../usage-max-plugin-${readVersion()}.zip`);
 const packagePaths = [
   ".claude-plugin", ".codex-plugin", "agents", "codex", "commands", "hooks", "mcp", "mcpb",
-  "playbooks", "profiles", "replica", "scripts", "skills", "chat-preferences.md", "README.md",
+  "playbooks", "profiles", "replica", "scripts", "skills", "data", "chat-preferences.md", "README.md",
   "plugin.json", "mcp.json", ".mcp.json",
 ];
 
@@ -38,7 +38,7 @@ try {
   } else {
     execFileSync("zip", ["-q", "-r", tempOut, "."], { cwd: stage, stdio: "inherit" });
   }
-  const required = [".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "mcp/usage-max-mcp-server.mjs", "mcpb/manifest.json", "scripts/architecture-graph.mjs", "scripts/failure-health.mjs"];
+  const required = [".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "mcp/usage-max-mcp-server.mjs", "mcpb/manifest.json", "scripts/architecture-graph.mjs", "scripts/failure-health.mjs", "data/model-registry.json"];
   const archiveList = process.platform === "win32"
     ? execFileSync("tar", ["-tf", tempOut], { encoding: "utf8" }).split(/\r?\n/)
     : execFileSync("unzip", ["-Z1", tempOut], { encoding: "utf8" }).split(/\r?\n/);
