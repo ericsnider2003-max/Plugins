@@ -1,5 +1,8 @@
 # usage-max
 
+## 0.21.1 — runtime package completeness
+- Includes the model registry and required contract schemas in the distributable package, fixing installed-runtime compatibility failures that did not reproduce from the source tree.
+
 ## 0.21.0 — cross-surface provider limits and lifecycle repair
 
 Status reviewed 2026-10-16: the control-plane rebuild remains observation-only until the filed trial and host-attachment gates pass.
