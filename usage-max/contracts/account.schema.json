@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "usage-max/account-slot/v1",
+  "title": "Usage-max approved account slot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "slot", "provider", "surfaces", "homeFingerprint", "approved", "enabled"],
+  "properties": {
+    "contract": { "const": "usage-max.account-slot.v1" },
+    "slot": { "type": "string", "minLength": 1 },
+    "provider": { "enum": ["anthropic", "openai", "unknown"] },
+    "providerAccountId": { "type": ["string", "null"] },
+    "surfaces": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "homeFingerprint": { "type": "string", "minLength": 8 },
+    "approved": { "type": "boolean" },
+    "enabled": { "type": "boolean" },
+    "routingEnabled": { "type": "boolean" },
+    "cooldownUntil": { "type": ["string", "null"], "format": "date-time" },
+    "approvedAt": { "type": ["string", "null"], "format": "date-time" },
+    "notes": { "type": "string" }
+  }
+}

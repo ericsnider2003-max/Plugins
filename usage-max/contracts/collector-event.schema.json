@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "usage-max/collector-event/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "eventId", "deviceFingerprint", "provider", "surface", "observedAt", "receivedAt", "freshness", "capture"],
+  "properties": {
+    "contract": { "const": "usage-max.collector-event.v1" },
+    "eventId": { "type": "string", "minLength": 8 },
+    "deviceFingerprint": { "type": "string", "pattern": "^sha256-" },
+    "provider": { "type": "string" },
+    "surface": { "type": "string" },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "receivedAt": { "type": "string", "format": "date-time" },
+    "clockSkewMs": { "type": ["number", "null"] },
+    "freshness": { "enum": ["fresh", "stale", "unknown"] },
+    "capture": { "type": "object" }
+  }
+}

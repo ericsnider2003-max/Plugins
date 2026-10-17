@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "usage-max/observation/v1",
+  "title": "Usage-max observation envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "observationId", "provider", "surface", "source", "capturedAt", "authority", "state", "data"],
+  "properties": {
+    "contract": { "const": "usage-max.observation.v1" },
+    "observationId": { "type": "string", "minLength": 8 },
+    "provider": { "enum": ["anthropic", "openai", "unknown"] },
+    "surface": { "enum": ["claude-code", "claude-desktop", "cowork", "chatgpt", "chatgpt-desktop", "codex-desktop", "codex-cli", "codex-cloud", "browser", "mobile", "unknown"] },
+    "source": { "type": "string", "minLength": 1 },
+    "account": { "type": ["object", "null"], "additionalProperties": false, "required": ["slot", "approved"], "properties": { "slot": { "type": "string", "minLength": 1 }, "approved": { "type": "boolean" } } },
+    "capturedAt": { "type": "string", "format": "date-time" },
+    "providerEventAt": { "type": ["string", "null"], "format": "date-time" },
+    "authority": { "enum": ["provider", "local-activity", "estimate", "unattributed"] },
+    "state": { "enum": ["governing", "observing", "unavailable", "quarantined"] },
+    "freshness": { "enum": ["fresh", "stale", "unknown"] },
+    "confidence": { "enum": ["measured", "derived", "estimated", "unknown"] },
+    "window": { "type": ["object", "null"], "additionalProperties": false, "properties": { "id": { "type": "string" }, "kind": { "type": "string" }, "resetsAt": { "type": ["string", "null"], "format": "date-time" }, "usedPercentage": { "type": ["number", "null"], "minimum": 0, "maximum": 100 } } },
+    "model": { "type": ["object", "null"], "additionalProperties": false, "required": ["raw", "canonical", "known"], "properties": { "raw": { "type": ["string", "null"] }, "canonical": { "type": ["string", "null"] }, "known": { "type": "boolean" }, "family": { "type": ["string", "null"] }, "effort": { "type": ["string", "null"] } } },
+    "data": { "type": "object" }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "usage-max/model-identity/v1",
+  "title": "Usage-max model identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["provider", "surface", "rawId", "canonicalId", "known", "actor", "sourceField", "confidence"],
+  "properties": {
+    "provider": { "enum": ["anthropic", "openai", "unknown"] },
+    "surface": { "type": "string", "minLength": 1 },
+    "rawId": { "type": ["string", "null"] },
+    "canonicalId": { "type": ["string", "null"] },
+    "known": { "type": "boolean" },
+    "actor": { "enum": ["model", "auto-review", "router", "unknown"] },
+    "family": { "type": ["string", "null"] },
+    "generation": { "type": ["string", "null"] },
+    "variant": { "type": ["string", "null"] },
+    "effort": { "type": ["string", "null"] },
+    "sourceField": { "type": ["string", "null"] },
+    "observedAt": { "type": ["string", "null"], "format": "date-time" },
+    "confidence": { "enum": ["observed", "normalized", "unknown"] }
+  }
+}

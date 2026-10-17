@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "usage-max/reservation/v1",
+  "title": "Usage-max quota reservation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "reservationId", "taskId", "accountSlot", "windowId", "usedPercent", "amountPercent", "reservePercent", "expiresAt", "createdAt", "state"],
+  "properties": {
+    "contract": { "const": "usage-max.reservation.v1" },
+    "reservationId": { "type": "string", "minLength": 8 },
+    "taskId": { "type": "string", "minLength": 8 },
+    "accountSlot": { "type": "string", "minLength": 1 },
+    "windowId": { "type": "string", "minLength": 1 },
+    "usedPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+    "amountPercent": { "type": "number", "minimum": 0, "maximum": 100 },
+    "reservePercent": { "type": "number", "minimum": 0, "maximum": 100 },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "releasedAt": { "type": "string", "format": "date-time" },
+    "state": { "enum": ["reserved", "released", "failed", "expired"] }
+  }
+}

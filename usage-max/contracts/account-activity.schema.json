@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "usage-max/account-activity/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "activityId", "provider", "source", "capturedAt", "activity"],
+  "properties": {
+    "contract": { "const": "usage-max.account-activity.v1" },
+    "activityId": { "type": "string", "minLength": 8 },
+    "provider": { "enum": ["anthropic", "openai", "unknown"] },
+    "account": { "type": ["string", "null"] },
+    "source": { "type": "string", "minLength": 1 },
+    "capturedAt": { "type": "string", "format": "date-time" },
+    "activity": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["eventId", "attributed"], "properties": { "eventId": { "type": "string", "minLength": 1 }, "providerEventAt": { "type": ["string", "null"], "format": "date-time" }, "model": { "type": ["string", "null"] }, "surface": { "type": ["string", "null"] }, "tokens": { "type": ["number", "null"], "minimum": 0 }, "requests": { "type": ["number", "null"], "minimum": 0 }, "attributed": { "type": "boolean" } } } }
+  }
+}
