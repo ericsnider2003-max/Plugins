@@ -1,5 +1,8 @@
 # usage-max
 
+## 0.21.2 — complete distributable package
+- Includes the browser adapter in the uploadable plugin ZIP as well as the runtime registry, contracts, and desktop MCPB bundle.
+
 ## 0.21.1 — runtime package completeness
 - Includes the model registry and required contract schemas in the distributable package, fixing installed-runtime compatibility failures that did not reproduce from the source tree.
 
