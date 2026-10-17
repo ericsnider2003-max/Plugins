@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "description": "Opt-in local observer for visible ChatGPT/Cowork model and usage signals. No cookies, prompts, replies, or provider API calls.",
   "permissions": ["storage", "nativeMessaging"],
-  "host_permissions": ["https://chatgpt.com/*", "https://chat.openai.com/*", "http://127.0.0.1/*"],
-  "content_scripts": [{ "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"], "js": ["content.js"], "run_at": "document_idle" }],
+  "host_permissions": ["https://chatgpt.com/*", "https://chat.openai.com/*", "https://claude.ai/*", "http://127.0.0.1/*"],
+  "content_scripts": [{ "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*", "https://claude.ai/*"], "js": ["content.js"], "run_at": "document_idle" }],
   "background": { "service_worker": "background.js" },
   "options_page": "options.html"
 }
