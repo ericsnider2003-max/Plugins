@@ -29,10 +29,15 @@ export async function runTaskOnce({ task = null, taskId, idempotencyKey, observa
     for (const effect of result?.effects || []) current = recordEffect(current, effect, now);
     current = transitionTask(current, "checkpointing", now);
     current = { ...current, checkpoint: result?.checkpoint || current.checkpoint };
-    current = result?.continue === true ? transitionTask(current, "running", now) : transitionTask(current, "verifying", now);
+    // A checkpoint is a resumable progress boundary, not a completion signal.
+    // Workers must explicitly report completion before the task can enter
+    // verification; an omitted outcome is therefore treated as unfinished.
+    const outcome = result?.outcome || (result?.continue === true ? "continue" : result?.completed === true ? "completed" : null);
+    if (outcome === "failed") { const error = new Error(result?.error || "worker reported failure"); error.retryable = result?.retryable !== false; throw error; }
+    current = outcome === "completed" ? transitionTask(current, "verifying", now) : transitionTask(current, "running", now);
     current = releaseLease(current, now);
     let verification = null;
-    if (result?.continue !== true && typeof verify === "function") {
+    if (outcome === "completed" && typeof verify === "function") {
       const supplied = await verify({ task: current, observation, result });
       verification = verifyCompletion({ task: current, checks: supplied?.checks || [], requiredEffectIds: supplied?.requiredEffectIds || requiredEffectIds });
       current = { ...current, verification, updatedAt: now };

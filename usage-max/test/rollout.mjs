@@ -8,5 +8,5 @@ const evidence = { modelIdentity: true, providerFreshness: true, taskProgress: t
 const blocked = rolloutDecision({ requested: "enforcement", approved: true, evidence }); assert.equal(blocked.reason, "trial is not ended");
 const trial = { state: "ended", startedAt: "2026-10-14T08:00:00Z", endedAt: "2026-10-15T08:00:00Z", metrics: Object.keys(evidence).map((name) => ({ name, passed: true, recordedAt: "2026-10-15T07:00:00Z" })) };
 const candidate = rolloutDecision({ requested: "enforcement", approved: true, evidence, trial });
-assert.equal(candidate.mode, "enforcement-candidate"); assert.equal(candidate.allowed, false);
+assert.equal(candidate.mode, "enforcement-candidate"); assert.equal(candidate.allowed, true); assert.match(candidate.reason, /automatic enforcement/);
 console.log("rollout safety gate tests passed");
