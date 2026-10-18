@@ -16,6 +16,10 @@ assert.equal(canAdmit({ task, observation: { ...base, freshness: "stale" }, acco
 assert.equal(canAdmit({ task, observation: base, accountApproved: false, now }).allowed, false);
 assert.equal(canAdmit({ task, observation: { ...base, capturedAt: "2026-10-15T07:00:00Z" }, accountApproved: true, now }).allowed, false);
 assert.equal(canAdmit({ task, observation: { ...base, window: { usedPercentage: 95 } }, accountApproved: true, now }).allowed, false);
+assert.equal(canAdmit({ task, observation: { ...base, window: { usedPercentage: -1 } }, accountApproved: true, now }).allowed, false);
+assert.equal(canAdmit({ task, observation: { ...base, window: { usedPercentage: 101 } }, accountApproved: true, now }).allowed, false);
+assert.equal(canAdmit({ task, observation: base, accountApproved: true, reservePercent: -1, now }).allowed, false);
+assert.equal(canAdmit({ task, observation: base, accountApproved: true, reservePercent: 100, now }).allowed, false);
 assert.equal(canAdmit({ task, observation: { ...base, model: null }, accountApproved: true, now }).allowed, false);
 assert.equal(canAdmit({ task, observation: { ...base, model: null }, accountApproved: true, now, requireKnownModel: false }).allowed, true);
 assert.equal(canAdmit({ task: { ...task, requestedModel: "gpt-5.6-sol" }, observation: base, accountApproved: true, now }).allowed, false);

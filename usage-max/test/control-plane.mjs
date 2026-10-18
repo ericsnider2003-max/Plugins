@@ -7,7 +7,9 @@ const routed = createTask({ taskId: "task-route-001", idempotencyKey: "idem-rout
 assert.equal(routed.provider, "openai"); assert.equal(routed.surface, "codex-cli"); assert.equal(routed.accountSlot, "codex-primary"); assert.equal(routed.requestedModel, "gpt-5.6-luna");
 t = transitionTask(t, "admitted");
 t = transitionTask(t, "running");
-t = acquireLease(t, "worker-1", "2026-10-15T09:00:00Z");
+t = acquireLease(t, "worker-1", "2026-10-15T09:00:00Z", "2026-10-15T08:00:00Z");
+assert.throws(() => acquireLease(t, "worker-2", "2026-10-15T08:00:00Z", "2026-10-15T08:30:00Z"), /future timestamp/);
+assert.throws(() => acquireLease(t, "worker-2", "not-a-date", "2026-10-15T08:30:00Z"), /future timestamp/);
 t = recordEffect(t, { effectId: "effect-1", kind: "write-checkpoint", state: "committed", resultDigest: "digest-1" });
 t = transitionTask(t, "verifying");
 assert.equal(canComplete(t), true);

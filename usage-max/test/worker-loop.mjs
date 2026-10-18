@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { runTaskOnce } from "../scripts/worker-loop.mjs";
 const now = "2026-10-15T08:00:00Z";
-const obs = { state: "governing", authority: "provider", capturedAt: now, model: { known: true, canonical: "gpt-5.6-luna" }, window: { usedPercentage: 30 } };
+const obs = { state: "governing", authority: "provider", freshness: "fresh", capturedAt: now, model: { known: true, canonical: "gpt-5.6-luna" }, window: { usedPercentage: 30 } };
 const ok = await runTaskOnce({ taskId: "task-worker-001", idempotencyKey: "idem-worker-001", observation: obs, accountApproved: true, now, execute: async () => ({ effects: [{ effectId: "effect-1", kind: "write", state: "committed" }], checkpoint: { version: 1, path: "checkpoint.json", digest: "digest-1" } }) });
 assert.equal(ok.started, true); assert.equal(ok.task.state, "verifying"); assert.equal(ok.task.effects[0].state, "committed"); assert.equal(ok.task.lease, null);
 const paused = await runTaskOnce({ taskId: "task-worker-002", idempotencyKey: "idem-worker-002", observation: { ...obs, state: "quarantined" }, accountApproved: true, now, execute: async () => { throw new Error("must not run"); } });

@@ -31,7 +31,7 @@ function configuredExtensionId(home, explicit = null) {
   try { return fs.readFileSync(extensionIdFile(home), "utf8").trim().toLowerCase(); } catch { return ""; }
 }
 function getToken(home) { const f = tokenFile(home); try { const token = fs.readFileSync(f, "utf8").trim(); if (token) return token; } catch {} const token = crypto.randomBytes(24).toString("base64url"); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, `${token}\n`, { encoding: "utf8", mode: 0o600 }); return token; }
-function writeEnvelope(home, envelope) { const file = path.join(attachmentDirectory(home), `${envelope.surface}.json`); fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = `${file}.${process.pid}.tmp`; fs.writeFileSync(tmp, `${JSON.stringify(envelope)}\n`, { encoding: "utf8", mode: 0o600 }); fs.renameSync(tmp, file); return file; }
+function writeEnvelope(home, envelope) { const file = path.join(attachmentDirectory(home), `${envelope.surface}.json`); fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`; try { fs.writeFileSync(tmp, `${JSON.stringify(envelope)}\n`, { encoding: "utf8", mode: 0o600 }); fs.renameSync(tmp, file); } catch (error) { try { fs.unlinkSync(tmp); } catch {} throw error; } return file; }
 export function startAttachmentServer({ home = os.homedir(), port = 0, host = "127.0.0.1", extensionId = null } = {}) {
   extensionId = configuredExtensionId(home, extensionId);
   const token = getToken(home);

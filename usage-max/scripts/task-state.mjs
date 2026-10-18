@@ -23,6 +23,8 @@ export function transitionTask(task, next, now = new Date().toISOString()) {
 }
 export function acquireLease(task, owner, expiresAt, now = new Date().toISOString()) {
   if (!owner || !expiresAt) throw new Error("lease owner and expiry are required");
+  const nowMs = Date.parse(now); const expiryMs = Date.parse(expiresAt);
+  if (!Number.isFinite(nowMs) || !Number.isFinite(expiryMs) || expiryMs <= nowMs) throw new Error("lease expiry must be a future timestamp");
   if (task.lease && Date.parse(task.lease.expiresAt) > Date.parse(now)) throw new Error("task already has an active lease");
   return { ...task, lease: { owner, expiresAt }, updatedAt: now };
 }

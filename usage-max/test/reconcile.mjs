@@ -8,6 +8,7 @@ const conflict = { ...same, capturedAt: "2026-10-15T08:02:00Z", data: { usedPerc
 assert.equal(reconcileObservations([p, conflict], { now: Date.parse("2026-10-15T08:05:00Z") })[0].status, "conflict");
 assert.equal(reconcileObservations([p], { now: Date.parse("2026-10-15T08:05:00Z") })[0].status, "unattributed");
 assert.equal(reconcileObservations([{ ...p, capturedAt: "2026-10-15T07:00:00Z" }], { now: Date.parse("2026-10-15T08:00:00Z") })[0].status, "stale");
+assert.equal(reconcileObservations([{ ...p, window: { ...p.window, usedPercentage: 101 } }], { now: Date.parse("2026-10-15T08:05:00Z") })[0].status, "invalid");
 const p0 = { ...p, capturedAt: "2026-10-15T07:00:00Z", window: { ...p.window, usedPercentage: 40 } }; const p1 = { ...p, capturedAt: "2026-10-15T07:30:00Z", window: { ...p.window, usedPercentage: 55 } };
 const moved = reconcileObservations([p0, p1], { now: Date.parse("2026-10-15T07:31:00Z") }).find((x) => x.providerCapturedAt === p1.capturedAt); assert.equal(moved.anomaly, "provider-movement-without-local"); assert.equal(moved.providerMovementPct, 15);
 console.log("reconciliation tests passed");

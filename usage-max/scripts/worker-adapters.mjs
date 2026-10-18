@@ -25,5 +25,10 @@ export function planWorkerLaunch({ task, destination, attachment = null, approve
 export async function launchWorker({ task, destination, attachment, approved = false, account = null, rollout = null, beforeLaunch = null, now = Date.now() } = {}) {
   const plan = planWorkerLaunch({ task, destination, attachment, approved, account, rollout, now }); if (!plan.allowed) return { launched: false, plan };
   if (typeof attachment?.launch !== "function") return { launched: false, plan, reason: "launch attachment disappeared" };
-  try { if (typeof beforeLaunch === "function") await beforeLaunch(plan); return { launched: true, plan, result: await attachment.launch(plan) }; } catch (error) { return { launched: false, plan, reason: String(error?.message || error) }; }
+  try {
+    if (typeof beforeLaunch === "function") await beforeLaunch(plan);
+    const result = await attachment.launch(plan);
+    if (result?.accepted === false || result?.started === false) return { launched: false, plan, result, reason: "launch attachment rejected the request" };
+    return { launched: true, plan, result };
+  } catch (error) { return { launched: false, plan, reason: String(error?.message || error) }; }
 }

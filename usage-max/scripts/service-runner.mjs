@@ -21,6 +21,6 @@ export function acquireServiceLock(home = os.homedir()) {
 export async function runService({ home = os.homedir(), intervalMs = DEFAULT_INTERVAL_MS, maxTicks = Infinity, capture = true, deliver = false, tickFn = tick, sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), shouldStop = () => false } = {}) {
   if (!(intervalMs >= 1000)) throw new Error("service interval must be at least 1000ms");
   const lock = acquireServiceLock(home); let count = 0; const results = [];
-  try { while (count < maxTicks && !shouldStop()) { results.push(await tickFn({ home, capture, deliver, intervalMs })); count += 1; if (count < maxTicks && !shouldStop()) await sleepFn(intervalMs); } stop(home); return { ticks: count, results }; }
-  finally { lock.release(); }
+  try { while (count < maxTicks && !shouldStop()) { results.push(await tickFn({ home, capture, deliver, intervalMs })); count += 1; if (count < maxTicks && !shouldStop()) await sleepFn(intervalMs); } return { ticks: count, results }; }
+  finally { try { stop(home); } finally { lock.release(); } }
 }

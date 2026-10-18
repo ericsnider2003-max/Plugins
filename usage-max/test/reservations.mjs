@@ -6,6 +6,8 @@ import path from "node:path";
 import { currentReservations, releaseBudget, reserveBudget } from "../scripts/reservations.mjs";
 import { runTaskOnce } from "../scripts/worker-loop.mjs";
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-reservations-")); const now = "2026-10-15T08:00:00Z";
+assert.throws(() => reserveBudget(home, { reservationId: "bad-expiry", taskId: "bad-expiry", accountSlot: "openai-primary", usedPercent: 10, amountPercent: 1, now }), /future expiry/);
+assert.throws(() => reserveBudget(home, { reservationId: "bad-used", taskId: "bad-used", accountSlot: "openai-primary", usedPercent: 101, amountPercent: 1, expiresAt: "2026-10-15T09:00:00Z", now }), /valid allowance/);
 const a = reserveBudget(home, { reservationId: "r-001", taskId: "task-r-001", accountSlot: "openai-primary", windowId: "weekly", usedPercent: 70, amountPercent: 15, expiresAt: "2026-10-15T09:00:00Z", now }); assert.equal(a.allowed, true);
 const b = reserveBudget(home, { reservationId: "r-002", taskId: "task-r-002", accountSlot: "openai-primary", windowId: "weekly", usedPercent: 70, amountPercent: 15, expiresAt: "2026-10-15T09:00:00Z", now }); assert.equal(b.allowed, false);
 assert.equal(releaseBudget(home, "r-001", { now }).released, true); assert.equal(currentReservations(home).find((x) => x.reservationId === "r-001").state, "released");

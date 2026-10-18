@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { readText, writeAtomic } from "./safefile.mjs";
 import { captureProviderLimits } from "./provider-limits.mjs";
 import { defaultObservationLedger } from "./provider-ingest.mjs";
 import { readLedger } from "./observation-ledger.mjs";
@@ -29,8 +30,17 @@ import { refreshAutomaticBundles } from "./context-bridge.mjs";
 import { DEFAULT_OBSERVATION_INTERVAL_MS, EVIDENCE_FRESHNESS_MS } from "./timing.mjs";
 const stateFile = (home) => path.join(home, ".usage-max", "service.json");
 const outboxFile = (home) => path.join(home, ".usage-max", "notifications.jsonl");
-export function serviceState(home = os.homedir()) { try { return JSON.parse(fs.readFileSync(stateFile(home), "utf8")); } catch { return { mode: "observation-only", running: false, stopRequested: false, lastTickAt: null, intervalMs: DEFAULT_OBSERVATION_INTERVAL_MS, evidenceFreshnessMs: EVIDENCE_FRESHNESS_MS }; } }
-function saveState(home, state) { fs.mkdirSync(path.dirname(stateFile(home)), { recursive: true }); fs.writeFileSync(stateFile(home), `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 }); return state; }
+const defaultState = (stateCorrupt = false) => ({ mode: "observation-only", running: false, stopRequested: false, lastTickAt: null, intervalMs: DEFAULT_OBSERVATION_INTERVAL_MS, evidenceFreshnessMs: EVIDENCE_FRESHNESS_MS, ...(stateCorrupt ? { stateCorrupt: true } : {}) });
+export function serviceState(home = os.homedir()) {
+  const file = stateFile(home); const raw = readText(file);
+  if (raw === null) return defaultState();
+  try {
+    const state = JSON.parse(raw);
+    if (!state || typeof state !== "object" || state.mode !== "observation-only") return defaultState(true);
+    return state;
+  } catch { return defaultState(true); }
+}
+function saveState(home, state) { writeAtomic(stateFile(home), `${JSON.stringify({ ...state, mode: "observation-only" }, null, 2)}\n`, { mode: 0o600 }); return state; }
 export async function tick({ home = os.homedir(), now = Date.now(), capture = true, captureOptions = {}, deliver = false, bridge = {}, autoHandoff = true, markRunning = true, launchWorkers = false, workerAttachments = {}, workerApproved = false, rollout = null, intervalMs = null } = {}) {
   const state = serviceState(home); state.mode = "observation-only"; state.running = markRunning ? true : Boolean(state.running); state.stopRequested = false; state.lastTickAt = new Date(now).toISOString();
   let captureResult = null;

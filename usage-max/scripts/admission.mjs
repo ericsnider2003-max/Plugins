@@ -4,6 +4,7 @@ import { EVIDENCE_FRESHNESS_MS } from "./timing.mjs";
 import { predictiveDecision } from "./predictive-budget.mjs";
 export function canAdmit({ task, observation, accountApproved = false, reservePercent = 10, now = Date.now(), maxAgeMs = EVIDENCE_FRESHNESS_MS, tasks = new Map(), requireKnownModel = true, activeTaskCount = null, previousObservation = null, observationHistory = [] }) {
   if (!task?.taskId) return { allowed: false, reason: "task identity is missing" };
+  if (!Number.isFinite(Number(reservePercent)) || Number(reservePercent) < 0 || Number(reservePercent) >= 100) return { allowed: false, reason: "protected reserve is invalid" };
   const deps = dependencyDecision(task, tasks); if (!deps.allowed) return { allowed: false, reason: deps.reason, missingDependencies: deps.missing };
   if (task.state === "failed") { const retry = retryDecision(task, { now }); if (!retry.allowed) return { allowed: false, reason: retry.reason, retryAt: retry.retryAt }; }
   if (task.deadlineAt && (!Number.isFinite(Date.parse(task.deadlineAt)) || Date.parse(task.deadlineAt) <= now)) return { allowed: false, reason: "task deadline has expired", deadlineAt: task.deadlineAt };
@@ -24,7 +25,8 @@ export function canAdmit({ task, observation, accountApproved = false, reservePe
   if (!Number.isFinite(age) || age < 0 || age > maxAgeMs) return { allowed: false, reason: "usage observation is stale or invalid" };
   const pct = Number(observation.window?.usedPercentage);
   if (!Number.isFinite(pct)) return { allowed: false, reason: "quota percentage is unknown" };
-  if (pct >= 100 - reservePercent) return { allowed: false, reason: "reserved capacity is not available" };
+  if (pct < 0 || pct > 100) return { allowed: false, reason: "quota percentage is invalid" };
+  if (pct >= 100 - Number(reservePercent)) return { allowed: false, reason: "reserved capacity is not available" };
   const predictive = predictiveDecision({ task, observation, previousObservation, observationHistory, reservePercent });
   if (!predictive.allowed) return { allowed: false, reason: predictive.reason, prediction: predictive.prediction };
   return { allowed: true, reason: "fresh provider allowance and approved account", remainingPercent: 100 - pct, prediction: predictive.prediction };

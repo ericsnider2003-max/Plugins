@@ -12,7 +12,8 @@ export function reconcileObservations(observations, { now = Date.now(), staleMs 
     const local = locals.sort((a, b) => Date.parse(b.capturedAt || 0) - Date.parse(a.capturedAt || 0))[0];
     const localPct = Number(local?.data?.usedPercentage);
     let status = "unattributed"; let reason = "local activity is not comparable to provider allowance"; let anomaly = null;
-    if (!Number.isFinite(age) || age > staleMs) { status = "stale"; reason = "provider observation is stale"; }
+    if (!Number.isFinite(providerPct) || providerPct < 0 || providerPct > 100) { status = "invalid"; reason = "provider quota percentage is invalid"; }
+    else if (!Number.isFinite(age) || age > staleMs) { status = "stale"; reason = "provider observation is stale"; }
     else if (Number.isFinite(providerPct) && Number.isFinite(localPct)) { status = Math.abs(providerPct - localPct) > conflictPct ? "conflict" : "consistent"; reason = status === "conflict" ? "provider and local percentages disagree; provider remains authoritative" : "comparable values are within tolerance"; }
     else if (previous && Number.isFinite(providerMovementPct) && providerMovementPct !== 0 && locals.length === 0) { anomaly = "provider-movement-without-local"; reason = "provider allowance moved without matching local activity; invisible-surface usage may explain the delta"; }
     return { provider: provider.provider, account: provider.account?.slot || null, window: provider.window?.id || null, providerCapturedAt: provider.capturedAt, providerPercentage: Number.isFinite(providerPct) ? providerPct : null, providerMovementPct, localPercentage: Number.isFinite(localPct) ? localPct : null, localObservationCount: locals.length, status, anomaly, providerAuthoritative: true, reason };
