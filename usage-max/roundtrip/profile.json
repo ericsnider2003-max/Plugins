@@ -1,0 +1,1554 @@
+{
+  "coverage": {
+    "source_files": 259,
+    "inventory_files": 318,
+    "language_detection": "extension and manifest heuristics; confirm against repository tooling",
+    "limitations": [
+      "Unrecognized extensions need manual classification.",
+      "Signal searches inspect at most 4000 files per search and skip files over 2 million characters.",
+      "Recognizing a language does not provide a compiler or security analyzer for it."
+    ]
+  },
+  "generated": "2026-10-18",
+  "scope": null,
+  "stack": [
+    "javascript"
+  ],
+  "components": [
+    {
+      "kind": "daemon",
+      "evidence": "browser-adapter/background.js:11"
+    },
+    {
+      "kind": "scheduled",
+      "evidence": "scripts/background.mjs:33"
+    },
+    {
+      "kind": "web",
+      "evidence": "mcp/usage-max-mcp-http-server.mjs:22"
+    },
+    {
+      "kind": "cli",
+      "evidence": "codex/scripts/codex-diagnose.mjs:91"
+    }
+  ],
+  "target_os": "windows",
+  "target_os_evidence": {
+    "windows": [
+      "Windows scheduled task or service setup (profiles/background-job.md:21)",
+      "Windows drive paths (scripts/safefile.mjs:65)",
+      "README mentions Windows"
+    ],
+    "linux": [
+      "README mentions Linux"
+    ]
+  },
+  "live": {
+    "is_live": true,
+    "markers": []
+  },
+  "stakes": [
+    "money"
+  ],
+  "runtime": {
+    "python": null,
+    "node": null
+  },
+  "packs": [
+    "trading-money",
+    "windows-host",
+    "scripts-ops",
+    "web-app"
+  ],
+  "pack_signals": {
+    "trading-money": [
+      "trading identifiers in 9 files",
+      "payment or invoice code in 2 files"
+    ],
+    "windows-host": [
+      "Windows scheduled task or service setup (profiles/background-job.md:21); Windows drive paths (scripts/safefile.mjs:65); README mentions Windows"
+    ],
+    "scripts-ops": [
+      "agent instruction files: .mcp.json, CLAUDE.md, GEMINI.md"
+    ],
+    "web-app": [
+      "web server (mcp/usage-max-mcp-http-server.mjs:22)"
+    ]
+  },
+  "money_module": null,
+  "critical_files": [
+    "browser-adapter/background.js",
+    "browser-adapter/content.js",
+    "browser-adapter/native-host.mjs",
+    "browser-adapter/options.js",
+    "codex/scripts/codex-diagnose.mjs",
+    "codex/scripts/codex-governor.mjs",
+    "codex/scripts/codex-guards.mjs",
+    "codex/scripts/codex-hook.mjs",
+    "codex/scripts/shared.mjs",
+    "codex/test/run.mjs",
+    "hooks/bash-trim.mjs",
+    "hooks/budget.mjs",
+    "hooks/cross-gate.mjs",
+    "hooks/guard.mjs",
+    "hooks/ledger.mjs",
+    "hooks/memory.mjs",
+    "hooks/session-start.mjs",
+    "mcp/usage-max-mcp-http-server.mjs",
+    "scripts/account-activity.mjs",
+    "scripts/activation.mjs",
+    "scripts/anomaly.mjs",
+    "scripts/attachment-cli.mjs",
+    "scripts/attachment-server.mjs",
+    "scripts/audit.mjs",
+    "scripts/autohandoff.mjs",
+    "scripts/blocks.mjs",
+    "scripts/budgets.mjs",
+    "scripts/cachebreak.mjs",
+    "scripts/check.mjs",
+    "scripts/cleanup-old.mjs",
+    "scripts/collector-queue.mjs",
+    "scripts/context-bridge.mjs",
+    "scripts/ctxfiles.mjs",
+    "scripts/diagnose.mjs",
+    "scripts/dupes.mjs",
+    "scripts/eval-cache.mjs",
+    "scripts/execution-profile.mjs",
+    "scripts/governor.mjs",
+    "scripts/guard.mjs",
+    "scripts/inventory.mjs",
+    "scripts/lib.mjs",
+    "scripts/memory-cli.mjs",
+    "scripts/memory-suggest.mjs",
+    "scripts/memory.mjs",
+    "scripts/meter.mjs",
+    "scripts/offload.mjs",
+    "scripts/plugin-diet.mjs",
+    "scripts/pricing.mjs",
+    "scripts/profile.mjs",
+    "scripts/provider-limits.mjs",
+    "scripts/reservations.mjs",
+    "scripts/resume-cli.mjs",
+    "scripts/resume.mjs",
+    "scripts/rollout.mjs",
+    "scripts/safefile.mjs",
+    "scripts/safety.mjs",
+    "scripts/savings.mjs",
+    "scripts/session-search.mjs",
+    "scripts/session-suggest.mjs",
+    "scripts/sessionlog.mjs",
+    "scripts/shared.mjs",
+    "scripts/task-governance.mjs",
+    "scripts/trimtest.mjs",
+    "scripts/ttl.mjs",
+    "scripts/unattended-supervisor.mjs",
+    "scripts/usage-advisor.mjs",
+    "scripts/usage-check.mjs",
+    "scripts/usage-max.mjs",
+    "test/attachment-server.mjs",
+    "test/baseline.mjs",
+    "test/browser-native-host.mjs",
+    "test/fix-m.mjs",
+    "test/fix-s.mjs",
+    "test/fix-w.mjs",
+    "test/fix-x.mjs",
+    "test/fix-y.mjs",
+    "test/fix-z.mjs",
+    "test/fix.mjs",
+    "test/guard.mjs",
+    "test/host-runtime.mjs",
+    "test/live.mjs",
+    "test/mcp-http-server.mjs",
+    "test/memory.mjs",
+    "test/new.mjs",
+    "test/provider.mjs",
+    "test/rollout.mjs",
+    "test/run.mjs",
+    "test/win.mjs"
+  ],
+  "audit_host": "production",
+  "assumptions": [
+    {
+      "text": "Runs on mixed",
+      "from": "Windows scheduled task or service setup (profiles/background-job.md:21)",
+      "decides": "which host checks apply",
+      "confirmed": true
+    },
+    {
+      "text": "Not connected to real money",
+      "from": "no live markers",
+      "decides": "whether tests may run, and severity",
+      "confirmed": true
+    },
+    {
+      "text": "This audit runs on a development machine, not the live host",
+      "from": "default until the owner confirms",
+      "decides": "whether anything may be installed",
+      "confirmed": true
+    }
+  ],
+  "scripts": [
+    {
+      "file": "scripts/account-activity.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/accounts-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/accounts.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/action-approval.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/activation-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/activation-install.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/activation.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": true,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/adapter-policy-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/adapter-policy.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/admission.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/anomaly.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/architecture-graph.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/attachment-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/attachment-server.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/attachments.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/audit.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/auto-observe.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": [
+        "hooks/hooks.json"
+      ]
+    },
+    {
+      "file": "scripts/autohandoff.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/background.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/blocks.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/browser-native-host.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/budgets.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/build-mcpb.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/build-plugin-zip.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/cachebreak.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/capability-dossier-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/capability-dossier.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/ceiling.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/check.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/claude-headless-adapter.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/claude-lean.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/cleanup-old.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/collector-queue.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/compatibility-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/compatibility-doctor.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/completion-verifier.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/context-bridge.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/context-continuity.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/control-report.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/coverage.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/cross-provider.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/ctxfiles.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/dashboard.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/diagnose.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/dupes.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/eval-cache.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/evidence.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/execution-profile.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/failure-health.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/governor.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/graphify.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/guard.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": [
+        "hooks/hooks.json"
+      ]
+    },
+    {
+      "file": "scripts/handoff-pack.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/handoff.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/health-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/health.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/host-runtime.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/host.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/identity.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/inventory.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/lib.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/managed-worker.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/memory-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/memory-suggest.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/memory.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": [
+        "hooks/hooks.json"
+      ]
+    },
+    {
+      "file": "scripts/meter.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/model-registry.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/notification-bridge.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/notification-router.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/notifications.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": [
+        "hooks/hooks.json"
+      ]
+    },
+    {
+      "file": "scripts/observation-adapters.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/observation-ledger.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/offload.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/owned.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/pack.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": true,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/plan-audit.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/plugin-diet.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/predictive-budget.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/pricing.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/process-discovery.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/profile.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/provider-ingest.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/provider-limits.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/provider-shape.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/readiness-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/readiness.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/reconcile.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/recovery.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/repo-verifier.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/repository-actions.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": true,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/repository-checks.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": true,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/reservations.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/resettime.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/resume-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/resume.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/rollout.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/safefile.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": true,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/safety.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/savings.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/scheduler.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/service-runner.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": true,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/session-search.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/session-suggest.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/sessionlog.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/shared.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/statusline.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/subagents-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/subagents.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/summary-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/summary.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/surface-adapters.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/task-console-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/task-console.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/task-finalizer.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/task-governance.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/task-policy.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/task-state.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/task-store.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/timing.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/trial-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/trial.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/trim.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": [
+        "hooks/hooks.json"
+      ]
+    },
+    {
+      "file": "scripts/trimtest.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/ttl.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/unattended-supervisor.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": true,
+      "logs": false,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/usage-advisor.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/usage-check.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/usage-max.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/watchdog.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/worker-adapters.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/worker-loop.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/worker-service-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": true,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/worker-service.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": false,
+      "exit_code": false,
+      "referenced_by": []
+    },
+    {
+      "file": "scripts/workers-cli.mjs",
+      "destructive": false,
+      "dry_run": false,
+      "strict": null,
+      "lock": false,
+      "logs": true,
+      "exit_code": false,
+      "referenced_by": []
+    }
+  ],
+  "file_count": 318,
+  "duplicates_skipped": 2,
+  "confirmed": true,
+  "owner": {
+    "stakes": [
+      "money"
+    ],
+    "is_live": true,
+    "target_os": "windows",
+    "audit_host": "production",
+    "notes": "No known accepted risks."
+  }
+}

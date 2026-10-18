@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "project": "usage-max",
+  "date": "2026-10-18",
+  "findings": [
+    {
+      "id": "GAP-001",
+      "category": "gap",
+      "severity": "medium",
+      "effort": "M",
+      "confidence": "traced",
+      "status": "needs-verification",
+      "source": "baseline",
+      "title": "Remaining scanner leads need end-to-end trace",
+      "plain": "Some refreshed scanner leads are not tied to a confirmed defect or documented safe control.",
+      "verify_by": "Review each lead and record a domain-backed dismissal or confirmed finding.",
+      "owner_action": "none",
+      "stopgap": "Keep enforcement disabled until remaining leads and live attachments are reviewed.",
+      "location": {
+        "file": "roundtrip/baseline.json"
+      },
+      "evidence": "The refreshed baseline has leads outside the existing triage map; every lead must be classified.",
+      "correction": "Complete lead triage and update the report before closing the audit.",
+      "test_plan": "Run rt verify after every lead has a finding, dismissal, or this disposition.",
+      "fingerprint": "b23d8528b145"
+    }
+  ],
+  "incomplete": []
+}

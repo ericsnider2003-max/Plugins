@@ -1,0 +1,20 @@
+L001	fp	0b6151483f1f	intentional fake private-key fixture in tests; no shipped credential
+L002	fp	d54cdfcaa7b3	intentional fake AWS fixture in tests; no shipped credential
+L003	fp	5cfe15480bf8	Windows shell is required for the fixed codex command wrapper; arguments are restricted before launch
+L004	fp	3d1019e32e17	run-trimmed accepts plain words only and rejects shell metacharacters before the required platform shell
+L005	fp	f3f855696a23	background inspection invokes fixed local OS tools with fixed argument arrays; no user command is forwarded
+L006	fp	42251c8848d8	[TM2] Windows shell is required only for the fixed local check command; no user-controlled command string
+L007	fp	716639d61f03	Windows shell is required to invoke the fixed claude.cmd executable with argument tokens
+L008	fp	94dccfe4d4fd	[TM2] Windows shell is required for fixed command execution; command tokens are validated and cache keys are separate
+L009	fp	e666e7401b09	graphify receives an internal planned step and runs with shell false and an explicit backend
+L010	fp	153ca35ca2a8	repository action filenames are confined to the repository and subprocess arguments use shell false
+L011	fp	7aa84ac5b396	repository check filenames are confined to the repository and subprocess arguments use shell false
+L012	fp	c9a491e8cffd	[TM2] rolloutDecision is pure policy evaluation; durable daily state and kill-switch ownership are supplied by the caller
+L013	fp	67903ba57fc0	dated calendar exists only in test fixture data; production calendar code is not using this fixture
+L014	fp	a20f25ee9682	embedded database URLs are test fixtures and are never loaded by shipped runtime code
+L023	fp	c60838ce4e3b	regex input is escaped before construction and only selects a named local configuration section
+L045	fp	fb291acbad29	[TM2] CORS reflects an origin only after strict extension-id allowlisting; arbitrary origins receive no CORS header
+L049	fp	4f39543054b9	[TM2] regex input is escaped before construction and derives from local plugin keys, not a request body
+L060	fp	ca9dc3cc120c	property paths are internal configuration keys; no untrusted request object is merged into a prototype
+L063	fp	3bff6b452232	[TM2] reservation values are allowance percentages, not currency amounts; validation bounds them to finite percentages
+L066	fp	7d7f41f219f9	[TM2] regex input is escaped before construction and derives from local safety-rule keys

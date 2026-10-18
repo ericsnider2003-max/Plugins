@@ -1,0 +1,338 @@
+{
+  "L015": {
+    "nv": "GAP-001",
+    "fingerprint": "615e990e1efe"
+  },
+  "L016": {
+    "nv": "GAP-001",
+    "fingerprint": "c018c1cc5b57"
+  },
+  "L017": {
+    "nv": "GAP-001",
+    "fingerprint": "0c1148c9d62e"
+  },
+  "L018": {
+    "nv": "GAP-001",
+    "fingerprint": "c65155f22e3f"
+  },
+  "L019": {
+    "nv": "GAP-001",
+    "fingerprint": "3b2e945e1c1e"
+  },
+  "L020": {
+    "nv": "GAP-001",
+    "fingerprint": "d23ccbfa815e"
+  },
+  "L021": {
+    "nv": "GAP-001",
+    "fingerprint": "90b0c9b0155d"
+  },
+  "L022": {
+    "nv": "GAP-001",
+    "fingerprint": "aa1e7741ddb7"
+  },
+  "L024": {
+    "nv": "GAP-001",
+    "fingerprint": "a9cbc30fb4f1"
+  },
+  "L025": {
+    "nv": "GAP-001",
+    "fingerprint": "2f736bf85b87"
+  },
+  "L026": {
+    "nv": "GAP-001",
+    "fingerprint": "c5e6f6282681"
+  },
+  "L027": {
+    "nv": "GAP-001",
+    "fingerprint": "74bd1ff55477"
+  },
+  "L028": {
+    "nv": "GAP-001",
+    "fingerprint": "ab74c6dac75c"
+  },
+  "L029": {
+    "nv": "GAP-001",
+    "fingerprint": "7a0e36f8bd91"
+  },
+  "L030": {
+    "nv": "GAP-001",
+    "fingerprint": "db66bea3e78e"
+  },
+  "L031": {
+    "nv": "GAP-001",
+    "fingerprint": "11a8404f7c30"
+  },
+  "L032": {
+    "nv": "GAP-001",
+    "fingerprint": "3678e5785aa9"
+  },
+  "L033": {
+    "nv": "GAP-001",
+    "fingerprint": "27ac0bc60731"
+  },
+  "L034": {
+    "nv": "GAP-001",
+    "fingerprint": "7514e940f7bb"
+  },
+  "L035": {
+    "nv": "GAP-001",
+    "fingerprint": "94f10f0ca083"
+  },
+  "L036": {
+    "nv": "GAP-001",
+    "fingerprint": "4897fa63c899"
+  },
+  "L037": {
+    "nv": "GAP-001",
+    "fingerprint": "93970e53c1df"
+  },
+  "L038": {
+    "nv": "GAP-001",
+    "fingerprint": "13bd945081cc"
+  },
+  "L039": {
+    "nv": "GAP-001",
+    "fingerprint": "11e745dee367"
+  },
+  "L040": {
+    "nv": "GAP-001",
+    "fingerprint": "ed81ec963107"
+  },
+  "L041": {
+    "nv": "GAP-001",
+    "fingerprint": "3b2d1ec62e83"
+  },
+  "L042": {
+    "nv": "GAP-001",
+    "fingerprint": "fcc4b82e14c2"
+  },
+  "L043": {
+    "nv": "GAP-001",
+    "fingerprint": "6224e73a3f44"
+  },
+  "L044": {
+    "nv": "GAP-001",
+    "fingerprint": "39b10aaca731"
+  },
+  "L046": {
+    "nv": "GAP-001",
+    "fingerprint": "3e8b2c2be1cf"
+  },
+  "L047": {
+    "nv": "GAP-001",
+    "fingerprint": "c1d284827f17"
+  },
+  "L048": {
+    "nv": "GAP-001",
+    "fingerprint": "efd26a24ddea"
+  },
+  "L050": {
+    "nv": "GAP-001",
+    "fingerprint": "722e3fc2b2de"
+  },
+  "L051": {
+    "nv": "GAP-001",
+    "fingerprint": "6c00942f79a4"
+  },
+  "L052": {
+    "nv": "GAP-001",
+    "fingerprint": "e832d2afc678"
+  },
+  "L053": {
+    "nv": "GAP-001",
+    "fingerprint": "d577dc1dbde3"
+  },
+  "L054": {
+    "nv": "GAP-001",
+    "fingerprint": "4b11c699de90"
+  },
+  "L055": {
+    "nv": "GAP-001",
+    "fingerprint": "911f7ab40942"
+  },
+  "L056": {
+    "nv": "GAP-001",
+    "fingerprint": "77e040384e15"
+  },
+  "L057": {
+    "nv": "GAP-001",
+    "fingerprint": "3ec66608aba6"
+  },
+  "L058": {
+    "nv": "GAP-001",
+    "fingerprint": "910c16d0f1e9"
+  },
+  "L059": {
+    "nv": "GAP-001",
+    "fingerprint": "db66ca05c333"
+  },
+  "L061": {
+    "nv": "GAP-001",
+    "fingerprint": "3190a8a88619"
+  },
+  "L062": {
+    "nv": "GAP-001",
+    "fingerprint": "3db90c7ca425"
+  },
+  "L064": {
+    "nv": "GAP-001",
+    "fingerprint": "f3e837f19aa2"
+  },
+  "L065": {
+    "nv": "GAP-001",
+    "fingerprint": "6f44dec95251"
+  },
+  "L067": {
+    "nv": "GAP-001",
+    "fingerprint": "cc6d3f27b414"
+  },
+  "L068": {
+    "nv": "GAP-001",
+    "fingerprint": "026a15c503be"
+  },
+  "L069": {
+    "nv": "GAP-001",
+    "fingerprint": "af013362103b"
+  },
+  "L070": {
+    "nv": "GAP-001",
+    "fingerprint": "ad2f155a88cb"
+  },
+  "L071": {
+    "nv": "GAP-001",
+    "fingerprint": "2def86f65a37"
+  },
+  "L072": {
+    "nv": "GAP-001",
+    "fingerprint": "817c3ea1a878"
+  },
+  "L073": {
+    "nv": "GAP-001",
+    "fingerprint": "d4007c8072ba"
+  },
+  "L074": {
+    "nv": "GAP-001",
+    "fingerprint": "bcfc802c3501"
+  },
+  "L075": {
+    "nv": "GAP-001",
+    "fingerprint": "98a7ce695d53"
+  },
+  "L076": {
+    "nv": "GAP-001",
+    "fingerprint": "dbd5fb321fca"
+  },
+  "L077": {
+    "nv": "GAP-001",
+    "fingerprint": "155b52e33146"
+  },
+  "L078": {
+    "nv": "GAP-001",
+    "fingerprint": "bdacd009c49f"
+  },
+  "L079": {
+    "nv": "GAP-001",
+    "fingerprint": "d05cbcf16ff8"
+  },
+  "L080": {
+    "nv": "GAP-001",
+    "fingerprint": "ac26eb0250e6"
+  },
+  "L081": {
+    "nv": "GAP-001",
+    "fingerprint": "7f13b3d28751"
+  },
+  "L082": {
+    "nv": "GAP-001",
+    "fingerprint": "1ae2f6ea97b3"
+  },
+  "L083": {
+    "nv": "GAP-001",
+    "fingerprint": "cb334be7eafa"
+  },
+  "L084": {
+    "nv": "GAP-001",
+    "fingerprint": "f2844e4adc0a"
+  },
+  "L001": {
+    "fp": "0b6151483f1f intentional fake private-key fixture in tests; no shipped credential",
+    "fingerprint": "0b6151483f1f"
+  },
+  "L002": {
+    "fp": "d54cdfcaa7b3 intentional fake AWS fixture in tests; no shipped credential",
+    "fingerprint": "d54cdfcaa7b3"
+  },
+  "L003": {
+    "fp": "5cfe15480bf8 Windows shell is required for the fixed codex command wrapper; arguments are restricted before launch",
+    "fingerprint": "5cfe15480bf8"
+  },
+  "L004": {
+    "fp": "3d1019e32e17 run-trimmed accepts plain words only and rejects shell metacharacters before the required platform shell",
+    "fingerprint": "3d1019e32e17"
+  },
+  "L005": {
+    "fp": "f3f855696a23 background inspection invokes fixed local OS tools with fixed argument arrays; no user command is forwarded",
+    "fingerprint": "f3f855696a23"
+  },
+  "L007": {
+    "fp": "716639d61f03 Windows shell is required to invoke the fixed claude.cmd executable with argument tokens",
+    "fingerprint": "716639d61f03"
+  },
+  "L009": {
+    "fp": "e666e7401b09 graphify receives an internal planned step and runs with shell false and an explicit backend",
+    "fingerprint": "e666e7401b09"
+  },
+  "L010": {
+    "fp": "153ca35ca2a8 repository action filenames are confined to the repository and subprocess arguments use shell false",
+    "fingerprint": "153ca35ca2a8"
+  },
+  "L011": {
+    "fp": "7aa84ac5b396 repository check filenames are confined to the repository and subprocess arguments use shell false",
+    "fingerprint": "7aa84ac5b396"
+  },
+  "L013": {
+    "fp": "67903ba57fc0 dated calendar exists only in test fixture data; production calendar code is not using this fixture",
+    "fingerprint": "67903ba57fc0"
+  },
+  "L014": {
+    "fp": "a20f25ee9682 embedded database URLs are test fixtures and are never loaded by shipped runtime code",
+    "fingerprint": "a20f25ee9682"
+  },
+  "L023": {
+    "fp": "c60838ce4e3b regex input is escaped before construction and only selects a named local configuration section",
+    "fingerprint": "c60838ce4e3b"
+  },
+  "L060": {
+    "fp": "ca9dc3cc120c property paths are internal configuration keys; no untrusted request object is merged into a prototype",
+    "fingerprint": "ca9dc3cc120c"
+  },
+  "L006": {
+    "fp": "42251c8848d8 [TM2] Windows shell is required only for the fixed local check command; no user-controlled command string",
+    "fingerprint": "42251c8848d8"
+  },
+  "L008": {
+    "fp": "94dccfe4d4fd [TM2] Windows shell is required for fixed command execution; command tokens are validated and cache keys are separate",
+    "fingerprint": "94dccfe4d4fd"
+  },
+  "L012": {
+    "fp": "c9a491e8cffd [TM2] rolloutDecision is pure policy evaluation; durable daily state and kill-switch ownership are supplied by the caller",
+    "fingerprint": "c9a491e8cffd"
+  },
+  "L045": {
+    "fp": "fb291acbad29 [TM2] CORS reflects an origin only after strict extension-id allowlisting; arbitrary origins receive no CORS header",
+    "fingerprint": "fb291acbad29"
+  },
+  "L049": {
+    "fp": "4f39543054b9 [TM2] regex input is escaped before construction and derives from local plugin keys, not a request body",
+    "fingerprint": "4f39543054b9"
+  },
+  "L063": {
+    "fp": "3bff6b452232 [TM2] reservation values are allowance percentages, not currency amounts; validation bounds them to finite percentages",
+    "fingerprint": "3bff6b452232"
+  },
+  "L066": {
+    "fp": "7d7f41f219f9 [TM2] regex input is escaped before construction and derives from local safety-rule keys",
+    "fingerprint": "7d7f41f219f9"
+  }
+}

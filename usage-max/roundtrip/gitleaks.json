@@ -1,0 +1,23 @@
+[
+ {
+  "RuleID": "aws-access-token",
+  "Description": "Identified a pattern that may indicate AWS credentials, risking unauthorized cloud resource access and data breaches on AWS platforms.",
+  "StartLine": 142,
+  "EndLine": 142,
+  "StartColumn": 100,
+  "EndColumn": 119,
+  "Match": "REDACTED",
+  "Secret": "REDACTED",
+  "File": "usage-max/test/memory.mjs",
+  "SymlinkFile": "",
+  "Commit": "1b09fdfb758ad9686d03ee228003d044455b0e3d",
+  "Link": "https://github.com/ericsnider2003-max/Plugins/blob/1b09fdfb758ad9686d03ee228003d044455b0e3d/usage-max/test/memory.mjs#L142",
+  "Entropy": 3.8841836,
+  "Author": "ericsnider2003-max",
+  "Email": "ericsnider2003@gmail.com",
+  "Date": "2026-10-11T17:11:00Z",
+  "Message": "usage-max 0.16.0: project memory, shared Claude/Codex resume point, Codex task packer (#15)\n\nClaude-Session: https://claude.ai/code/session_015ZwMAabE1nokowsTBgpTdp\n\nCo-authored-by: Claude \u003cnoreply@anthropic.com\u003e",
+  "Tags": [],
+  "Fingerprint": "1b09fdfb758ad9686d03ee228003d044455b0e3d:usage-max/test/memory.mjs:aws-access-token:142"
+ }
+]

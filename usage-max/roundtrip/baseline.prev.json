@@ -1,0 +1,1814 @@
+{
+  "generated": "2026-10-18T08:23:20.454Z",
+  "project": "C:\\Users\\erics\\OneDrive\\Desktop\\Skills\\_github-publish-usage-max\\usage-max",
+  "ran_on": "throwaway copy",
+  "profile_packs": [
+    "trading-money",
+    "windows-host",
+    "scripts-ops",
+    "web-app"
+  ],
+  "setup": [
+    "2 byte-identical copies were audited once, via 2 kept file(s): they are listed in baseline.json \"duplicates\"; a defect in a kept file applies to every copy"
+  ],
+  "coverage_gaps": [
+    "owner marked the project live, but no live marker was detected — tests NOT run until a paper/fake environment is explicitly supplied",
+    "semgrep not installed — data-flow security rules across languages NOT checked (dev machine only: pip install semgrep)",
+    "gitleaks not installed — secrets in files and git history NOT checked (dev machine only: https://github.com/gitleaks/gitleaks/releases)",
+    "osv-scanner not installed — known-vulnerable dependencies in every lockfile NOT checked (dev machine only: https://google.github.io/osv-scanner/installation/)"
+  ],
+  "duplicates": [
+    {
+      "kept": "scripts/resettime.mjs",
+      "skipped": [
+        "codex/scripts/resettime.mjs"
+      ]
+    },
+    {
+      "kept": "scripts/safefile.mjs",
+      "skipped": [
+        "codex/scripts/safefile.mjs"
+      ]
+    }
+  ],
+  "steps": {
+    "scan": {
+      "scanned_files": 315,
+      "lead_count": 142,
+      "packs": [
+        "trading-money",
+        "windows-host",
+        "scripts-ops",
+        "web-app"
+      ]
+    },
+    "deps": [],
+    "tools": [
+      {
+        "tool": "semgrep",
+        "covers": "data-flow security rules across languages",
+        "status": "not_installed",
+        "install": "pip install semgrep"
+      },
+      {
+        "tool": "gitleaks",
+        "covers": "secrets in files and git history",
+        "status": "not_installed",
+        "install": "https://github.com/gitleaks/gitleaks/releases"
+      },
+      {
+        "tool": "osv-scanner",
+        "covers": "known-vulnerable dependencies in every lockfile",
+        "status": "not_installed",
+        "install": "https://google.github.io/osv-scanner/installation/"
+      },
+      {
+        "tool": "tsc",
+        "covers": "TypeScript type errors",
+        "status": "not_applicable"
+      },
+      {
+        "tool": "eslint",
+        "covers": "the project's own lint rules",
+        "status": "not_applicable"
+      },
+      {
+        "tool": "ruff",
+        "covers": "Python bugs and security lint",
+        "status": "not_applicable"
+      },
+      {
+        "tool": "bandit",
+        "covers": "Python security (syntax-tree based)",
+        "status": "not_applicable"
+      },
+      {
+        "tool": "shellcheck",
+        "covers": "bash and sh script bugs",
+        "status": "not_applicable"
+      },
+      {
+        "tool": "PSScriptAnalyzer",
+        "covers": "PowerShell script bugs and security rules",
+        "status": "not_applicable"
+      },
+      {
+        "tool": "clippy",
+        "covers": "Rust correctness lints",
+        "status": "not_applicable"
+      }
+    ],
+    "baseline": {
+      "checks": [
+        {
+          "dir": ".",
+          "name": "test",
+          "command": "",
+          "status": "not_detected",
+          "tail": "No test/lint/build command detected. Add roundtrip.config.json {\"test\": \"...\"} to name it."
+        }
+      ]
+    }
+  },
+  "leads": [
+    {
+      "file": "test/guard.mjs",
+      "line": 178,
+      "rule": "secret-private-key",
+      "label": "Embedded private key",
+      "category": "security",
+      "severity": "critical",
+      "snippet": "assert.match(O.secretReason(\".env\", \"\"), /secrets file/); assert.match(O.secretReason(\"a.txt\", \"x -----BEGIN RSA PRIVATE KEY-----\"), /key or token/); assert.equal(O.secretReason(\"a.js\", \"const a = 1\")",
+      "fingerprint": "0b6151483f1f",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "secret-private-key"
+      ],
+      "fingerprints": [
+        "0b6151483f1f"
+      ],
+      "id": "L001"
+    },
+    {
+      "file": "test/memory.mjs",
+      "line": 142,
+      "rule": "secret-aws",
+      "label": "AWS access key id",
+      "category": "security",
+      "severity": "critical",
+      "snippet": "for (const bad of [\"use sk-live-abcdefghijklmnop1234 for billing\", \"password: Tr0ub4dor&3xyz\", \"AKIAABCDEFGHIJKLMNOP is the key\", \"token=ghp_abcdefghijklmnopqrstuvwxyz0123456789\"]) { assert.ok(M.looks",
+      "fingerprint": "d54cdfcaa7b3",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "secret-aws"
+      ],
+      "fingerprints": [
+        "d54cdfcaa7b3"
+      ],
+      "id": "L002"
+    },
+    {
+      "file": "scripts/rollout.mjs",
+      "line": 4,
+      "rule": "daily-state-in-memory",
+      "label": "Daily loss / kill-switch state kept only in memory — a restart resets the limit and clears a tripped kill switch",
+      "category": "bug",
+      "severity": "high",
+      "snippet": "export function rolloutDecision({ requested = \"observation-only\", approved = false, killSwitch = false, evidence = {}, trial = null } = {}) {",
+      "source": "TM3",
+      "fingerprint": "c9a491e8cffd",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "daily-state-in-memory"
+      ],
+      "fingerprints": [
+        "c9a491e8cffd"
+      ],
+      "id": "L003"
+    },
+    {
+      "file": "test/fix.mjs",
+      "line": 12,
+      "rule": "calendar-expiry",
+      "label": "Hard-coded market calendar ends in 2026 — after that the system trades on holidays or refuses to trade",
+      "category": "bug",
+      "severity": "high",
+      "snippet": "const dir = path.join(process.env.CODEX_HOME, \"sessions/2026/10/12\"); fs.mkdirSync(dir, { recursive: true }); const f = path.join(dir, \"rollout-a.jsonl\");",
+      "source": "TM11",
+      "fingerprint": "67903ba57fc0",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "calendar-expiry"
+      ],
+      "fingerprints": [
+        "67903ba57fc0"
+      ],
+      "id": "L004"
+    },
+    {
+      "file": "test/fix.mjs",
+      "line": 62,
+      "rule": "db-url-credentials",
+      "label": "Database URL with an embedded password (3 sites in this file: lines 62, 65, 184)",
+      "category": "security",
+      "severity": "high",
+      "snippet": "const bad = [\"sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv\", \"sk-proj-AbCdEfGhIjKlMnOpQrStUvWx\", \"github_pat_11ABCDEFG0abcdefghijkl_mnopqrstuv\", \"postgres://admin:s3cretPw@db.internal:5432/app\", \"whsec_AbCdEfG",
+      "fingerprint": "a20f25ee9682",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "db-url-credentials"
+      ],
+      "fingerprints": [
+        "a20f25ee9682",
+        "5e408da6eb6b",
+        "e5b27c1e7652"
+      ],
+      "lines": [
+        62,
+        65,
+        184
+      ],
+      "count": 3,
+      "id": "L005"
+    },
+    {
+      "file": "browser-adapter/background.js",
+      "line": 5,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (4 sites in this file: lines 5, 7, 8, 10)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "async function bootstrapNativeConfig() { try { const port = chrome.runtime.connectNative(\"com.usage_max.adapter\"); return await new Promise((resolve) => { let settled = false; const finish = (value) =",
+      "fingerprint": "615e990e1efe",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "615e990e1efe",
+        "bf8146d23f93",
+        "ea7169c4d1c5",
+        "c0a2ae4cb771"
+      ],
+      "lines": [
+        5,
+        7,
+        8,
+        10
+      ],
+      "count": 4,
+      "id": "L006"
+    },
+    {
+      "file": "browser-adapter/background.js",
+      "line": 11,
+      "rule": "timer-leak",
+      "label": "setInterval with no clearInterval in this file",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "async function boot() { await bootstrapNativeConfig(); await pollNotifications(); setInterval(pollNotifications, 10000); }",
+      "fingerprint": "c018c1cc5b57",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "timer-leak"
+      ],
+      "fingerprints": [
+        "c018c1cc5b57"
+      ],
+      "id": "L007"
+    },
+    {
+      "file": "browser-adapter/content.js",
+      "line": 17,
+      "rule": "timer-leak",
+      "label": "setInterval with no clearInterval in this file",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "send(); new MutationObserver(() => send()).observe(document.documentElement, { subtree: true, childList: true, characterData: true }); setInterval(send, 30000);",
+      "fingerprint": "0c1148c9d62e",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "timer-leak"
+      ],
+      "fingerprints": [
+        "0c1148c9d62e"
+      ],
+      "id": "L008"
+    },
+    {
+      "file": "browser-adapter/native-host.mjs",
+      "line": 14,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { token = fs.readFileSync(tokenFile, \"utf8\").trim() || null; } catch {}",
+      "fingerprint": "c65155f22e3f",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "c65155f22e3f"
+      ],
+      "id": "L009"
+    },
+    {
+      "file": "codex/scripts/backup.mjs",
+      "line": 15,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (4 sites in this file: lines 15, 30, 40, 53)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let names = []; try { names = fs.readdirSync(codexHome()); } catch {}",
+      "fingerprint": "3b2e945e1c1e",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "3b2e945e1c1e",
+        "02901c22ca42",
+        "888ba8c275ac",
+        "b9b781265cf3"
+      ],
+      "lines": [
+        15,
+        30,
+        40,
+        53
+      ],
+      "count": 4,
+      "id": "L010"
+    },
+    {
+      "file": "codex/scripts/codex-app-server.mjs",
+      "line": 18,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (2 sites in this file: lines 18, 23)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let buf = \"\"; const timer = setTimeout(() => { try { child.kill(); } catch {} reject(new Error(\"Codex app-server response timed out\")); }, timeoutMs);",
+      "fingerprint": "d23ccbfa815e",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "d23ccbfa815e",
+        "fe070f84d614"
+      ],
+      "lines": [
+        18,
+        23
+      ],
+      "count": 2,
+      "id": "L011"
+    },
+    {
+      "file": "codex/scripts/codex-diagnose.mjs",
+      "line": 46,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (2 sites in this file: lines 46, 47)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const files = []; let d = path.resolve(cwd || \".\"); for (let i = 0; i < 6; i++) { for (const n of [\"AGENTS.md\", \"AGENTS.override.md\"]) { const f = path.join(d, n); try { const st = fs.statSync(f); if ",
+      "fingerprint": "90b0c9b0155d",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "90b0c9b0155d",
+        "644c07645518"
+      ],
+      "lines": [
+        46,
+        47
+      ],
+      "count": 2,
+      "id": "L012"
+    },
+    {
+      "file": "codex/scripts/codex-diet.mjs",
+      "line": 16,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let skills = 0, sk = 0; const walk = (d) => { try { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (e.name === \"SKI",
+      "fingerprint": "aa1e7741ddb7",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "aa1e7741ddb7"
+      ],
+      "id": "L013"
+    },
+    {
+      "file": "codex/scripts/codex-governor.mjs",
+      "line": 273,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (3 sites in this file: lines 273, 309, 336)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let pv = \"\"; try { pv = String(JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), \"..\", \"..\", \".claude-plugin\", \"plugin.json\"), \"utf8\")).version || \"\"); } catch {}",
+      "fingerprint": "a9cbc30fb4f1",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "a9cbc30fb4f1",
+        "97b726a351f7",
+        "c1c9cbf46616"
+      ],
+      "lines": [
+        273,
+        309,
+        336
+      ],
+      "count": 3,
+      "id": "L014"
+    },
+    {
+      "file": "codex/scripts/codex-guards.mjs",
+      "line": 7,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (3 sites in this file: lines 7, 43, 47)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const wj = (f, o) => { try { fs.mkdirSync(path.dirname(f), { recursive: true }); const t = f + \".\" + process.pid + \".tmp\"; fs.writeFileSync(t, JSON.stringify(o)); fs.renameSync(t, f); } catch {} };",
+      "fingerprint": "2f736bf85b87",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "2f736bf85b87",
+        "13ce69d5bc2c",
+        "517c4ed02047"
+      ],
+      "lines": [
+        7,
+        43,
+        47
+      ],
+      "count": 3,
+      "id": "L015"
+    },
+    {
+      "file": "codex/scripts/codex-hook.mjs",
+      "line": 21,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (13 sites in this file: lines 21, 22, 23, 64, 65, 77, 78, 87, 92, 95, 104, 106, …)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let R = null; try { R = await import(\"./resume.mjs\"); } catch { try { R = await import(\"../../scripts/resume.mjs\"); } catch {} }",
+      "fingerprint": "c5e6f6282681",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "c5e6f6282681",
+        "8b7c466449ae",
+        "4c4a74ba2288",
+        "0ed87f5dbee8",
+        "ce874f96ceea",
+        "382a50b73d25",
+        "7d7d7c988270",
+        "52ee2c423ce0",
+        "5c6231fe04cd",
+        "7d24d4a94447",
+        "5cf14a51d72f",
+        "dd971d8470d0",
+        "603fa1687e52"
+      ],
+      "lines": [
+        21,
+        22,
+        23,
+        64,
+        65,
+        77,
+        78,
+        87,
+        92,
+        95,
+        104,
+        106,
+        107
+      ],
+      "count": 13,
+      "id": "L016"
+    },
+    {
+      "file": "codex/scripts/codex-weights.mjs",
+      "line": 26,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const f = path.join(dataDir(), \"config.json\"); let c = {}; try { c = JSON.parse(fs.readFileSync(f, \"utf8\")); } catch {}",
+      "fingerprint": "74bd1ff55477",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "74bd1ff55477"
+      ],
+      "id": "L017"
+    },
+    {
+      "file": "codex/scripts/notify.mjs",
+      "line": 10,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "} catch {}",
+      "fingerprint": "ab74c6dac75c",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "ab74c6dac75c"
+      ],
+      "id": "L018"
+    },
+    {
+      "file": "codex/scripts/run-trimmed.mjs",
+      "line": 16,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (2 sites in this file: lines 16, 19)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { s = JSON.parse(fs.readFileSync(f, \"utf8\")) || {}; } catch {}",
+      "fingerprint": "7a0e36f8bd91",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "7a0e36f8bd91",
+        "d7dd8e47a29b"
+      ],
+      "lines": [
+        16,
+        19
+      ],
+      "count": 2,
+      "id": "L019"
+    },
+    {
+      "file": "codex/scripts/sync.mjs",
+      "line": 11,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let cur = null; try { cur = fs.readFileSync(vf, \"utf8\").trim(); } catch {}",
+      "fingerprint": "db66bea3e78e",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "db66bea3e78e"
+      ],
+      "id": "L020"
+    },
+    {
+      "file": "codex/scripts/trim.mjs",
+      "line": 19,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (3 sites in this file: lines 19, 20, 21)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "for (const x of all.slice(40)) try { fs.unlinkSync(path.join(d, x.n)); } catch {}",
+      "fingerprint": "11a8404f7c30",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "11a8404f7c30",
+        "5bdabd24062d",
+        "db16c2f668b4"
+      ],
+      "lines": [
+        19,
+        20,
+        21
+      ],
+      "count": 3,
+      "id": "L021"
+    },
+    {
+      "file": "codex/scripts/trimcheck.mjs",
+      "line": 6,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const save = (dir, s) => { try { fs.mkdirSync(dir, { recursive: true }); const t = f(dir) + \".\" + process.pid + \".tmp\"; fs.writeFileSync(t, JSON.stringify(s)); fs.renameSync(t, f(dir)); } catch {} };",
+      "fingerprint": "3678e5785aa9",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "3678e5785aa9"
+      ],
+      "id": "L022"
+    },
+    {
+      "file": "codex/test/run.mjs",
+      "line": 177,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const withHome = (h, f) => { const old = process.env.USAGE_MAX_HOME; process.env.USAGE_MAX_HOME = h; delete process.env.USAGE_MAX_TRIM; fs.mkdirSync(path.join(h, \".usage-max-codex\"), { recursive: true",
+      "fingerprint": "27ac0bc60731",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "27ac0bc60731"
+      ],
+      "id": "L023"
+    },
+    {
+      "file": "hooks/auto-observe.mjs",
+      "line": 4,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let input = {}; try { input = JSON.parse(process.env.USAGE_MAX_HOOK_INPUT || \"{}\"); } catch {}",
+      "fingerprint": "7514e940f7bb",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "7514e940f7bb"
+      ],
+      "id": "L024"
+    },
+    {
+      "file": "hooks/bash-trim.mjs",
+      "line": 28,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "} catch {}",
+      "fingerprint": "94f10f0ca083",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "94f10f0ca083"
+      ],
+      "id": "L025"
+    },
+    {
+      "file": "hooks/cross-gate.mjs",
+      "line": 11,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (2 sites in this file: lines 11, 20)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let input = {}; try { const raw = await readStdin(); input = raw ? JSON.parse(raw) : {}; } catch {}",
+      "fingerprint": "4897fa63c899",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "4897fa63c899",
+        "10a84d352bff"
+      ],
+      "lines": [
+        11,
+        20
+      ],
+      "count": 2,
+      "id": "L026"
+    },
+    {
+      "file": "hooks/guard.mjs",
+      "line": 18,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (3 sites in this file: lines 18, 27, 37)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let input = {}; try { const raw = await readStdin(); input = raw ? JSON.parse(raw) : {}; } catch {}",
+      "fingerprint": "93970e53c1df",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "93970e53c1df",
+        "943605a84654",
+        "02a1177108ba"
+      ],
+      "lines": [
+        18,
+        27,
+        37
+      ],
+      "count": 3,
+      "id": "L027"
+    },
+    {
+      "file": "hooks/ledger.mjs",
+      "line": 86,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (4 sites in this file: lines 86, 91, 124, 142)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "} catch {}",
+      "fingerprint": "13bd945081cc",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "13bd945081cc",
+        "227fe1852761",
+        "53d9876aabe2",
+        "9c4a4f4993bb"
+      ],
+      "lines": [
+        86,
+        91,
+        124,
+        142
+      ],
+      "count": 4,
+      "id": "L028"
+    },
+    {
+      "file": "hooks/memory.mjs",
+      "line": 19,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let input = {}; try { const raw = await readStdin(); input = raw ? JSON.parse(raw) : {}; } catch {}",
+      "fingerprint": "11e745dee367",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "11e745dee367"
+      ],
+      "id": "L029"
+    },
+    {
+      "file": "hooks/notifications.mjs",
+      "line": 19,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "} catch { /* notification failure never blocks the user's work */ }",
+      "fingerprint": "ed81ec963107",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "ed81ec963107"
+      ],
+      "id": "L030"
+    },
+    {
+      "file": "hooks/session-start.mjs",
+      "line": 42,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (5 sites in this file: lines 42, 60, 63, 67, 70)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "} catch {}",
+      "fingerprint": "3b2d1ec62e83",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "3b2d1ec62e83",
+        "c8443ade196a",
+        "9ff41e77808e",
+        "ad4b7620c753",
+        "790b4ab9b772"
+      ],
+      "lines": [
+        42,
+        60,
+        63,
+        67,
+        70
+      ],
+      "count": 5,
+      "id": "L031"
+    },
+    {
+      "file": "scripts/account-activity.mjs",
+      "line": 18,
+      "rule": "float-money",
+      "label": "Money held in a binary float — amounts drift and limits compare wrongly",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const tokens = Number(row.tokens ?? row.total_tokens ?? row.totalTokens ?? row.usage?.total_tokens);",
+      "source": "TM1",
+      "fingerprint": "fcc4b82e14c2",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "float-money"
+      ],
+      "fingerprints": [
+        "fcc4b82e14c2"
+      ],
+      "id": "L032"
+    },
+    {
+      "file": "scripts/anomaly.mjs",
+      "line": 44,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const walk = (d) => { let o = []; try { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) o = o.concat(walk(f)); else if (e.name.endsWi",
+      "fingerprint": "6224e73a3f44",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "6224e73a3f44"
+      ],
+      "id": "L033"
+    },
+    {
+      "file": "scripts/attachment-server.mjs",
+      "line": 33,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (2 sites in this file: lines 33, 34)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "function getToken(home) { const f = tokenFile(home); try { const token = fs.readFileSync(f, \"utf8\").trim(); if (token) return token; } catch {} const token = crypto.randomBytes(24).toString(\"base64url",
+      "fingerprint": "39b10aaca731",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "39b10aaca731",
+        "10e01c23da3e"
+      ],
+      "lines": [
+        33,
+        34
+      ],
+      "count": 2,
+      "id": "L034"
+    },
+    {
+      "file": "scripts/autohandoff.mjs",
+      "line": 38,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { for (const x of fs.readdirSync(d)) { const p = path.join(d, x); if (Date.now() - fs.statSync(p).mtimeMs > 14 * 864e5) fs.unlinkSync(p); } } catch {}",
+      "fingerprint": "3e8b2c2be1cf",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "3e8b2c2be1cf"
+      ],
+      "id": "L035"
+    },
+    {
+      "file": "scripts/build-plugin-zip.mjs",
+      "line": 35,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { fs.rmSync(tempOut, { force: true }); } catch {}",
+      "fingerprint": "c1d284827f17",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "c1d284827f17"
+      ],
+      "id": "L036"
+    },
+    {
+      "file": "scripts/claude-headless-adapter.mjs",
+      "line": 19,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const timer = setTimeout(() => { try { child.kill(); } catch {} finish({ outcome: \"failed\", retryable: true, error: \"headless worker timeout\", stdout, stderr }); }, timeoutMs);",
+      "fingerprint": "efd26a24ddea",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "efd26a24ddea"
+      ],
+      "id": "L037"
+    },
+    {
+      "file": "scripts/context-bridge.mjs",
+      "line": 48,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let previous = null; try { previous = JSON.parse(fs.readFileSync(jsonFile, \"utf8\")); } catch {}",
+      "fingerprint": "722e3fc2b2de",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "722e3fc2b2de"
+      ],
+      "id": "L038"
+    },
+    {
+      "file": "scripts/ctxfiles.mjs",
+      "line": 33,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "let memory = []; try { const ip = JSON.parse(fs.readFileSync(path.join(home, \".claude\", \"plugins\", \"installed_plugins.json\"), \"utf8\")); memory = Object.keys(ip.plugins || ip).filter((n) => /mem|obsidi",
+      "fingerprint": "6c00942f79a4",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "6c00942f79a4"
+      ],
+      "id": "L039"
+    },
+    {
+      "file": "scripts/guard.mjs",
+      "line": 18,
+      "rule": "weak-random-js",
+      "label": "Math.random for values",
+      "category": "security",
+      "severity": "medium",
+      "snippet": "if (Math.random() < 0.05) { // housekeeping: forget sessions untouched for 3 days",
+      "fingerprint": "e832d2afc678",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "weak-random-js"
+      ],
+      "fingerprints": [
+        "e832d2afc678"
+      ],
+      "id": "L040"
+    },
+    {
+      "file": "scripts/guard.mjs",
+      "line": 19,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (6 sites in this file: lines 19, 21, 29, 43, 46, 130)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "for (const f of fs.readdirSync(gdir(dir))) { const p = path.join(gdir(dir), f); try { if (Date.now() - fs.statSync(p).mtimeMs > 3 * 864e5) fs.unlinkSync(p); } catch {} }",
+      "fingerprint": "d577dc1dbde3",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "d577dc1dbde3",
+        "6a680352d9c6",
+        "bba8970394ba",
+        "6abb36070a55",
+        "ecdfe5b6556d",
+        "a32f1e2ddf6b"
+      ],
+      "lines": [
+        19,
+        21,
+        29,
+        43,
+        46,
+        130
+      ],
+      "count": 6,
+      "id": "L041"
+    },
+    {
+      "file": "scripts/lib.mjs",
+      "line": 99,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "} catch {}",
+      "fingerprint": "4b11c699de90",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "4b11c699de90"
+      ],
+      "id": "L042"
+    },
+    {
+      "file": "scripts/memory-suggest.mjs",
+      "line": 78,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "export function saveCandidates(root, list, env) { try { const f = stateFile(root, env); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify({ at: new Date().toISOStr",
+      "fingerprint": "911f7ab40942",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "911f7ab40942"
+      ],
+      "id": "L043"
+    },
+    {
+      "file": "scripts/memory.mjs",
+      "line": 112,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (4 sites in this file: lines 112, 153, 213, 214)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const dir = path.join(mem, \"topics\"); let names = []; try { names = fs.readdirSync(dir).filter((n) => n.endsWith(\".md\")).sort(); } catch {}",
+      "fingerprint": "77e040384e15",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "77e040384e15",
+        "c89741387943",
+        "0b00568eb029",
+        "5fcee7f832a3"
+      ],
+      "lines": [
+        112,
+        153,
+        213,
+        214
+      ],
+      "count": 4,
+      "id": "L044"
+    },
+    {
+      "file": "scripts/memory.mjs",
+      "line": 213,
+      "rule": "weak-random-js",
+      "label": "Math.random for values",
+      "category": "security",
+      "severity": "medium",
+      "snippet": "if (Math.random() < 0.05) for (const n of fs.readdirSync(dir)) { const p = path.join(dir, n); try { if (Date.now() - fs.statSync(p).mtimeMs > 3 * 864e5) fs.unlinkSync(p); } catch {} }",
+      "fingerprint": "3ec66608aba6",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "weak-random-js"
+      ],
+      "fingerprints": [
+        "3ec66608aba6"
+      ],
+      "id": "L045"
+    },
+    {
+      "file": "scripts/meter.mjs",
+      "line": 18,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (2 sites in this file: lines 18, 99)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { target = fs.realpathSync(file); mode = fs.statSync(target).mode & 0o777; } catch {} // follow symlinks (stow/chezmoi), keep the file mode",
+      "fingerprint": "910c16d0f1e9",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "910c16d0f1e9",
+        "fb5b2ef04a06"
+      ],
+      "lines": [
+        18,
+        99
+      ],
+      "count": 2,
+      "id": "L046"
+    },
+    {
+      "file": "scripts/offload.mjs",
+      "line": 43,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { bump(dataDir(), \"offloadJobs\"); bump(dataDir(), \"offloadInputChars\", text.length); bump(dataDir(), \"offloadOutputChars\", out.length); } catch {}",
+      "fingerprint": "db66ca05c333",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "db66ca05c333"
+      ],
+      "id": "L047"
+    },
+    {
+      "file": "scripts/pack.mjs",
+      "line": 19,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { const p = JSON.parse(fs.readFileSync(path.join(cwd, \"package.json\"), \"utf8\")); if (p.scripts && p.scripts.test && !/no test specified/.test(p.scripts.test)) return `${has(\"pnpm-lock.yaml\") ? \"pn",
+      "fingerprint": "3190a8a88619",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "3190a8a88619"
+      ],
+      "id": "L048"
+    },
+    {
+      "file": "scripts/profile.mjs",
+      "line": 37,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (2 sites in this file: lines 37, 89)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "} catch {",
+      "fingerprint": "3db90c7ca425",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "3db90c7ca425",
+        "ba8cb49d8ec1"
+      ],
+      "lines": [
+        37,
+        89
+      ],
+      "count": 2,
+      "id": "L049"
+    },
+    {
+      "file": "scripts/reservations.mjs",
+      "line": 10,
+      "rule": "float-money",
+      "label": "Money held in a binary float — amounts drift and limits compare wrongly (2 sites in this file: lines 10, 17)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const used = Number(usedPercent); const amount = Number(amountPercent); const reserve = Number(reservePercent);",
+      "source": "TM1",
+      "fingerprint": "3bff6b452232",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "float-money"
+      ],
+      "fingerprints": [
+        "3bff6b452232",
+        "ec28b8f30995"
+      ],
+      "lines": [
+        10,
+        17
+      ],
+      "count": 2,
+      "id": "L050"
+    },
+    {
+      "file": "scripts/resume-cli.mjs",
+      "line": 12,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (2 sites in this file: lines 12, 15)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "} catch { console.log(\"no resume point for this folder yet.\"); }",
+      "fingerprint": "f3e837f19aa2",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "f3e837f19aa2",
+        "e8706e6dd662"
+      ],
+      "lines": [
+        12,
+        15
+      ],
+      "count": 2,
+      "id": "L051"
+    },
+    {
+      "file": "scripts/resume.mjs",
+      "line": 61,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (2 sites in this file: lines 61, 76)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { if (transcript && fs.existsSync(transcript)) return transcript; } catch {}",
+      "fingerprint": "6f44dec95251",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "6f44dec95251",
+        "f77371c2d1cd"
+      ],
+      "lines": [
+        61,
+        76
+      ],
+      "count": 2,
+      "id": "L052"
+    },
+    {
+      "file": "scripts/safety.mjs",
+      "line": 59,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (3 sites in this file: lines 59, 60, 61)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { const P = await import(\"./profile.mjs\"); const k = P.handBack(h); if (k.length) done.push(\"Claude: handed back \" + k.join(\", \")); } catch {}",
+      "fingerprint": "cc6d3f27b414",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "cc6d3f27b414",
+        "57c897a213a8",
+        "f21cb95ff177"
+      ],
+      "lines": [
+        59,
+        60,
+        61
+      ],
+      "count": 3,
+      "id": "L053"
+    },
+    {
+      "file": "scripts/savings.mjs",
+      "line": 55,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { const c = (JSON.parse(fs.readFileSync(path.join(process.env.USAGE_MAX_HOME || os.homedir(), \".claude\", \"usage-max\", \"events.json\"), \"utf8\")).counts) || {}; if (c.offloadJobs) E(`local model: ${c",
+      "fingerprint": "026a15c503be",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "026a15c503be"
+      ],
+      "id": "L054"
+    },
+    {
+      "file": "scripts/service-runner.mjs",
+      "line": 11,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (5 sites in this file: lines 11, 13, 14, 16, 17)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { const handle = fs.openSync(file, \"wx\"); fs.writeFileSync(handle, `${JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })}\\n`); fs.closeSync(handle); let released = false; re",
+      "fingerprint": "af013362103b",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "af013362103b",
+        "4d6f1e09a201",
+        "6f8516b8dd5c",
+        "973b2d9fce5f",
+        "2c7a11b6564a"
+      ],
+      "lines": [
+        11,
+        13,
+        14,
+        16,
+        17
+      ],
+      "count": 5,
+      "id": "L055"
+    },
+    {
+      "file": "scripts/statusline.mjs",
+      "line": 45,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { gov = JSON.parse(fs.readFileSync(path.join(dataDir, \"governor.json\"), \"utf8\")); } catch {}",
+      "fingerprint": "ad2f155a88cb",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "ad2f155a88cb"
+      ],
+      "id": "L056"
+    },
+    {
+      "file": "scripts/trim.mjs",
+      "line": 19,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (3 sites in this file: lines 19, 20, 21)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "for (const x of all.slice(40)) try { fs.unlinkSync(path.join(d, x.n)); } catch {}",
+      "fingerprint": "2def86f65a37",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "2def86f65a37",
+        "a4f5756af4b1",
+        "95f347eb0d49"
+      ],
+      "lines": [
+        19,
+        20,
+        21
+      ],
+      "count": 3,
+      "id": "L057"
+    },
+    {
+      "file": "scripts/trimtest.mjs",
+      "line": 9,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const save = (dir, s) => { try { writeJsonAtomic(file(dir), s); } catch {} };",
+      "fingerprint": "817c3ea1a878",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "817c3ea1a878"
+      ],
+      "id": "L058"
+    },
+    {
+      "file": "scripts/unattended-supervisor.mjs",
+      "line": 13,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "function acquireSupervisorLock(home, taskId, owner) { const file = lockFile(home, taskId); fs.mkdirSync(path.dirname(file), { recursive: true }); try { const fd = fs.openSync(file, \"wx\"); fs.writeFile",
+      "fingerprint": "d4007c8072ba",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "d4007c8072ba"
+      ],
+      "id": "L059"
+    },
+    {
+      "file": "scripts/usage-check.mjs",
+      "line": 31,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (2 sites in this file: lines 31, 137)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "} catch {}",
+      "fingerprint": "bcfc802c3501",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "bcfc802c3501",
+        "ed80b13eb37b"
+      ],
+      "lines": [
+        31,
+        137
+      ],
+      "count": 2,
+      "id": "L060"
+    },
+    {
+      "file": "scripts/usage-max.mjs",
+      "line": 124,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch) (6 sites in this file: lines 124, 145, 204, 205, 207, 220)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { if (fs.existsSync(path.join(home, \".usage-max-codex\", \"bin\"))) { const { syncBin } = await import(\"../codex/scripts/sync.mjs\"); const r = syncBin({ root, home }); if (r.changed) console.log(`ref",
+      "fingerprint": "98a7ce695d53",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "98a7ce695d53",
+        "e71febe03e41",
+        "3b667c3f4c4c",
+        "ae674da245cd",
+        "95b026a7d333",
+        "abf62e2299cc"
+      ],
+      "lines": [
+        124,
+        145,
+        204,
+        205,
+        207,
+        220
+      ],
+      "count": 6,
+      "id": "L061"
+    },
+    {
+      "file": "scripts/usage-max.mjs",
+      "line": 214,
+      "rule": "float-money",
+      "label": "Money held in a binary float — amounts drift and limits compare wrongly",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "const theirs = Number(j.totals?.totalCost ?? (Array.isArray(j.daily) ? j.daily.reduce((a, d) => a + (Number(d.totalCost) || 0), 0) : NaN)); if (!Number.isFinite(theirs)) { console.log(\"could not find ",
+      "source": "TM1",
+      "fingerprint": "dbd5fb321fca",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "float-money"
+      ],
+      "fingerprints": [
+        "dbd5fb321fca"
+      ],
+      "id": "L062"
+    },
+    {
+      "file": "scripts/worker-loop.mjs",
+      "line": 19,
+      "rule": "float-money",
+      "label": "Money held in a binary float — amounts drift and limits compare wrongly",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "if (arguments[0]?.reservation?.home && Number.isFinite(Number(arguments[0].reservation.amountPercent))) {",
+      "source": "TM1",
+      "fingerprint": "155b52e33146",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "float-money"
+      ],
+      "fingerprints": [
+        "155b52e33146"
+      ],
+      "id": "L063"
+    },
+    {
+      "file": "scripts/worker-service.mjs",
+      "line": 120,
+      "rule": "empty-catch",
+      "label": "Error caught and dropped (empty catch)",
+      "category": "bug",
+      "severity": "medium",
+      "snippet": "try { recordTrialMetric(home, trial.trialId, { modelIdentity: relevant.some((x) => x.model?.known === true), providerFreshness: relevant.some((x) => x.authority === \"provider\" && x.freshness === \"fres",
+      "fingerprint": "bdacd009c49f",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "empty-catch"
+      ],
+      "fingerprints": [
+        "bdacd009c49f"
+      ],
+      "id": "L064"
+    },
+    {
+      "file": "test/mcp-http-server.mjs",
+      "line": 5,
+      "rule": "bind-all",
+      "label": "Service listens on every network interface — on a VPS that is the public internet unless a firewall rule says otherwise",
+      "category": "security",
+      "severity": "medium",
+      "snippet": "assert.throws(() => createMcpHttpServer({ host: \"0.0.0.0\" }), /token is required/);",
+      "source": "WH8",
+      "fingerprint": "d05cbcf16ff8",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "bind-all"
+      ],
+      "fingerprints": [
+        "d05cbcf16ff8"
+      ],
+      "id": "L065"
+    },
+    {
+      "file": "browser-adapter/native-host.mjs",
+      "line": 16,
+      "rule": "localhost-url",
+      "label": "Hard-coded localhost endpoint",
+      "category": "gap",
+      "severity": "low",
+      "snippet": "return { ok: true, endpoint: `http://127.0.0.1:${port}/v1/attachment`, token, health: `http://127.0.0.1:${port}/health` };",
+      "fingerprint": "ac26eb0250e6",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "localhost-url"
+      ],
+      "fingerprints": [
+        "ac26eb0250e6"
+      ],
+      "id": "L066"
+    },
+    {
+      "file": "scripts/activation.mjs",
+      "line": 20,
+      "rule": "localhost-url",
+      "label": "Hard-coded localhost endpoint",
+      "category": "gap",
+      "severity": "low",
+      "snippet": "const mcpHttp = { available: fs.existsSync(mcpHttpServer), command: \"node scripts/usage-max.mjs mcp-http\", endpoint: \"http://127.0.0.1:8787/mcp\", readOnly: true, tunnelRequiredForChatGPT: true };",
+      "fingerprint": "7f13b3d28751",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "localhost-url"
+      ],
+      "fingerprints": [
+        "7f13b3d28751"
+      ],
+      "id": "L067"
+    },
+    {
+      "file": "scripts/attachment-server.mjs",
+      "line": 51,
+      "rule": "localhost-url",
+      "label": "Hard-coded localhost endpoint (2 sites in this file: lines 51, 56)",
+      "category": "gap",
+      "severity": "low",
+      "snippet": "const surface = new URL(req.url, \"http://127.0.0.1\").searchParams.get(\"surface\") || \"unknown\";",
+      "fingerprint": "1ae2f6ea97b3",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "localhost-url"
+      ],
+      "fingerprints": [
+        "1ae2f6ea97b3",
+        "bb59afd0713e"
+      ],
+      "lines": [
+        51,
+        56
+      ],
+      "count": 2,
+      "id": "L068"
+    },
+    {
+      "file": "scripts/memory-suggest.mjs",
+      "line": 61,
+      "rule": "todo",
+      "label": "TODO/FIXME/HACK marker",
+      "category": "gap",
+      "severity": "low",
+      "snippet": "if (/^\\s*\\|/.test(line) || /removed|TODO|FIXME/.test(line)) continue;",
+      "fingerprint": "cb334be7eafa",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "todo"
+      ],
+      "fingerprints": [
+        "cb334be7eafa"
+      ],
+      "id": "L069"
+    },
+    {
+      "file": "scripts/offload.mjs",
+      "line": 11,
+      "rule": "localhost-url",
+      "label": "Hard-coded localhost endpoint",
+      "category": "gap",
+      "severity": "low",
+      "snippet": "export const HOST = () => process.env.USAGE_MAX_OLLAMA || \"http://127.0.0.1:11434\";",
+      "fingerprint": "f2844e4adc0a",
+      "sources": [
+        "scan"
+      ],
+      "rules": [
+        "localhost-url"
+      ],
+      "fingerprints": [
+        "f2844e4adc0a"
+      ],
+      "id": "L070"
+    }
+  ],
+  "skipped_test_noise": 4,
+  "suppressed": [],
+  "summary": {
+    "leads": 70,
+    "skipped_test_noise": 4,
+    "suppressed_as_accepted": 0,
+    "corroborated": 0,
+    "by_severity": {
+      "critical": 2,
+      "high": 3,
+      "medium": 60,
+      "low": 5
+    },
+    "coverage_gaps": 4,
+    "triage_carried": 64
+  },
+  "diff": {
+    "previous": "2026-10-17T23:01:41.450Z",
+    "new": [
+      {
+        "id": "L050",
+        "rule": "float-money",
+        "file": "scripts/reservations.mjs",
+        "line": 10,
+        "severity": "medium",
+        "fingerprint": "3bff6b452232"
+      }
+    ],
+    "resolved": [
+      {
+        "id": "L050",
+        "rule": "float-money",
+        "file": "scripts/reservations.mjs",
+        "line": 10,
+        "severity": "medium",
+        "fingerprint": "3fb5cbf2e71b"
+      }
+    ],
+    "still_open": 69,
+    "regressed": [],
+    "check_regressions": [],
+    "tools_lost": [],
+    "accepted_expired": []
+  }
+}
