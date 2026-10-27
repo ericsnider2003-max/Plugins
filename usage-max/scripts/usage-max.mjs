@@ -47,6 +47,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
 
 import { oldSyncedCopies, DISABLE_OLD } from "./dupes.mjs";
 import { readJson as rj, writeJsonAtomic } from "./meter.mjs";
@@ -244,8 +245,32 @@ const map = {
     const result = { context: estimateContext({}), modelEffort: recommendModelEffort({}), subagents: assessSubagentROI({}), reads: analyzeReads([]), note: "observation-only defaults; supply task evidence to the library APIs for a useful recommendation" };
     console.log(rest.includes("--json") ? JSON.stringify(result, null, 2) : ["usage-max advisors (observation-only)", `context: ${result.context.status}`, `model/effort: ${result.modelEffort.status} -> ${result.modelEffort.recommended.profile}`, `subagents: ${result.subagents.status}`, `reads: ${result.reads.status}`, result.note].join("\n"));
     return 0;
+  },
+  workflow: async () => {
+    const { planWorkflow, recommendFromHistory } = await import("./workflow-autopilot.mjs");
+    const { readWorkflows } = await import("./workflow-ledger.mjs");
+    if (rest[0] === "run") {
+      if (!rest.includes("--unattended")) { console.error("refused: workflow run requires --unattended"); return 2; }
+      const value = (flag) => { const i = rest.indexOf(flag); return i >= 0 ? rest[i + 1] : null; };
+      const planFile = value("--plan"); const observationFile = value("--observation"); const workerFile = value("--worker");
+      if (!planFile || !observationFile || !workerFile) { console.error("usage: usage-max workflow run --unattended --plan <plan.json> --observation <observation.json> --worker <worker.mjs>"); return 2; }
+      const plan = json(path.resolve(planFile)); const observation = json(path.resolve(observationFile));
+      if (!plan || plan.executionMode !== "unattended" || !Array.isArray(plan.stages) || !observation) { console.error("refused: plan must be valid, executionMode=unattended, include stages, and have an observation"); return 2; }
+      const workerPath = path.resolve(workerFile); const workerModule = await import(pathToFileURL(workerPath).href);
+      if (typeof workerModule.worker !== "function") { console.error("refused: worker module must export worker()"); return 2; }
+      const { runWorkflow } = await import("./workflow-runner.mjs");
+      const result = await runWorkflow({ home, task: plan.task || null, taskId: plan.taskId, idempotencyKey: plan.idempotencyKey, stages: plan.stages, observation, accountApproved: plan.accountApproved === true, worker: workerModule.worker, verify: workerModule.verify || null, now: plan.now || new Date().toISOString() });
+      console.log(JSON.stringify(result, null, 2)); return result.completed ? 0 : 1;
+    }
+    const prompt = rest.filter((x) => !x.startsWith("--")).join(" ");
+    const plan = planWorkflow({ prompt, files: Number(rest[rest.indexOf("--files") + 1]) || 0, executionMode: rest.includes("--unattended") ? "unattended" : "interactive" });
+    if (rest[0] === "status") { const records = readWorkflows(home); console.log(JSON.stringify({ records: records.length, latest: records.slice(-10), recommendation: recommendFromHistory(records) }, null, 2)); return 0; }
+    if (rest[0] === "recommend") { console.log(JSON.stringify(recommendFromHistory(readWorkflows(home)), null, 2)); return 0; }
+    if (rest[0] === "plan" && rest.includes("--save")) { const target = rest[rest.indexOf("--save") + 1]; if (!target) { console.error("usage: usage-max workflow plan <prompt> --save <plan.json>"); return 2; } const saved = { ...plan, taskId: `workflow-${Date.now()}`, idempotencyKey: `workflow-${Date.now()}-key`, executionMode: rest.includes("--unattended") ? "unattended" : "interactive", stages: plan.stages }; fs.mkdirSync(path.dirname(path.resolve(target)), { recursive: true }); fs.writeFileSync(path.resolve(target), `${JSON.stringify(saved, null, 2)}\n`, { mode: 0o600 }); console.log(`saved workflow plan: ${path.resolve(target)}`); return 0; }
+    console.log(rest.includes("--json") ? JSON.stringify(plan, null, 2) : [`workflow autopilot: ${plan.classification.complexity}`, `stages: ${plan.stages.join(" -> ")}`, `mode: recommendation-only`, `rationale: ${plan.rationale}`, "interactive work is never blocked", "execution requires an explicit unattended runner integration"].join("\n"));
+    return 0;
   }
 };
 // Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
-if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status providers blocks savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here safety memory pack resume context continuity advisor digest queue evidence accounts service trial plan-audit surfaces report dashboard console attachments mcpb mcp-http dossier chat-prefs graph codex route handoff)\n`); process.exit(await map.status()); }
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status providers blocks savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here safety memory pack resume context continuity advisor digest queue evidence accounts service trial plan-audit surfaces report dashboard console attachments mcpb mcp-http dossier chat-prefs graph codex route handoff workflow)\n`); process.exit(await map.status()); }
 process.exit(await map[sub]());

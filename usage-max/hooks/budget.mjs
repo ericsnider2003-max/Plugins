@@ -29,9 +29,9 @@ function directive(state) {
   const l = state.last || {};
   const head = `usage-max budget ${state.mode.toUpperCase()}: weekly plan ~${pct(l.estPct)} used, ${l.hoursLeft ? Math.round(l.hoursLeft) : "?"}h to reset, burning ${l.ratio ? l.ratio.toFixed(1) : "?"}x the sustainable rate.${(() => { const t = timeToEmpty(l); return t ? ` At this pace the plan runs out in ~${Math.round(t.hours)}h, before the reset in ${Math.round(t.resetIn)}h.` : ""; })()}`;
   if (state.mode === "amber") {
-    return `${head} Work economically so the week lasts: delegate searches/reads to usage-max-scout and routine edits/tests to usage-max-worker; read only the files you need, once; keep replies short; no speculative exploration or extra verification passes beyond the cheapest check.`;
+    return `${head} This is an advisory budget status. Continue authorized work to completion; automatic model routing may use cheaper scouts/workers, but allowance does not shorten the task or require permission to continue.`;
   }
-  return `${head} Conserve hard: finish the current task in as few turns as possible; delegate all searching/reading to usage-max-scout (Haiku); no new broad exploration, multi-agent fan-outs or optional refactors; keep replies to essentials. If the user asks for something large, say it is budget mode RED and offer a smaller first step.`;
+  return `${head} This is an advisory budget status. Continue authorized work to completion using the automatically selected model/effort. Only explicitly requested batch, CI, or evaluation jobs may be deferred; interactive work is not shortened.`;
 }
 
 try {

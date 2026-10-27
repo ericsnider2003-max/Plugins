@@ -48,9 +48,11 @@ const govOld = govAgeH !== null && govAgeH > 6 && !(gov && gov.override) ? ` (as
 if (gov && gov.mode) parts.push(`budget ${gov.mode.toUpperCase()}${gov.override ? " (pinned)" : ""}${govOld}${gov.last && gov.last.note ? " (plan % unknown until your next reply)" : ""}`);
 
 const rl = input.rate_limits || null;
-if (rl && (rl.seven_day || rl.five_hour)) {
+if (rl && Object.keys(rl).length) {
   try { // atomic: the governor reads this file while the next render may be writing it. A window the reading lacks stays null (an old value must not look new).
-    writeAtomic(limitsPath, JSON.stringify({ capturedAt: new Date().toISOString(), five_hour: rl.five_hour || null, seven_day: rl.seven_day || null }));
+    // Preserve every provider window. Claude may add scoped weekly buckets;
+    // dropping them here makes the next provider observation look incomplete.
+    writeAtomic(limitsPath, JSON.stringify({ capturedAt: new Date().toISOString(), ...rl }));
   } catch (e) { process.exitCode = 0; }
   const early = (p) => p.elapsed < 0.1 && p.used < 95; // a projection from the first tenth of a window is noise (the budget logic ignores it too)
   const wk = pace(rl.seven_day, 7 * 24 * 3600);

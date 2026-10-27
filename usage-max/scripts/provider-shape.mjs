@@ -19,6 +19,8 @@ export function shapeSignature(capture) { return JSON.stringify(limitShape(captu
 
 export function compareLimitShape(previous, current) {
   if (!previous || !current) return { changed: false, reason: null, previous: limitShape(previous), current: limitShape(current) };
-  const before = shapeSignature(previous); const after = shapeSignature(current);
-  return { changed: before !== after, reason: before === after ? null : "shape_changed", previous: limitShape(previous), current: limitShape(current) };
+  const before = limitShape(previous); const after = limitShape(current);
+  const oldByKey = new Map(before.map((x) => [x.key, x]));
+  const conflicts = after.filter((x) => oldByKey.has(x.key) && JSON.stringify(oldByKey.get(x.key)) !== JSON.stringify(x));
+  return { changed: conflicts.length > 0, reason: conflicts.length ? "shape_changed" : (before.length !== after.length ? "additive_window" : null), additive: after.filter((x) => !oldByKey.has(x.key)), conflicts, previous: before, current: after };
 }

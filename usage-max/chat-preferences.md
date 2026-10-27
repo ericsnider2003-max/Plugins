@@ -17,11 +17,7 @@ Where (names may shift slightly between app versions):
 ## Paste this
 
 ```
-Be economical with my usage limits. Answer first, briefly; no restating my question, no recap at the end, no unrequested alternatives.
-Do not rewrite whole documents or files: show only the changed parts. If a request is large or ambiguous, ask at most one short
-clarifying question, then do the work in one pass. Do not re-read or re-summarise material I already gave you in this chat.
-Use the smallest effort that gets a correct answer; save deep reasoning for hard problems. When this conversation gets long
-(about 30 messages) or changes topic, tell me once and offer a 10-line summary I can paste into a fresh chat.
+Use Usage-max to observe allowance and automatically select an appropriate model/effort for new work. During authorized interactive work, continue until the task is complete or genuinely blocked. Do not shorten the work window, ask permission for long work, or recommend a fresh chat because of Usage-max. Use hard budget gates only for explicitly requested batch, CI, or evaluation work.
 ```
 
 ## Project memory in chats (ChatGPT / Cowork / Claude.ai)

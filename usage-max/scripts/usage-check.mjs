@@ -27,7 +27,8 @@ async function main() {
   let limits = null;
   try {
     const l = JSON.parse(fs.readFileSync(arg("limits", path.join(homeDir(), ".claude", "usage-max", "limits.json")), "utf8"));
-    if (l.seven_day && l.seven_day.resets_at * 1000 > now.getTime()) limits = l;
+    const usable = Object.values(l).filter((x) => x && typeof x === "object" && Number.isFinite(Number(x.used_percentage)) && Number(x.resets_at) * 1000 > now.getTime());
+    if (usable.length) limits = { ...l, seven_day: l.seven_day || usable.sort((a, b) => Number(b.resets_at) - Number(a.resets_at))[0] };
   } catch {}
   // No fresh status-line reading and no --reset: use the weekly reset the user saved with `calibrate` (governor.json calib.resetsAt, seconds)
   // before the Sunday 07:00 default, which is wrong for any other reset day. A reset that just passed has already rolled to the next week.
@@ -40,7 +41,7 @@ async function main() {
     } catch (e) { calibStart = null; }
   }
   const resetSpec = limits ? { source: "plan (status line)" } : calibStart ? { source: "calibration (governor.json, saved weekly reset)" } : resolveResetSpec(arg("reset", null), homeDir());
-  const reset = limits ? new Date(limits.seven_day.resets_at * 1000 - 7 * 86400000) : calibStart || weeklyStart(now, resetSpec);
+  const reset = limits ? new Date(Number(limits.seven_day.resets_at) * 1000 - 7 * 86400000) : calibStart || weeklyStart(now, resetSpec);
   const windows = { last5h: now.getTime() - 5 * 60 * 60 * 1000 };
   const dir = arg("projects-dir", path.join(homeDir(), ".claude", "projects"));
   const weeklyUsed = arg("weekly-used-percent", null);

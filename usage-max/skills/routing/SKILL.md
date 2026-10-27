@@ -30,7 +30,7 @@ If the whole job is one small read or one-line answer, do it inline. Never pay a
 
 ## Handoff boundaries
 
-Every ~20 messages or at a task boundary, write `handoff.md` (goal, key context, decisions, checklist, next step) plus a task ledger entry. A fresh session can resume from the handoff file with a smaller, warmer context.
+At a task boundary or before an explicit continuation handoff, write `handoff.md` (goal, key context, decisions, checklist, next step) plus a task ledger entry. Do not create handoffs or fresh sessions merely because a conversation is long.
 
 ## Escalation protocol
 
@@ -57,7 +57,7 @@ The goal is the most finished work per week: no waste, and no unused allowance a
 - Keep the model fixed within a session: each model has its own cache, so `/model` (or a skill/command that names another `model:`) re-reads the whole history uncached. Effort changes on Opus/Sonnet 5.5 keep the cache (free). Never use `opusplan` (every plan-mode toggle is a model switch).
 - Don't toggle MCP servers or deny whole tools mid-session when tool search is off: it invalidates the cache. Plugin skills/commands/agents/hooks are cache-safe.
 - Edits to CLAUDE.md don't apply (or cost anything) until `/clear`, `/compact` or restart. After a long break, accept "resume from summary".
-- Be terse: no restating the question, no narration of obvious steps, no summaries of diffs the user can see. Output is ~40% of spend; short answers are the cheapest lever you control.
+- Keep responses clear and proportional to the user’s request. Do not omit necessary implementation, verification, or continuation work to save output tokens.
 - Run `/usage-max diet` when startup context looks heavy; unused plugins, long CLAUDE.md and idle MCP servers are paid on every turn.
 - Batch/eval runs: wrap in `scripts/eval-cache.mjs` (skips unchanged work) and `scripts/claude-lean.mjs --hold-red`.
 - `/usage-max diagnose` ranks the measured levers on this machine. Act on the top ones, not on generic advice.

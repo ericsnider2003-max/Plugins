@@ -1,0 +1,16 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+const root = process.cwd(); const home = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-workflow-cli-"));
+const run = (args) => spawnSync(process.execPath, [path.join(root, "scripts/usage-max.mjs"), ...args], { env: { ...process.env, USAGE_MAX_HOME: home }, encoding: "utf8" });
+assert.equal(run(["workflow", "run"]).status, 2);
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-workflow-plan-"));
+const plan = path.join(dir, "plan.json"); const observation = path.join(dir, "observation.json");
+fs.writeFileSync(plan, JSON.stringify({ taskId: "cli-wf", idempotencyKey: "cli-wf-key", executionMode: "unattended", accountApproved: true, stages: ["direct"], now: "2026-10-26T08:00:00Z" }));
+fs.writeFileSync(observation, JSON.stringify({ provider: "anthropic", surface: "claude-code", state: "governing", authority: "provider", freshness: "fresh", capturedAt: "2026-10-26T08:00:00Z", account: { slot: "anthropic-primary" }, model: { provider: "anthropic", known: true, canonical: "claude-sonnet-5-5" }, window: { id: "five_hour", usedPercentage: 20 } }));
+const ok = run(["workflow", "run", "--unattended", "--plan", plan, "--observation", observation, "--worker", path.join(root, "test/workflow-cli-worker.mjs")]);
+assert.equal(ok.status, 0, ok.stderr + ok.stdout);
+assert.match(ok.stdout, /"completed": true/);
+console.log("workflow CLI tests passed");

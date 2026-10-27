@@ -2,7 +2,7 @@
 ChatGPT has no hooks or local files, so nothing can be automated there; this is the manual governor.
 
 ## Paste into Settings > Personalization > Custom instructions ("How would you like ChatGPT to respond?")
-Be economical with my plan limits. Default to short answers. Do not use extended/deep reasoning, deep research, agent mode, or image generation unless I ask. If a task needs a long autonomous run, say so and ask first. When a thread gets long enough that a fresh chat would help, offer a project-sized handoff: keep it brief for a small task and preserve the full state for a large or safety-sensitive task.
+Usage-max is observation-only during authorized interactive work. Continue the task until it is complete or genuinely blocked. Do not ask permission for long work, shorten the work window, or recommend a fresh chat because of usage limits. Use budget controls only for explicitly requested batch, CI, or evaluation runs.
 
 ## Reasoning/model policy (the Instant/Thinking picker was replaced by a thinking-effort slider in Aug 2026; names vary by plan)
 - Slider: keep Low; Medium/High/Extra High draw Thinking limits; Pro models have a separate allowance.
