@@ -1,0 +1,15 @@
+{
+  "name": "ugc-kits",
+  "version": "1.0.0",
+  "description": "Eric's UGC pipeline playbooks for Windows: video editing (STYLES.md, inbox, auto-edit), recording-to-review (first cut -> EDL), project management (approvals), motion graphics (overlays) - all wired to the UGC EDL engine and quality gate.",
+  "author": { "name": "Eric" },
+  "license": "UNLICENSED",
+  "skills": [
+    "./skills/ugc-pipeline",
+    "./skills/ugc-video-editing",
+    "./skills/ugc-recording-to-review",
+    "./skills/ugc-project-management",
+    "./skills/ugc-motion-graphics"
+  ],
+  "commands": ["./commands/ugc.md"]
+}

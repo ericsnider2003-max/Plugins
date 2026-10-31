@@ -10,6 +10,12 @@
       "source": "./usage-max",
       "description": "Keep every AI plan lasting to reset: automatic budget governor, model routing, context diet, and usage reports for Claude Code (plus a Codex port).",
       "version": "0.21.3"
+    },
+    {
+      "name": "ugc-kits",
+      "source": "./ugc-kits",
+      "description": "UGC pipeline playbooks for Windows: video editing, recording-to-review, project management, motion graphics, all wired to the EDL engine and quality gate.",
+      "version": "1.0.0"
     }
   ]
 }
