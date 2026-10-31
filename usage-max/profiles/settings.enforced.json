@@ -1,6 +1,6 @@
 {
   "$comment": "usage-max enforced profile: Opus 5.5 hub (ceiling), Sonnet/Haiku subagents. Effort medium everywhere (Anthropic's Opus 5.5 default; raise per session with /effort high|xhigh|max for hard problems). promptCacheTtl 5m: replaying this machine's sessions showed the 1h cache never paid for its 2x write rate (re-check with /usage-max:diagnose). Prompt suggestions off (background requests). ANTHROPIC_DEFAULT_OPUS_MODEL pins the 'opus' alias (plan mode, /model opus) to 5.5. Merge into ~/.claude/settings.json (back it up first). BASH_MAX_OUTPUT_LENGTH stays at the default 30000: a smaller cap would silently cut long command output you may need. CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL 5m: subagent runs are short bursts, so the 1h cache write (2x) rarely pays back (needs a recent Claude Code; unknown variables are ignored). usage-max does NOT switch off telemetry, feedback surveys, away summaries, goal check-ins, terminal titles or cross-session messages: those are product features and connections (telemetry off was reported to block Remote Control), and are left to you. Older versions wrote them; they are handed back.",
-  "model": "claude-opus-5-5",
+  "model": "claude-sonnet-5-5",
   "effortLevel": "medium",
   "autoCompactEnabled": true,
   "cleanupPeriodDays": 30,
