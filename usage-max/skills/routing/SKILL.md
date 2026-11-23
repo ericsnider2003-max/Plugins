@@ -11,7 +11,8 @@ Ceiling: Opus 5.5. Never use fable or best.
 
 - **Haiku** (`usage-max-scout`): search, file reads, web checks, formatting, boilerplate, single screenshots, output summaries.
 - **Sonnet** (`usage-max-worker`): standard edits, tests, refactors, reviews via `usage-max-reviewer`.
-- **Opus 5.5** (the hub itself): planning, architecture decisions, root-cause deadlocks, ambiguous plans, final synthesis. The hub runs on Opus 5.5; it delegates volume work down, it never escalates above Opus 5.5.
+- **Hub** (you): runs on the profile default (Sonnet 5.5 unless the user picked a model). Escalate the hub to Opus 5.5 (`/model`) only for architecture, ambiguous root-cause and final review, then drop back. Delegate volume work down; never go above Opus 5.5.
+- Subagents never run above Sonnet: scout Haiku, worker Sonnet, reviewer Sonnet.
 
 ## Cheap first pass
 

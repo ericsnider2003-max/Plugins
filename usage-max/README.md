@@ -394,7 +394,7 @@ Under it: three subagents (`usage-max-scout` Haiku 5.5, `-worker` Sonnet 5.5, `-
 
 ## Strategy (the short version)
 
-One hub session per project on Opus 5.5 (`claude-opus-5-5`, pinned — the `opus` alias is pinned to 5.5 too); scouts explore in sidechains; workers execute on Sonnet with cheap local checks (`cargo check`, `pytest -q`, `tsc --noEmit`); reviewer gates quality; nothing ever runs above Opus 5.5. Background work becomes bounded headless one-shots. `/usage-check` reports both windows vs the ~10%-per-5h pacing heuristic; the budget guard alerts at 60/75/90%.
+One hub session per project on the profile default (Sonnet 5.5), escalated to Opus 5.5 (`claude-opus-5-5`, pinned — the `opus` alias is pinned to 5.5 too) per task for architecture, ambiguous root-cause and final review; scouts explore in sidechains; workers execute on Sonnet with cheap local checks (`cargo check`, `pytest -q`, `tsc --noEmit`); reviewer gates quality; nothing ever runs above Opus 5.5. Background work becomes bounded headless one-shots. `/usage-check` reports both windows vs the ~10%-per-5h pacing heuristic; the budget guard alerts at 60/75/90%.
 
 ## Measured on this machine (Phase 0, Oct 7 2026)
 

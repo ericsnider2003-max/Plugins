@@ -163,7 +163,7 @@ function rescue(args) {
     console.log("EMERGENCY STOP — kill every source of background burn:\n  1. `claude agents`: stop every background row (keep none you do not need).\n  2. In each session: cancel /loop and scheduled wakeups (`/loop stop`).\n  3. Desktop Routines / Cowork scheduled tasks: disable them in their UIs.\n  4. OS schedulers: Windows `schtasks /query | findstr claude` then `schtasks /delete /tn <name>`; Linux `crontab -l`.\n  5. Codex: close running `codex exec` jobs; `node scripts/codex-governor.mjs mode red`.\n  6. Pin the budget: `usage-max budget mode red`.");
     return 0;
   }
-  console.log("Day-0 rescue:\n  - In active sessions: /model claude-opus-5-5 (never above the ceiling).\n  - Put Sonnet on the agent header before dispatching big work; close idle background sessions.\n  - Apply the profile: usage-max rescue apply   (shows the diff)  then  usage-max rescue apply --write\n  - Background jobs: usage-max rescue migrate  |  emergency: usage-max rescue halt");
+  console.log("Day-0 rescue:\n  - In a stuck active session, escalate that task only (per-task, not the default; the default hub stays on Sonnet 5.5): /model claude-opus-5-5 (never above the ceiling), then switch back.\n  - Put Sonnet on the agent header before dispatching big work; close idle background sessions.\n  - Apply the profile: usage-max rescue apply   (shows the diff)  then  usage-max rescue apply --write\n  - Background jobs: usage-max rescue migrate  |  emergency: usage-max rescue halt");
   return 0;
 }
 

@@ -75,7 +75,7 @@ async function main() {
   const aboveCeiling = modelRows.filter((row) => ceilingStatus(row.model) === "above").map((row) => ({ model: row.model, turns: row.turns }));
   const unknownModels = modelRows.filter((row) => ceilingStatus(row.model) === "unknown").map((row) => ({ model: row.model, turns: row.turns }));
   const sidechainOpusTurns = modelRows.filter((row) => row.family === "opus").reduce((sum, row) => sum + row.sidechainTurns, 0);
-  // Hub runs on Opus 5.5 by design. Compliance = nothing above the ceiling + subagents stay on Haiku/Sonnet.
+  // Hub default is Sonnet 5.5 (Opus 5.5 per task). Compliance = nothing above the ceiling + subagents stay on Haiku/Sonnet.
   let compliance = {
     declaredOpusTurns: expectOpus === null ? null : Number(expectOpus),
     actualOpusTurns: opusTurns,
