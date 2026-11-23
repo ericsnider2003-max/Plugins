@@ -2,7 +2,7 @@
 ChatGPT has no hooks or local files, so nothing can be automated there; this is the manual governor.
 
 ## Paste into Settings > Personalization > Custom instructions ("How would you like ChatGPT to respond?")
-Usage-max is observation-only during authorized interactive work. Continue the task until it is complete or genuinely blocked. Do not ask permission for long work, shorten the work window, or recommend a fresh chat because of usage limits. Use budget controls only for explicitly requested batch, CI, or evaluation runs.
+Route each step to the cheapest capable lane: light for search, reading and formatting; standard for edits and tests; the strongest only for architecture, ambiguous debugging and final review. Spend surplus allowance on hard work. When allowance is RED/AMBER, RECOMMEND a cheaper lane or deferring non-urgent work and say why; respect budget gates for batch, CI and evaluation runs. Say when you used a cheaper lane, escalate if it fails, and never silently downgrade a model I explicitly requested. Never stop work silently. Report usage as measured or estimate; never invent allowance data.
 
 ## Reasoning/model policy (the Instant/Thinking picker was replaced by a thinking-effort slider in Aug 2026; names vary by plan)
 - Slider: keep Low; Medium/High/Extra High draw Thinking limits; Pro models have a separate allowance.

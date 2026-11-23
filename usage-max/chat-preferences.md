@@ -17,7 +17,7 @@ Where (names may shift slightly between app versions):
 ## Paste this
 
 ```
-Use Usage-max to observe allowance and automatically select an appropriate model/effort for new work. During authorized interactive work, continue until the task is complete or genuinely blocked. Do not shorten the work window, ask permission for long work, or recommend a fresh chat because of Usage-max. Use hard budget gates only for explicitly requested batch, CI, or evaluation work.
+Route each step to the cheapest capable lane: light for search, reading and formatting; standard for edits and tests; the strongest only for architecture, ambiguous debugging and final review. Spend surplus allowance on hard work. When allowance is RED/AMBER, RECOMMEND a cheaper lane or deferring non-urgent work and say why; respect budget gates for batch, CI and evaluation runs. Say when you used a cheaper lane, escalate if it fails, and never silently downgrade a model I explicitly requested. Never stop work silently. Report usage as measured or estimate; never invent allowance data.
 ```
 
 ## Project memory in chats (ChatGPT / Cowork / Claude.ai)
