@@ -261,7 +261,7 @@ await t("BUG-013", "kit scripts pick the newest installed plugin folder, and the
   const copy = tmp("umrepo-"); const cl = spawnSync("git", ["clone", "-q", path.join(root, ".."), copy], { encoding: "utf8" }); assert.equal(cl.status, 0, cl.stderr);
   fs.copyFileSync(path.join(root, "..", "install/build-kit.py"), path.join(copy, "install/build-kit.py")); // the version under test, not the last commit
   for (const f of fs.readdirSync(path.join(copy, "install/kit"))) if (f.endsWith(".sh")) fs.writeFileSync(path.join(copy, "install/kit", f), fs.readFileSync(path.join(copy, "install/kit", f), "utf8").replace(/\n/g, "\r\n"));
-  const out = tmp("umout-"); const b = spawnSync("python3", [path.join(copy, "install/build-kit.py"), "--out", out], { encoding: "utf8" }); assert.equal(b.status, 0, b.stderr);
+  const out = tmp("umout-"); const b = spawnSync(process.platform === "win32" ? "python" : "python3", [path.join(copy, "install/build-kit.py"), "--out", out], { encoding: "utf8" }); assert.equal(b.status, 0, b.stderr);
   const zl = spawnSync("unzip", ["-p", path.join(out, "usage-max-desktop.zip"), "usage-max-desktop/2-INSTALL-CODEX.sh"], { encoding: "buffer" }); assert.ok(zl.stdout.length > 50 && !zl.stdout.includes(13), "no carriage returns in the .sh inside the kit");
 });
 
@@ -306,7 +306,7 @@ await t("BUG-020", "a model missing from the price table is priced like its fami
 await t("BUG-021", "two spellings of one folder map to one resume note and one meter offset", async () => {
   const S = await imp("scripts/safefile.mjs"), R = await imp("scripts/resume.mjs");
   assert.equal(S.canonPath("C:\\Users\\Me\\Proj", "win32"), S.canonPath("c:/users/me/proj", "win32"), "case and slashes on Windows");
-  const home = tmp(); const real = path.join(home, "real"); fs.mkdirSync(real); const link = path.join(home, "link"); fs.symlinkSync(real, link, "dir");
+  const home = tmp(); const real = path.join(home, "real"); fs.mkdirSync(real); const link = path.join(home, "link"); fs.symlinkSync(real, link, process.platform === "win32" ? "junction" : "dir");
   assert.equal(R.resumeFile(home, real), R.resumeFile(home, link), "a link to the folder shares its note");
   const dd = path.join(home, "data"); assert.equal(R.saveResume(dd, real, "note from the real path"), true); assert.match(R.peekResume(dd, link) || "", /note from the real path/);
   const tr = path.join(real, "s.jsonl"); fs.writeFileSync(tr, JSON.stringify({ type: "assistant", timestamp: new Date().toISOString(), message: { id: "z1", model: "claude-opus-5-5", usage: { input_tokens: 1000, output_tokens: 1000 } } }) + "\n");
@@ -315,7 +315,7 @@ await t("BUG-021", "two spellings of one folder map to one resume note and one m
 });
 
 await t("BUG-022", "a half-updated Codex install makes the hook do nothing instead of failing at startup", async () => {
-  const d = tmp("umstale-"); fs.cpSync(path.join(root, "codex/scripts"), d, { recursive: true });
+  const base = tmp("umstale-"); const d = path.join(base, "codex", "scripts"); fs.cpSync(path.join(root, "codex/scripts"), d, { recursive: true }); fs.cpSync(path.join(root, "scripts"), path.join(base, "scripts"), { recursive: true }); // the hook imports ../../scripts/failure-health.mjs, so keep the plugin layout
   const g = path.join(d, "codex-guards.mjs"); fs.writeFileSync(g, fs.readFileSync(g, "utf8").replace(/export (const|function) nudgeAt/, "$1 nudgeAt")); // an older copy without that export
   const home = tmp(); const r = spawnSync("node", [path.join(d, "codex-hook.mjs"), "SessionStart"], { input: JSON.stringify({ session_id: "s" }), env: { ...process.env, USAGE_MAX_HOME: home, CODEX_HOME: path.join(home, ".codex") }, encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr); assert.equal(r.stderr.trim(), "", "no startup error"); assert.equal(r.stdout.trim(), "", "and no half-working output");
