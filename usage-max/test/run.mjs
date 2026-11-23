@@ -12,6 +12,7 @@ import { recordCost, scanFrom, spendInLast } from "../scripts/meter.mjs";
 // Never let a test touch the real ~/.claude (the SessionStart hook configures itself): everything runs in a sandbox home.
 const SANDBOX_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "usage-max-sandbox-"));
 process.env.USAGE_MAX_HOME = SANDBOX_HOME;
+process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."));
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 let failures = 0;
