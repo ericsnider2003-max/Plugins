@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { summarizeProjects, ceilingStatus, parseResetSpec, weeklyStart, pace } from "../scripts/lib.mjs";
 import { replayTtl, priceFor } from "../scripts/pricing.mjs";
 import { decide, absorbSnapshot, estimate, DEFAULT_CONFIG } from "../scripts/governor.mjs";
@@ -100,6 +100,22 @@ const enforcedOut = ss("{}");
 check("session-start: enforced profile", enforcedOut.includes("model=claude-sonnet-5-5 (settings) profile=enforced"), true);
 check("session-start: enforced has no ceiling warning", enforcedOut.includes("ABOVE"), false);
 check("session-start: session model wins", ss(JSON.stringify({ model: "claude-haiku-4-5-20251001" })).includes("model=claude-haiku-4-5-20251001 (session) profile=enforced"), true);
+// session-start SURPLUS branch: the governor moved the model on purpose, so a non-profile model still counts as enforced; plain green does not.
+{ const gd = path.join(fakeHome, ".claude", "usage-max"); fs.mkdirSync(gd, { recursive: true });
+  fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), JSON.stringify({ model: "claude-opus-5-5" }));
+  fs.writeFileSync(path.join(gd, "governor.json"), JSON.stringify({ mode: "green", surplus: true }));
+  check("session-start: surplus + opus model -> enforced", ss("{}").includes("model=claude-opus-5-5 (settings) profile=enforced"), true);
+  fs.writeFileSync(path.join(gd, "governor.json"), JSON.stringify({ mode: "green", surplus: false }));
+  check("session-start: plain green + same opus model -> not-applied", ss("{}").includes("model=claude-opus-5-5 (settings) profile=not-applied"), true);
+  fs.rmSync(gd, { recursive: true, force: true });
+  fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), JSON.stringify({ model: "claude-sonnet-5-5", env: { ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5-5" } })); }
+// governor PROFILE_MODEL falls back to claude-sonnet-5-5 when the profile is missing or invalid JSON (temp copy; real profile untouched).
+for (const [label, setup] of [["missing", (p) => fs.rmSync(p)], ["invalid JSON", (p) => fs.writeFileSync(p, "{ not json")]]) {
+  const cp = fs.mkdtempSync(path.join(os.tmpdir(), "um-pm-")); fs.cpSync(path.join(root, "scripts"), path.join(cp, "scripts"), { recursive: true }); fs.cpSync(path.join(root, "profiles"), path.join(cp, "profiles"), { recursive: true });
+  setup(path.join(cp, "profiles", "settings.enforced.json"));
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", 'const g = await import(process.argv[1]); console.log(g.PROFILE_MODEL + "|" + g.DEFAULT_CONFIG.modes.green.model);', pathToFileURL(path.join(cp, "scripts", "governor.mjs")).href], { encoding: "utf8", env: { ...process.env, USAGE_MAX_HOME: fakeHome } });
+  check("governor PROFILE_MODEL fallback (" + label + "): no throw, green is claude-sonnet-5-5", [r.status, r.stdout.trim()], [0, "claude-sonnet-5-5|claude-sonnet-5-5"]);
+}
 check("session-start: fable flagged above ceiling", ss(JSON.stringify({ model: "claude-fable-5" })).includes("ABOVE the Opus 5.5 ceiling"), true);
 check("session-start: opus 6 flagged above ceiling", ss(JSON.stringify({ model: "claude-opus-6" })).includes("ABOVE the Opus 5.5 ceiling"), true);
 { const h2 = fs.mkdtempSync(path.join(os.tmpdir(), "um-auto-"));
