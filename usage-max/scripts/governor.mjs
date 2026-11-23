@@ -17,6 +17,9 @@ import { withLock } from "./safefile.mjs";
 import { parseResetTime } from "./resettime.mjs";
 import { dataDir, readJson, writeJsonAtomic, loadMeter, saveMeter, spendInLast, bootstrap, writeFailures } from "./meter.mjs";
 
+// One source of truth for the everyday model: the enforced profile (fallback Sonnet). GREEN and AMBER use it; RED stays Sonnet; SURPLUS stays Opus.
+export const PROFILE_MODEL = (() => { try { const m = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "profiles", "settings.enforced.json"), "utf8")).model; return typeof m === "string" && m ? m : "claude-sonnet-5-5"; } catch { return "claude-sonnet-5-5"; } })();
+
 export const DEFAULT_CONFIG = {
   target: 98,
   burnWindowHours: 12,
@@ -25,8 +28,8 @@ export const DEFAULT_CONFIG = {
   redAtPercent: 92,
   manageSettings: true,
   modes: {
-    green: { model: "claude-opus-5-5", effort: "medium" },
-    amber: { model: "claude-opus-5-5", effort: "low" },
+    green: { model: PROFILE_MODEL, effort: "medium" },
+    amber: { model: PROFILE_MODEL, effort: "low" },
     red: { model: "claude-sonnet-5-5", effort: "low" },
     surplus: { model: "claude-opus-5-5", effort: "high", otherEffort: "medium" } // green + allowance going unused: room for harder thinking
   }

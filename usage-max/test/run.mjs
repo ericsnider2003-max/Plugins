@@ -93,11 +93,11 @@ const ss = (input, env = {}) => runNode(path.join(root, "hooks", "session-start.
 check("session-start: no settings -> not-applied", ss("{}").includes("model=unset (none) profile=not-applied"), true);
 fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), JSON.stringify({ model: "opusplan" }));
 check("session-start: opusplan is no longer the profile", ss("{}").includes("model=opusplan (settings) profile=not-applied"), true);
-fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), JSON.stringify({ model: "claude-opus-5-5" }));
+fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), JSON.stringify({ model: "claude-sonnet-5-5" }));
 check("session-start: model without opus-alias pin -> not-applied", ss("{}").includes("profile=not-applied"), true);
-fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), JSON.stringify({ model: "claude-opus-5-5", env: { ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5-5" } }));
+fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), JSON.stringify({ model: "claude-sonnet-5-5", env: { ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5-5" } }));
 const enforcedOut = ss("{}");
-check("session-start: enforced profile", enforcedOut.includes("model=claude-opus-5-5 (settings) profile=enforced"), true);
+check("session-start: enforced profile", enforcedOut.includes("model=claude-sonnet-5-5 (settings) profile=enforced"), true);
 check("session-start: enforced has no ceiling warning", enforcedOut.includes("ABOVE"), false);
 check("session-start: session model wins", ss(JSON.stringify({ model: "claude-haiku-4-5-20251001" })).includes("model=claude-haiku-4-5-20251001 (session) profile=enforced"), true);
 check("session-start: fable flagged above ceiling", ss(JSON.stringify({ model: "claude-fable-5" })).includes("ABOVE the Opus 5.5 ceiling"), true);
@@ -106,9 +106,10 @@ check("session-start: opus 6 flagged above ceiling", ss(JSON.stringify({ model: 
   const auto = runNode(path.join(root, "hooks", "session-start.mjs"), [], { input: "{}", env: { ...process.env, USAGE_MAX_HOME: h2, ANTHROPIC_MODEL: "", USAGE_MAX_AUTOAPPLY: "" } });
   check("session-start: configures itself when settings are missing", auto.includes("auto-applied the usage profile") && auto.includes("profile=enforced"), true);
   check("session-start: injects routing rules", auto.includes("usage-max rules:") && auto.includes("subagents never above Sonnet"), true);
-  check("session-start: auto-apply wrote settings + status line + auto-update", (() => { const x = JSON.parse(fs.readFileSync(path.join(h2, ".claude", "settings.json"), "utf8")); return x.model === "claude-opus-5-5" && x.promptCacheTtl === "5m" && /statusline/.test(x.statusLine.command) && x.extraKnownMarketplaces["eric-plugins"].autoUpdate === true; })(), true);
+  check("session-start: auto-apply wrote settings + status line + auto-update", (() => { const x = JSON.parse(fs.readFileSync(path.join(h2, ".claude", "settings.json"), "utf8")); return x.model === "claude-sonnet-5-5" && x.promptCacheTtl === "5m" && /statusline/.test(x.statusLine.command) && x.extraKnownMarketplaces["eric-plugins"].autoUpdate === true; })(), true);
   const again = runNode(path.join(root, "hooks", "session-start.mjs"), [], { input: "{}", env: { ...process.env, USAGE_MAX_HOME: h2, ANTHROPIC_MODEL: "", USAGE_MAX_AUTOAPPLY: "" } });
   check("session-start: second run is quiet (idempotent)", again.includes("auto-applied"), false);
+  check("session-start: after auto-apply a second session reports the Sonnet default as enforced", again.includes("model=claude-sonnet-5-5 (settings) profile=enforced"), true);
   const hk = (input) => runNode(path.join(root, "hooks", "budget.mjs"), ["PreToolUse"], { input: JSON.stringify(input), env: { ...process.env, USAGE_MAX_HOME: h2 } });
   check("subagents inheriting Opus run on Sonnet even in GREEN", hk({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: "general-purpose" } }).includes('"model":"sonnet"'), true);
   check("an explicitly requested opus subagent is HONOURED (only your ceiling and the no-choice default are applied)", hk({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: "x", model: "opus" } }).includes('"model":"sonnet"'), false);
@@ -322,7 +323,7 @@ check("statusline live model + compact", bigOut.trim(), "usage-max Sonnet 5.5 ·
   check("claude-lean adds --max-turns for -p", /--max-turns 40/.test(lean("-p", "hi").stdout), true);
   check("claude-lean keeps caller --max-turns", /--max-turns 5(\s|$)/.test(lean("-p", "hi", "--max-turns", "5").stdout) && !/--max-turns 40/.test(lean("-p", "hi", "--max-turns", "5").stdout), true);
   gs("mode", "green");
-  check("claude-lean runs in GREEN with opus", /--model claude-opus-5-5/.test(lean("--hold-red", "-p", "hi").stdout), true);
+  check("claude-lean runs in GREEN with the profile model (sonnet)", /--model claude-sonnet-5-5/.test(lean("--hold-red", "-p", "hi").stdout), true);
 }
 
 {

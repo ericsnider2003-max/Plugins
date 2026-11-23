@@ -49,7 +49,7 @@ try {
   const home = process.env.USAGE_MAX_HOME || os.homedir();
   const profile = readJson(path.join(pluginRoot, "profiles", "settings.enforced.json")) || {};
   // Missing/unreadable profile falls back to the strict defaults, never to "anything goes".
-  const expected = profile.model || "claude-opus-5-5";
+  const expected = profile.model || "claude-sonnet-5-5";
   const notes = [];
 
   // Configure ourselves: merge the profile (settings, status line, marketplace auto-update) once per session.
@@ -82,8 +82,9 @@ try {
   const live = readJson(path.join(home, ".claude", "usage-max", "limits.json"));
   const expectedOpusAlias = (profile.env && profile.env.ANTHROPIC_DEFAULT_OPUS_MODEL) || "claude-opus-5-5";
   const opusAlias = (settings.env && settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL) || process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || null;
-  // The governor deliberately moves the model in amber/red, so only GREEN requires the exact profile model.
-  const enforced = budgetMode !== "green" ? Boolean(settings.model) : settings.model === expected && opusAlias === expectedOpusAlias;
+  // The governor deliberately moves the model in amber/red and in SURPLUS (green + unused allowance), so only plain GREEN requires the exact profile model.
+  const governorMoved = budgetMode !== "green" || Boolean(gov && gov.surplus);
+  const enforced = governorMoved ? Boolean(settings.model) : settings.model === expected && opusAlias === expectedOpusAlias;
   if (!enforced && !(applied && applied.wrote)) notes.push("profile not applied; run /usage-max rescue apply --write");
   if (aboveCeiling(model)) notes.push(`model ${model} is ABOVE the Opus 5.5 ceiling — switch with /model ${expected}`);
   if (!calibrated && !live) notes.push("budget is still learning: real plan % appears once the status line has rendered a reply (or /usage-max budget calibrate <pct> --resets <date>)");
