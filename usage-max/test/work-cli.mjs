@@ -87,6 +87,38 @@ check("recovered unit is retryable, live unit stays admitted", [dq.readQueuedWor
 r = work(["recover", "--root", rroot]);
 check("second recover finds nothing", [r.status, r.stdout.trim()], [0, "nothing to recover."]);
 
+// review fixes: recover continues past a locked unit; no root dir for read-only commands; --root value; incomplete enqueue JSON
+const lroot = tmp("work-cli-lock-");
+fs.writeFileSync(path.join(lroot, "local-deterministic.json"), JSON.stringify({ routeId: "local-deterministic", profileStatus: "fixture", capabilities: ["extract"], qualityFloor: 0.86, estimatedUnits: 0 }));
+for (const id of ["STALE-A", "STALE-B"]) {
+  work(["enqueue", taskJson(lroot, id), "--root", lroot]);
+  dq.admitQueuedWorkUnit({ root: lroot, workId: id, registry });
+  const f = path.join(qdir(lroot), `${id}.json`);
+  const rec = JSON.parse(fs.readFileSync(f, "utf8")); rec.activeAttempt.expiresAt = new Date(Date.now() - 60000).toISOString(); reseal(f, rec);
+}
+fs.writeFileSync(path.join(qdir(lroot), "STALE-A.lock"), JSON.stringify({ workId: "STALE-A", pid: process.pid, acquiredAt: new Date().toISOString() }));
+r = work(["recover", "--json", "--root", lroot]);
+let lj = { recovered: [], failed: [] }; try { lj = JSON.parse(r.stdout); } catch {}
+check("recover continues past a locked unit and exits 1", [r.status, lj.recovered.map((x) => x.workId), lj.failed.map((x) => x.workId), /locked/.test(lj.failed[0]?.error)], [1, ["STALE-B"], ["STALE-A"], true]);
+check("the unlocked unit was recovered", dq.readQueuedWorkUnit({ root: lroot, workId: "STALE-B" }).state, "retryable");
+r = work(["recover", "--root", lroot]);
+check("recover text lists recovered and failed", [r.status, /failed STALE-A/.test(r.stdout)], [1, true]);
+
+const mroot = path.join(tmp("work-cli-missing-"), "nope");
+r = work(["list", "--root", mroot]);
+check("list on missing root: no work units, exit 0", [r.status, r.stdout.trim()], [0, "no work units."]);
+check("show on missing root exits 1 not found", [work(["show", "W-9", "--root", mroot]).status, /not found/.test(work(["show", "W-9", "--root", mroot]).stderr)], [1, true]);
+r = work(["verify", "W-9", "A-1", "--root", mroot]);
+check("verify on missing root exits 1 not found", [r.status, /not found/.test(r.stdout)], [1, true]);
+r = work(["recover", "--root", mroot]);
+check("recover on missing root: nothing to recover, exit 0", [r.status, r.stdout.trim()], [0, "nothing to recover."]);
+check("invalid id exits 2 on missing root", work(["show", "../x", "--root", mroot]).status, 2);
+check("read-only commands leave no root dir", fs.existsSync(mroot), false);
+check("--root followed by --json exits 2", work(["list", "--root", "--json"]).status, 2);
+const nt = path.join(root, "notask.json"); fs.writeFileSync(nt, JSON.stringify({ workId: "N-1" }));
+r = work(["enqueue", nt, "--root", root]);
+check("enqueue missing task exits 2 naming the field", [r.status, /task\.id/.test(r.stderr)], [2, true]);
+
 // usage errors
 check("bad subcommand exits 2", work(["bogus"]).status, 2);
 check("no subcommand exits 2", work([]).status, 2);

@@ -13,10 +13,11 @@ export const USAGE = `usage: usage-max work <sub> [--root <dir>] [--json]
   list [--json]                  one line per unit: workId, state, attempt, updated (INVALID = record fails verification)
   show <workId>                  the verified record as JSON
   verify <workId> <attemptId>    check the admission/outcome receipts; exit 0 pass, 1 fail
-  recover [--json]               move units whose lease has expired to 'retryable'
+  recover [--json]               move units whose lease has expired to 'retryable'; exit 1 if any unit failed (others still processed)
   --root <dir>                   default <data dir>/work (~/.claude/usage-max/work); avoid OneDrive folders
   admit/checkpoint/complete/retry need a route registry and executors: programmatic API in scripts/governance
   task.json example: {"workId":"W-1","mode":"interactive","task":{"id":"W-1","qualityThreshold":0.85,"requiredCapabilities":["extract"]}}
+  exit codes: 0 ok, 1 governance/verification failure or not found, 2 usage or input error (bad args, unreadable or incomplete task JSON)
   (task.id must equal workId; workId is 1-128 chars of A-Za-z0-9._- starting with a letter or digit)`;
 
 class UsageError extends Error {}
@@ -26,7 +27,7 @@ function parse(args) {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--json") o.json = true;
-    else if (a === "--root") { o.root = args[++i]; if (!o.root) throw new UsageError("--root needs a directory"); }
+    else if (a === "--root") { o.root = args[++i]; if (!o.root || o.root.startsWith("--")) throw new UsageError("--root needs a directory"); }
     else if (a.startsWith("--")) throw new UsageError(`unknown option ${a}`);
     else o.pos.push(a);
   }
@@ -55,12 +56,14 @@ export async function main(args) {
     const o = parse(rest);
     const root = path.resolve(o.root || path.join(dataDir(), "work"));
     if (/onedrive/i.test(root)) console.error(`warning: ${root} is under OneDrive; file renames can fail while it syncs. Use --root <dir> outside OneDrive.`);
-    fs.mkdirSync(root, { recursive: true });
+    const rootExists = fs.existsSync(root);
     const { assertSafeIdentifier } = await G("identifiers.mjs");
     if (sub === "enqueue") {
       need(o, 1);
       let request; try { request = JSON.parse(fs.readFileSync(o.pos[0], "utf8")); } catch (e) { throw new UsageError(`cannot read task JSON ${o.pos[0]}: ${e.message}`); }
       assertSafeIdentifier(request?.workId, "request.workId");
+      if (typeof request.task?.id !== "string") throw new UsageError(`task JSON ${o.pos[0]} is missing required field task.id`);
+      fs.mkdirSync(root, { recursive: true });
       const { enqueueWorkUnit } = await G("durable-queue.mjs");
       const { record } = enqueueWorkUnit({ root, request });
       console.log(JSON.stringify({ workId: record.workId, state: record.state }));
@@ -74,26 +77,36 @@ export async function main(args) {
     } else if (sub === "show") {
       need(o, 1); assertSafeIdentifier(o.pos[0], "workId");
       const { readQueuedWorkUnit, verifyQueueRecord } = await G("durable-queue.mjs");
+      if (!fs.existsSync(path.join(queueDir(root), `${o.pos[0]}.json`))) { console.error(`not found: work unit ${o.pos[0]} (root ${root})`); return 1; }
       verifyQueueRecord({ root, workId: o.pos[0] });
       console.log(JSON.stringify(readQueuedWorkUnit({ root, workId: o.pos[0] }), null, 2));
     } else if (sub === "verify") {
       need(o, 2); assertSafeIdentifier(o.pos[0], "workId"); assertSafeIdentifier(o.pos[1], "attemptId");
       const { verifyUsageReceipts } = await G("verify-receipts.mjs");
+      if (!rootExists) { console.log(JSON.stringify({ pass: false, workId: o.pos[0], attemptId: o.pos[1], error: `not found: root ${root} does not exist` })); return 1; }
       try { console.log(JSON.stringify(verifyUsageReceipts(root, o.pos[0], o.pos[1]))); }
       catch (e) { console.log(JSON.stringify({ pass: false, workId: o.pos[0], attemptId: o.pos[1], error: e.message })); return 1; }
     } else {
       need(o, 0);
       const { recoverAbandonedWorkUnit } = await G("durable-queue.mjs");
-      const recovered = [], skipped = [];
+      const recovered = [], skipped = [], failed = [];
       for (const u of await units(root)) {
         if (u.error) { skipped.push({ workId: u.workId, error: u.error }); continue; }
         if (!u.record.activeAttempt) continue;
-        const r = recoverAbandonedWorkUnit({ root, workId: u.workId }); // the governance function decides: lease expiresAt <= now
-        if (r.recovered) recovered.push({ workId: u.workId, state: r.queue.state });
+        try {
+          const r = recoverAbandonedWorkUnit({ root, workId: u.workId }); // the governance function decides: lease expiresAt <= now
+          if (r.recovered) recovered.push({ workId: u.workId, state: r.queue.state });
+        } catch (e) { failed.push({ workId: u.workId, error: e.message }); }
       }
       for (const s of skipped) console.error(`skipped INVALID ${s.workId}: ${s.error}`);
-      if (o.json) console.log(JSON.stringify({ recovered, skipped }, null, 2));
-      else console.log(recovered.length ? recovered.map((r) => `recovered ${r.workId} -> ${r.state}`).join("\n") : "nothing to recover.");
+      for (const f of failed) console.error(`failed ${f.workId}: ${f.error}`);
+      if (o.json) console.log(JSON.stringify({ recovered, failed, skipped }, null, 2));
+      else {
+        if (recovered.length) console.log(recovered.map((r) => `recovered ${r.workId} -> ${r.state}`).join("\n"));
+        if (failed.length) console.log(failed.map((f) => `failed ${f.workId}: ${f.error}`).join("\n"));
+        if (!recovered.length && !failed.length) console.log("nothing to recover.");
+      }
+      if (failed.length) return 1;
     }
     return 0;
   } catch (e) {
