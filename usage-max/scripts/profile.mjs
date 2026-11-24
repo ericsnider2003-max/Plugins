@@ -10,13 +10,15 @@ import { withLock, backupFile, writeAtomic } from "./safefile.mjs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig, loadState, patchModel } from "./governor.mjs";
+import { loadConfig, loadState, patchModel, withState, PROFILE_MODEL } from "./governor.mjs";
 import { readJson, writeJsonAtomic } from "./meter.mjs";
 import { ttlAdvice } from "./ttl.mjs";
 import { ownedSet, ownedUnset, loadApplied, saveApplied } from "./owned.mjs";
 
 export const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const MARKETPLACE = { name: "eric-plugins", repo: "ericsnider2003-max/Plugins", ref: "main" }; // pinned to main: auto-update never depends on the repo's default branch
+// Before the Sonnet default, usage-max wrote this model into settings. Migrated once (marker opusDefaultMigrated in governor.json), never again.
+const OLD_DEFAULT_MODEL = "claude-opus-5-5";
 const OWNED_BY_GOVERNOR = new Set(["model", "effortLevel", "modelSettings"]);
 // Written by older versions, never by this one: they switch off features or connections (telemetry off was reported to block Remote Control).
 // Handed back only while the value is still exactly what usage-max wrote; a value you set yourself is never touched.
@@ -40,7 +42,7 @@ try {
 `;
 
 // Returns the merged settings, what changed, and which keys were kept because YOU set them (ownership: see owned.mjs).
-export function computeProfile(settings, { profile, launcher, modelWant = null, autoCompactWindow = null, applied = {}, tighten = false }) {
+export function computeProfile(settings, { profile, launcher, modelWant = null, autoCompactWindow = null, applied = {}, tighten = false, migrateOpus = false }) {
   const next = JSON.parse(JSON.stringify(settings || {}));
   const changes = [], kept = [];
   const set = (keyPath, value) => {
@@ -55,6 +57,11 @@ export function computeProfile(settings, { profile, launcher, modelWant = null, 
     else set(key, value);
   }
   for (const k of HAND_BACK) if (ownedUnset(next, k, applied)) changes.push(`${k}: handed back (usage-max no longer sets it)`);
+  let migrated = false;
+  if (migrateOpus && next.model === OLD_DEFAULT_MODEL) { // one-time: the old usage-max default (Opus) becomes the current profile model; we now own the key, so AMBER never files it away as "yours"
+    changes.push(`model: ${JSON.stringify(next.model)} -> ${JSON.stringify(PROFILE_MODEL)} (migrated old default)`);
+    next.model = PROFILE_MODEL; applied.model = PROFILE_MODEL; migrated = true;
+  }
   if (modelWant) {
     const before = JSON.stringify([next.model, next.effortLevel, next.modelSettings]);
     if (patchModel(next, modelWant, applied, tighten)) changes.push(`model/effort: ${before} -> ${JSON.stringify([next.model, next.effortLevel, next.modelSettings])}`);
@@ -73,7 +80,7 @@ export function computeProfile(settings, { profile, launcher, modelWant = null, 
     if (km.autoUpdate === undefined) { km.autoUpdate = true; changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}.autoUpdate: undefined -> true`); }
     if (!km.source.ref) { km.source.ref = MARKETPLACE.ref; changes.push(`extraKnownMarketplaces.${MARKETPLACE.name}.source.ref: undefined -> "${MARKETPLACE.ref}"`); }
   }
-  return { next, changes, kept };
+  return { next, changes, kept, migrated };
 }
 
 export async function apply({ write = false, home = homeDir(), root = pluginRoot } = {}) {
@@ -95,7 +102,10 @@ export async function apply({ write = false, home = homeDir(), root = pluginRoot
   const appliedFile = path.join(dataDir(home), "applied.json"), applied = loadApplied(appliedFile);
   const acw = Number(readJson(path.join(dataDir(home), "config.json"), {}).autoCompactWindow);
   const cpArgs = { profile, launcher, modelWant, autoCompactWindow: Number.isFinite(acw) && acw > 0 ? acw : null, applied, tighten: gst.mode === "amber" || gst.mode === "red" };
-  let { next, changes, kept } = computeProfile(settings, cpArgs);
+  // First auto-apply decision about the model: only in plain GREEN or AMBER (SURPLUS wants Opus; RED is forced to Sonnet anyway).
+  const decide1 = write && config.manageSettings !== false && !gst.opusDefaultMigrated && (gst.mode === "amber" || (gst.mode === "green" && !gst.surplus));
+  cpArgs.migrateOpus = decide1;
+  let { next, changes, kept, migrated } = computeProfile(settings, cpArgs);
   let real = changes;
   let wrote = false;
   let backup = null;
@@ -108,7 +118,7 @@ export async function apply({ write = false, home = homeDir(), root = pluginRoot
       const r = withLock(file, () => {
         const fresh = existed ? readJson(file, null) : {};
         if (fresh === null) return { error: `${file} is not valid JSON; not touching it` };
-        if (JSON.stringify(fresh) !== JSON.stringify(settings)) { ({ next, changes, kept } = computeProfile(fresh, cpArgs)); real = changes; if (!real.length) return { none: true }; }
+        if (JSON.stringify(fresh) !== JSON.stringify(settings)) { ({ next, changes, kept, migrated } = computeProfile(fresh, cpArgs)); real = changes; if (!real.length) return { none: true }; }
         if (existed) { try { backup = backupFile(file); } catch (e) { return { error: `could not back up ${file} (${e.code || e.message}); left untouched` }; } } // no backup, no write
         writeJsonAtomic(file, next); return { ok: true };
       });
@@ -117,8 +127,10 @@ export async function apply({ write = false, home = homeDir(), root = pluginRoot
       wrote = Boolean(r.value.ok);
     }
     saveApplied(appliedFile, applied);
+    // The marker is recorded at the first decision whatever the model was, so a model chosen later is never touched.
+    if (decide1) { try { withState((st) => { if (!st.opusDefaultMigrated) st.opusDefaultMigrated = new Date().toISOString(); }); } catch {} }
   }
-  return { file, existed, changes, kept, wrote, backup, ttl };
+  return { file, existed, changes, kept, wrote, backup, ttl, migrated: Boolean(migrated && wrote) };
 }
 
 // For `usage-max safety --fix` and SessionStart: only the hand-back, nothing else. Returns the keys given back.

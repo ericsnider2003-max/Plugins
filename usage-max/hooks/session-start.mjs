@@ -60,6 +60,8 @@ try {
   } catch {}
   if (applied && applied.wrote) notes.push(`auto-applied the usage profile (${applied.changes.filter((c) => !c.startsWith("statusLine: left")).length} settings${applied.backup ? `; backup ${applied.backup}` : ""}) — takes effect in NEW sessions`);
 
+  if (applied && applied.migrated) notes.push(`migrated default model claude-opus-5-5 -> ${expected} (backup ${applied.backup || "none: no settings.json existed"}); use /model opus for a session that needs it`);
+
   try { const { releaseLean } = await import("../scripts/governor.mjs"); releaseLean(); } catch {} // safe by default: give back early-compaction / no-auto-memory values an older lean mode wrote
   try { // the old claude.ai-uploaded copy running next to this one would double every hook
     const old = oldSyncedCopies(home, pluginRoot);
@@ -84,15 +86,17 @@ try {
   const opusAlias = (settings.env && settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL) || process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || null;
   // The governor deliberately moves the model in amber/red and in SURPLUS (green + unused allowance), so only plain GREEN requires the exact profile model.
   const governorMoved = budgetMode !== "green" || Boolean(gov && gov.surplus);
+  // Status describes the state AFTER auto-apply in this same run. A different model chosen by the user is respected once the one-time Opus-default migration has been decided (marker).
   const enforced = governorMoved ? Boolean(settings.model) : settings.model === expected && opusAlias === expectedOpusAlias;
-  if (!enforced && !(applied && applied.wrote)) notes.push("profile not applied; run /usage-max rescue apply --write");
+  const userModel = !enforced && !governorMoved && Boolean(gov && gov.opusDefaultMigrated) && Boolean(settings.model) && opusAlias === expectedOpusAlias;
+  if (!enforced && !userModel) notes.push("profile not applied; run /usage-max rescue apply --write");
   if (aboveCeiling(model)) notes.push(`model ${model} is ABOVE the Opus 5.5 ceiling — switch with /model ${expected}`);
   if (!calibrated && !live) notes.push("budget is still learning: real plan % appears once the status line has rendered a reply (or /usage-max budget calibrate <pct> --resets <date>)");
 
   const advice = balanceAdvice({ mode: budgetMode }, readOther("codex"), Date.now(), { selfName: "Claude", otherName: "Codex", dispatch: " (codex-dispatch skill if installed)" });
   const activeGovernance = [...loadTasks(path.join(home, ".usage-max", "tasks.jsonl")).values()].filter((task) => task.executionMode === "unattended" && ["queued", "admitted", "running", "checkpointing", "verifying"].includes(task.state)).slice(0, 3).map((task) => governanceReminder(task, "session-start")).join("\n");
   const rules = (activeGovernance ? activeGovernance + "\n" : "") + (advice ? advice + "\n" : "") + (gov && gov.surplus && budgetMode === "green" ? "usage-max surplus: allowance is going unused this week, higher effort is fine on hard problems.\n" : "") + "usage-max rules: delegate search/read/web/format to usage-max-scout (Haiku; if you would otherwise read more than ~3 files or ~300 lines, send the scout first and read only the file:line ranges it returns) and edits/tests/refactors to usage-max-worker (Sonnet); gate big changes with usage-max-reviewer; subagents never above Sonnet; do micro-tasks inline; keep one model per session; be terse. " + (budgetMode === "green" ? "" : `Budget is ${budgetMode.toUpperCase()}: work economically.`);
-  console.log(`usage-max routing-active model=${model} (${source}) profile=${enforced || (applied && applied.wrote) ? "enforced" : "not-applied"} budget=${budgetMode} ceiling=opus-5.5${notes.length ? ` — ${notes.join("; ")}` : ""}\n${rules}`);
+  console.log(`usage-max routing-active model=${model} (${source}) profile=${enforced ? "enforced" : userModel ? "user-model" : "not-applied"} budget=${budgetMode} ceiling=opus-5.5${notes.length ? ` — ${notes.join("; ")}` : ""}\n${rules}`);
   process.exitCode = 0;
 } catch {
   process.exitCode = 0;

@@ -132,6 +132,46 @@ check("session-start: opus 6 flagged above ceiling", ss(JSON.stringify({ model: 
   check("haiku scout is left alone", hk({ hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: { subagent_type: "usage-max:usage-max-scout", model: "haiku" } }), "");
   const trim = runNode(path.join(root, "hooks", "bash-trim.mjs"), [], { input: JSON.stringify({ tool_name: "Bash", tool_input: { command: "npm test" } }) });
   check("trim hook rewrites but never auto-approves", trim.includes("updatedInput") && !trim.includes("permissionDecision"), true); }
+// One-time migration of the old Opus default to the Sonnet profile model (marker opusDefaultMigrated in governor.json).
+{ const mk = (settings, gov) => { const h = fs.mkdtempSync(path.join(os.tmpdir(), "um-mig-")); fs.mkdirSync(path.join(h, ".claude", "usage-max"), { recursive: true });
+    if (settings) fs.writeFileSync(path.join(h, ".claude", "settings.json"), typeof settings === "string" ? settings : JSON.stringify(settings));
+    if (gov) fs.writeFileSync(path.join(h, ".claude", "usage-max", "governor.json"), JSON.stringify(gov)); return h; };
+  const run = (h, env = {}) => runNode(path.join(root, "hooks", "session-start.mjs"), [], { input: JSON.stringify({ hook_event_name: "SessionStart", source: "startup" }), env: { ...process.env, USAGE_MAX_HOME: h, HOME: h, USERPROFILE: h, ANTHROPIC_MODEL: "", ANTHROPIC_DEFAULT_OPUS_MODEL: "", USAGE_MAX_AUTOAPPLY: "", ...env } });
+  const sm = (h) => JSON.parse(fs.readFileSync(path.join(h, ".claude", "settings.json"), "utf8")).model;
+  const gv = (h) => { try { return JSON.parse(fs.readFileSync(path.join(h, ".claude", "usage-max", "governor.json"), "utf8")); } catch { return {}; } };
+  const MIG = "migrated default model claude-opus-5-5 -> claude-sonnet-5-5 (backup ", HINT = "use /model opus for a session that needs it";
+  // (a)
+  const a = mk({ model: "claude-opus-5-5" }); const a1 = run(a);
+  check("migrate (a): run 1 prints migrated line, enforced, model is sonnet", [a1.includes(MIG), a1.includes(HINT), a1.includes("profile=enforced"), sm(a), typeof gv(a).opusDefaultMigrated], [true, true, true, "claude-sonnet-5-5", "string"]);
+  check("migrate (a): backup file exists", fs.existsSync((/backup ([^;)]+)\)/.exec(a1) || [0, ""])[1]), true);
+  const a2 = run(a);
+  check("migrate (a): run 2 is quiet and enforced", [a2.includes("migrated"), a2.includes("profile=enforced"), a2.includes("rescue")], [false, true, false]);
+  // (b)
+  const bBefore = JSON.stringify({ ...JSON.parse(fs.readFileSync(path.join(a, ".claude", "settings.json"), "utf8")), model: "claude-opus-5-5" });
+  fs.writeFileSync(path.join(a, ".claude", "settings.json"), bBefore); const b = run(a);
+  check("migrate (b): user sets opus again -> user-model, untouched, no rescue", [b.includes("profile=user-model"), b.includes("rescue"), b.includes("migrated"), fs.readFileSync(path.join(a, ".claude", "settings.json"), "utf8") === bBefore], [true, false, false, true]);
+  // user-model with a missing alias pin still takes the not-applied path
+  const bs = JSON.parse(bBefore); delete bs.env.ANTHROPIC_DEFAULT_OPUS_MODEL; fs.writeFileSync(path.join(a, ".claude", "settings.json"), JSON.stringify(bs));
+  const bm = run(a, { USAGE_MAX_AUTOAPPLY: "off" });
+  check("migrate (b2): user model but alias pin missing -> not-applied", bm.includes("profile=not-applied"), true);
+  // (c)
+  for (const m of ["claude-haiku-4-5", "opusplan", "my-custom-model"]) { const c = mk({ model: m }); const c1 = run(c);
+    check(`migrate (c): ${m} kept, marker recorded, user-model`, [sm(c), c1.includes("migrated"), c1.includes("profile=user-model"), c1.includes("rescue"), typeof gv(c).opusDefaultMigrated], [m, false, true, false, "string"]); }
+  // (d)
+  const d = mk({ model: "claude-opus-5-5" }, { mode: "green", surplus: true }); const d1 = run(d);
+  check("migrate (d): surplus + opus -> no migration, no marker, enforced", [sm(d), d1.includes("migrated"), d1.includes("profile=enforced"), gv(d).opusDefaultMigrated], ["claude-opus-5-5", false, true, undefined]);
+  fs.writeFileSync(path.join(d, ".claude", "usage-max", "governor.json"), JSON.stringify({ mode: "green", surplus: false }));
+  const d2 = run(d); const d3 = run(d);
+  check("migrate (d): later non-surplus session migrates once", [sm(d), d2.includes(MIG), d3.includes("migrated"), d3.includes("profile=enforced")], ["claude-sonnet-5-5", true, false, true]);
+  const dr = mk({ model: "claude-opus-5-5" }, { mode: "red" }); run(dr);
+  check("migrate (d2): RED -> no marker", gv(dr).opusDefaultMigrated, undefined);
+  const da = mk({ model: "claude-opus-5-5" }, { mode: "amber" }); const da1 = run(da);
+  check("migrate (d3): AMBER migrates", [sm(da), da1.includes(MIG), typeof gv(da).opusDefaultMigrated], ["claude-sonnet-5-5", true, "string"]);
+  // (e)
+  const e = mk(JSON.stringify({ model: "claude-opus-5-5" }, null, 3)); const eBefore = fs.readFileSync(path.join(e, ".claude", "settings.json"));
+  const e1 = run(e, { USAGE_MAX_AUTOAPPLY: "off" });
+  check("migrate (e): AUTOAPPLY=off -> settings byte-identical, no marker, no migration", [Buffer.compare(eBefore, fs.readFileSync(path.join(e, ".claude", "settings.json"))), e1.includes("migrated"), fs.existsSync(path.join(e, ".claude", "usage-max", "governor.json"))], [0, false, false]);
+}
 check("session-start: fail-open on bad stdin", ss("not json").includes("usage-max routing-active"), true);
 
 // Ceiling classification.
