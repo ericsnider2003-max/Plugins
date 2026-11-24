@@ -19,5 +19,5 @@ const want = cfg.modes[mode].model;
 const i = args.indexOf("--model");
 if (i < 0) args.push("--model", want);
 else if (!force && rank(args[i + 1] || "") > rank(want)) { console.error(`usage-max: ${mode.toUpperCase()} — downgrading ${args[i + 1]} -> ${want}`); args[i + 1] = want; }
-const r = spawnSync("claude", args.map(q), { stdio: "inherit", shell: process.platform === "win32" });
+const r = spawnSync("claude", args.map(q), { windowsHide: true, stdio: "inherit", shell: process.platform === "win32" });
 process.exit(r.status ?? 1);

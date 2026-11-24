@@ -135,7 +135,7 @@ function claudeToken(credentialsPath) {
 
 function refreshClaude(configDir) {
   const exe = process.platform === "win32" ? "claude.exe" : "claude";
-  const r = spawnSync(exe, ["mcp", "list"], { cwd: configDir, env: { ...process.env, CLAUDE_CONFIG_DIR: configDir }, stdio: "ignore", timeout: 30000 });
+  const r = spawnSync(exe, ["mcp", "list"], { windowsHide: true, cwd: configDir, env: { ...process.env, CLAUDE_CONFIG_DIR: configDir }, stdio: "ignore", timeout: 30000 });
   return r.status === 0;
 }
 

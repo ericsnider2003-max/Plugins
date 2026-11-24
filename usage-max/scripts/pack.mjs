@@ -12,7 +12,7 @@ import * as M from "./memory.mjs";
 
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "task";
 export function changedFiles(cwd) {
-  try { const r = spawnSync("git", ["status", "--short"], { cwd, encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }); return r.status === 0 ? r.stdout.split("\n").map((l) => l.slice(3).trim().replace(/^.* -> /, "").replace(/^"|"$/g, "")).filter(Boolean).slice(0, 15) : []; } catch { return []; }
+  try { const r = spawnSync("git", ["status", "--short"], { windowsHide: true, cwd, encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }); return r.status === 0 ? r.stdout.split("\n").map((l) => l.slice(3).trim().replace(/^.* -> /, "").replace(/^"|"$/g, "")).filter(Boolean).slice(0, 15) : []; } catch { return []; }
 }
 export function detectTest(cwd) {
   const has = (f) => fs.existsSync(path.join(cwd, f));

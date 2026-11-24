@@ -30,7 +30,7 @@ export function hashPaths(paths, h = crypto.createHash("sha256")) {
 // With no --key the inputs are "the project as it is now": the git HEAD plus every uncommitted and untracked change. Outside git there is no
 // way to know what the command reads, so it is not cached at all (a cache that cannot notice changes would replay old output for weeks).
 export function gitState(cwd = process.cwd()) {
-  const g = (...a) => { const r = spawnSync("git", a, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }); return r.status === 0 ? r.stdout : null; };
+  const g = (...a) => { const r = spawnSync("git", a, { windowsHide: true, cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }); return r.status === 0 ? r.stdout : null; };
   const head = g("rev-parse", "HEAD"); if (head === null) return null;
   const h = crypto.createHash("sha256"); h.update(head); h.update(g("diff", "HEAD") || "");
   for (const f of (g("ls-files", "-o", "--exclude-standard") || "").split("\n").filter(Boolean).sort()) { h.update("u:" + f); try { const fp = path.join(cwd, f), st = fs.statSync(fp); if (st.size > 5e6) h.update(`big:${st.size}:${st.mtimeMs}`); else h.update(fs.readFileSync(fp)); } catch (e) { h.update("unreadable"); } }
@@ -71,7 +71,7 @@ function main() {
   const opt = argv.slice(0, dd), cmd = argv.slice(dd + 1); const flag = (n, d = null) => { const i = opt.indexOf("--" + n); return i >= 0 ? opt[i + 1] : d; };
   if (!cmd.length) return 2;
   const keys = (flag("key", "") || "").split(",").filter(Boolean), salt = flag("salt", ""), ttl = Number(flag("ttl-days", 30)) * 864e5, art = flag("artifacts");
-  const run = () => { const r = spawnSync(q(cmd[0]), cmd.slice(1).map(q), { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, shell: process.platform === "win32" }); process.stdout.write(r.stdout || ""); process.stderr.write(r.stderr || ""); return { code: r.status ?? 1, stdout: r.stdout || "", stderr: r.stderr || "" }; };
+  const run = () => { const r = spawnSync(q(cmd[0]), cmd.slice(1).map(q), { windowsHide: true, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, shell: process.platform === "win32" }); process.stdout.write(r.stdout || ""); process.stderr.write(r.stderr || ""); return { code: r.status ?? 1, stdout: r.stdout || "", stderr: r.stderr || "" }; };
   if (process.env.USAGE_MAX_EVAL_CACHE === "off") return run().code;
   let git = null;
   if (!keys.length) { git = gitState(); if (!git) { console.error("[eval-cache] no --key given and this is not a git folder, so nothing can tell when the inputs change: running without the cache"); return run().code; } }
@@ -84,7 +84,7 @@ function main() {
     e.hits = (e.hits || 0) + 1; let hitErr = null; try { putPrivate(file, JSON.stringify(e)); } catch (err) { hitErr = err.message; } if (hitErr) console.error("[eval-cache] could not update the hit counter: " + hitErr); console.error(`[eval-cache] HIT ${key.slice(0, 8)} — skipped (${Math.round((e.ms || 0) / 1000)}s of work)`); return 0;
   }
   if (opt.includes("--hold-red")) {
-    const g = spawnSync(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), "governor.mjs"), "gate"], { stdio: "ignore" });
+    const g = spawnSync(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), "governor.mjs"), "gate"], { windowsHide: true, stdio: "ignore" });
     if (g.status === 20) { console.error("[eval-cache] RED budget mode — run deferred (exit 75)"); return 75; }
   }
   const t0 = Date.now(), res = run(), code = res.code, ms = Date.now() - t0;

@@ -70,7 +70,7 @@ export function findRollout({ transcript, sessionId, codexHome, now = Date.now()
   };
   walk(root, 0); return best && best.p;
 }
-const git = (cwd, args) => { try { const r = spawnSync("git", args, { cwd, encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }); return r.status === 0 ? r.stdout.trim() : ""; } catch { return ""; } };
+const git = (cwd, args) => { try { const r = spawnSync("git", args, { windowsHide: true, cwd, encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }); return r.status === 0 ? r.stdout.trim() : ""; } catch { return ""; } };
 
 export function buildResume({ transcript, cwd, now = new Date(), tool = "claude" }) {
   let d = { users: [], last: "", files: [] }; try { if (transcript) d = tool === "codex" ? digestCodex(transcript) : digestTranscript(transcript); } catch {}

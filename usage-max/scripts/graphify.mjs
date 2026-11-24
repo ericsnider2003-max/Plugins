@@ -49,7 +49,7 @@ export function runGraphify(operation = "status", args = [], options = {}) {
   if (operation === "status") return { status: 0, value: graphStatus(options) };
   const plan = graphifyPlan(operation, args, options); const bin = graphifyBinary(options.env || process.env);
   for (const step of plan) {
-    const result = spawnSync(bin, step.args, { cwd: step.cwd, stdio: "inherit", shell: false, env: { ...process.env, ...(options.env || {}), GRAPHIFY_BACKEND: "none" } });
+    const result = spawnSync(bin, step.args, { windowsHide: true, cwd: step.cwd, stdio: "inherit", shell: false, env: { ...process.env, ...(options.env || {}), GRAPHIFY_BACKEND: "none" } });
     if (result.error) return { status: 1, error: `Graphify is unavailable (${bin}): ${result.error.message}` };
     if (result.status !== 0) return { status: result.status ?? 1, error: `Graphify ${operation} failed with exit code ${result.status ?? 1}` };
   }

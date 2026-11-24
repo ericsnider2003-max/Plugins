@@ -24,7 +24,7 @@ export function parsePs(text, selfPid = process.pid) {
   }
   return out;
 }
-const sh = (cmd, args) => { try { const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 4000 }); return r.status === 0 ? r.stdout : ""; } catch { return ""; } };
+const sh = (cmd, args) => { try { const r = spawnSync(cmd, args, { windowsHide: true, encoding: "utf8", timeout: 4000 }); return r.status === 0 ? r.stdout : ""; } catch { return ""; } };
 export function findBackground() {
   if (process.platform === "win32") {
     return [...parseSchtasks(sh("schtasks", ["/query", "/fo", "csv", "/v"])),

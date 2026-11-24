@@ -1,5 +1,10 @@
 # usage-max
 
+## 0.21.6 — no flashing console windows on Windows
+
+- Every child_process call in the shipped scripts and hooks now passes `windowsHide: true`. Hooks run windowless, so console children (git, powershell, node) opened a visible window on each tool call.
+- New static test `test/windows-hide.mjs` fails on any child_process call without `windowsHide: true`.
+
 ## 0.21.4 — enforced cheapest-capable routing
 
 - Claude, Codex and chat instructions now enforce cheapest-capable routing; the observation-only wording is removed.

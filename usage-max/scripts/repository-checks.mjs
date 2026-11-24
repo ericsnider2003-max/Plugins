@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-const run = (file, args, cwd) => spawnSync(file, args, { cwd, shell: false, encoding: "utf8", timeout: 120000 });
+const run = (file, args, cwd) => spawnSync(file, args, { windowsHide: true, cwd, shell: false, encoding: "utf8", timeout: 120000 });
 export function runRepositoryCheck(name, { cwd = process.cwd() } = {}) {
   if (name === "tests") {
     const testFile = path.join(cwd, "test", "run.mjs"); if (!fs.existsSync(testFile)) return { passed: false, evidence: "test/run.mjs is not present" };

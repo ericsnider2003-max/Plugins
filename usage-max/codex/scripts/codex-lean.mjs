@@ -24,6 +24,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   const rest = raw.filter((a) => a !== "--hold-red" && a !== "--bare");
   const { mode, cfg } = evaluate(); try { applyMode(mode, cfg); } catch (e) { console.error("usage-max: could not apply the mode (" + (e && e.message) + ")"); }
   if (hold && mode === "red") { console.error("usage-max: RED — deferred (exit 75)"); process.exit(75); }
-  const r = spawnSync("codex", leanArgs(rest, cfg.modes[mode], bare).map(q), { stdio: "inherit", shell: process.platform === "win32" });
+  const r = spawnSync("codex", leanArgs(rest, cfg.modes[mode], bare).map(q), { windowsHide: true, stdio: "inherit", shell: process.platform === "win32" });
   process.exit(r.status ?? 1);
 }

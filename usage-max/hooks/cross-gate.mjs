@@ -13,7 +13,7 @@ try {
   const cmd = input.tool_input && input.tool_input.command;
   if (typeof cmd === "string" && G.CODEX_CALL.test(cmd)) {
     const gov = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "codex", "scripts", "codex-governor.mjs");
-    const r = spawnSync(process.execPath, [gov, "gate"], { timeout: 6000, stdio: "ignore" });
+    const r = spawnSync(process.execPath, [gov, "gate"], { windowsHide: true, timeout: 6000, stdio: "ignore" });
     const msg = G.crossCheck(dataDir(), input.session_id || "unknown", cmd, r.status === 20 ? "red" : r.status === 10 ? "amber" : "green");
     if (msg) process.stdout.write(JSON.stringify({ systemMessage: msg, hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: msg } })); // information only: no permission prompt
   }
