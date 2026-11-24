@@ -1,5 +1,13 @@
 # usage-max
 
+## 0.21.4 — enforced cheapest-capable routing
+
+- Claude, Codex and chat instructions now enforce cheapest-capable routing; the observation-only wording is removed.
+- The GREEN/AMBER default model now comes from the enforced profile (Sonnet 5.5). Opus 5.5 is reached per task (/model, surplus mode, claude-lean --force-model, config overrides), and session-start reports the enforced model correctly after auto-apply and in surplus.
+- check.mjs version check compares only the usage-max marketplace entry.
+- Tests run from any directory and on Windows (python, junction, BUG-022 layout).
+- Added tests for the profile fallback and surplus.
+
 ## 0.21.3 — provider safety guards
 
 - Added provider limit-shape drift quarantine: a changed quota-window schema is withheld from governance until reviewed.
