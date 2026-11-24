@@ -2,7 +2,7 @@
 
 Ported from Umbrella Project `skills/usage-max/` (Umbrella commit 0e94f22 tree, 2026-11-24).
 Behaviour and API are identical to the Umbrella originals; Umbrella callers depend on them.
-Library only: no CLI is added in this phase, except `verify-receipts.mjs <root> <workId> <attemptId>`.
+Library, plus `verify-receipts.mjs <root> <workId> <attemptId>` and the `usage-max work` CLI (below).
 
 ## Modules
 - `identifiers.mjs`: `assertSafeIdentifier` rejects path characters, over 128 chars, empty.
@@ -28,6 +28,18 @@ Use a root outside OneDrive: `renameSync` over an existing file can fail with EP
 `live-observation.mjs` reads `~/.usage-max/provider-limits.json` (env `USAGE_MAX_PROVIDER_CACHE`) and
 `~/.usage-max/accounts.json` (approved slot; env `USAGE_MAX_ACCOUNT_SLOT`). These are the files the plugin's
 `scripts/provider-limits.mjs` and `scripts/accounts-cli.mjs` write.
+
+## CLI: `usage-max work`
+`scripts/work-cli.mjs`. Root: `--root <dir>`, default `<data dir>/work` (`~/.claude/usage-max/work`, or under `USAGE_MAX_HOME`); a OneDrive root warns.
+```
+usage-max work enqueue task.json   # {"workId":"W-1","task":{"id":"W-1","qualityThreshold":0.85,"requiredCapabilities":["extract"]}}
+usage-max work list [--json]       # workId  state  attempt N  updated   (INVALID when the record fails verification)
+usage-max work show W-1            # verified record as JSON; non-zero if tampered
+usage-max work verify W-1 <attemptId>   # exit 0 pass, 1 fail
+usage-max work recover [--json]    # units with an expired lease become retryable
+```
+Exit 2 for a bad subcommand/arguments or an invalid identifier. admit/checkpoint/complete/retry need a route registry
+and executors, so they stay programmatic (this directory).
 
 ## Not related
 The plugin's `queue` CLI verb (`scripts/guard.mjs`, FIFO) is unrelated and unchanged.

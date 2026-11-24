@@ -293,6 +293,7 @@ Claude Code only; they do nothing inside Codex. Every guard is silent unless it 
 - `/usage-max context`: what CLAUDE.md / AGENTS.md and their `@imports` cost on every turn, with size and staleness suggestions. Nothing is deleted; `context --archive <file>` moves one file to `.usage-max-archive/` (move it back to undo).
 - `/usage-max digest`: counts of what the guards did (plus Codex measured trim savings). Shown once a day at session start if non-empty.
 - `/usage-max queue add|list|next|clear`: low-priority tasks Claude offers when the plan shows SURPLUS.
+- `/usage-max work enqueue|list|show|verify|recover`: the durable, hash-sealed work queue (see `scripts/governance/README.md`); unrelated to `queue`.
 - `/usage-max chat-prefs`: paste-once standing instructions for Claude.ai, Cowork and ChatGPT (chats have no hooks, so this is the no-reminder route).
 
 ## 0.7.0 (Oct 10 2026) — Codex: Windows-safe trimming, savings report, backup/restore

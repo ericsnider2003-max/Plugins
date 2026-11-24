@@ -18,6 +18,7 @@
 //   offload status|<job> <file...>  run bounded jobs (summarize, commit, explain, docstrings, convert:<fmt>) on a model on THIS PC (Ollama): no plan usage, code stays local
 //   digest          what the guards did (counts) + Codex measured savings
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
+//   work enqueue|list|show|verify|recover   durable work queue (governance): enqueue a task JSON, list units, show a verified record, verify receipts, recover expired leases (`work help`)
 //   evidence       show measured/estimated/unattributed observation coverage from the local ledger
 //   accounts       list/register/approve/revoke configured account slots; never changes credentials
 //   adapters       list/enable/disable adapter policies or emergency-stop all adapters
@@ -221,6 +222,7 @@ const map = {
   cap: () => { const f = G.capFile(dataDir()); if (!rest[0]) { const c = G.loadCap(dataDir()); console.log(c ? `session cap: $${c} (list price). Change: usage-max cap <usd> | off` : "session cap: off. Set one: usage-max cap 5"); return 0; } if (rest[0] === "off") { try { fs.rmSync(f); } catch {} console.log("session cap off"); return 0; } const v = Number(rest[0]); if (!(v > 0)) { console.log("usage: usage-max cap <dollars>|off"); return 1; } writeJsonAtomic(f, { usd: v }); console.log(`session cap $${v}: you will be warned at 80% and 100% in each session (new prompts only; nothing is blocked)`); return 0; },
   offload: async () => (await import("./offload.mjs")).main(rest),
   queue: () => queue(rest),
+  work: async () => (await import("./work-cli.mjs")).main(rest),
   evidence: async () => { const { evidenceReport, formatEvidence } = await import("./evidence.mjs"); const f = path.join(dataDir(), "observations.jsonl"); const r = evidenceReport(f); if (rest.includes("--json")) console.log(JSON.stringify(r, null, 2)); else console.log(formatEvidence(r)); return 0; },
   accounts: () => run(S("accounts-cli.mjs"), rest),
   adapters: () => run(S("adapter-policy-cli.mjs"), rest),
@@ -272,5 +274,5 @@ const map = {
   }
 };
 // Anything that is not a subcommand (people type plain English after /usage-max) is not an error: say so once and show status.
-if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status providers blocks savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here safety memory pack resume context continuity advisor digest queue evidence accounts service trial plan-audit surfaces report dashboard console attachments mcpb mcp-http dossier chat-prefs graph codex route handoff workflow)\n`); process.exit(await map.status()); }
+if (!map[sub]) { console.log(`("${[sub, ...rest].join(" ").slice(0, 60)}" is not a usage-max option, so here is the status. Options: status providers blocks savings offload cap anomaly trim budgets crosscheck doctor budget gate check diagnose audit diet rescue balance enable-here safety memory pack resume context continuity advisor digest queue work evidence accounts service trial plan-audit surfaces report dashboard console attachments mcpb mcp-http dossier chat-prefs graph codex route handoff workflow)\n`); process.exit(await map.status()); }
 process.exit(await map[sub]());
