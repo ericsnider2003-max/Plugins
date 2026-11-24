@@ -188,6 +188,8 @@ fs.writeFileSync(cachePath, JSON.stringify(snapshot), "utf8");
 const liveNow = "2026-11-19T14:45:00.000Z";
 const savedEnv = process.env.USAGE_MAX_PROVIDER_CACHE;
 process.env.USAGE_MAX_PROVIDER_CACHE = cachePath;
+const savedSlot = process.env.USAGE_MAX_ACCOUNT_SLOT;
+delete process.env.USAGE_MAX_ACCOUNT_SLOT;
 const live = readLiveCodexObservation({ accountsPath, now: liveNow });
 check("live-observation reads env cache: fresh provider", [live.state, live.authority, live.remainingFraction], ["fresh", "provider", 0.09]);
 check("live-observation resolves approved slot", resolveApprovedCodexSlot({ accountsPath }), "codex-primary-live");
@@ -196,6 +198,7 @@ check("live-observation stale after 15 minutes", readLiveCodexObservation({ acco
 fs.writeFileSync(cachePath, JSON.stringify({ ...snapshot, captureSources: { codex: "local-fallback" } }), "utf8");
 check("live-observation rejects non provider-live capture", matches(throwsMsg(() => readLiveCodexObservation({ accountsPath, now: liveNow })), /not provider-live/), true);
 if (savedEnv === undefined) delete process.env.USAGE_MAX_PROVIDER_CACHE; else process.env.USAGE_MAX_PROVIDER_CACHE = savedEnv;
+if (savedSlot !== undefined) process.env.USAGE_MAX_ACCOUNT_SLOT = savedSlot;
 
 for (const r of roots) fs.rmSync(r, { recursive: true, force: true });
 console.log(`\n${total - failures}/${total} governance checks passed`);
