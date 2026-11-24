@@ -58,6 +58,8 @@ export function computeProfile(settings, { profile, launcher, modelWant = null, 
   }
   for (const k of HAND_BACK) if (ownedUnset(next, k, applied)) changes.push(`${k}: handed back (usage-max no longer sets it)`);
   let migrated = false;
+  // AMBER at upgrade time: old code filed the old default away as "yours" (__prev.model); restoring it in GREEN would undo the migration, so the stash now holds the profile model instead.
+  if (migrateOpus && applied.__prev && applied.__prev.model === OLD_DEFAULT_MODEL) applied.__prev.model = PROFILE_MODEL;
   if (migrateOpus && next.model === OLD_DEFAULT_MODEL) { // one-time: the old usage-max default (Opus) becomes the current profile model; we now own the key, so AMBER never files it away as "yours"
     changes.push(`model: ${JSON.stringify(next.model)} -> ${JSON.stringify(PROFILE_MODEL)} (migrated old default)`);
     next.model = PROFILE_MODEL; applied.model = PROFILE_MODEL; migrated = true;
@@ -128,7 +130,10 @@ export async function apply({ write = false, home = homeDir(), root = pluginRoot
     }
     saveApplied(appliedFile, applied);
     // The marker is recorded at the first decision whatever the model was, so a model chosen later is never touched.
-    if (decide1) { try { withState((st) => { if (!st.opusDefaultMigrated) st.opusDefaultMigrated = new Date().toISOString(); }); } catch {} }
+    if (decide1) { // busy lock: retry once shortly after; if still busy the next session records it (the model is already Sonnet, so no second migration)
+      const mark = () => withState((st) => { if (!st.opusDefaultMigrated) st.opusDefaultMigrated = new Date().toISOString(); });
+      try { const r = mark(); if (r && r.busy) { await new Promise((ok) => setTimeout(ok, 300)); mark(); } } catch {}
+    }
   }
   return { file, existed, changes, kept, wrote, backup, ttl, migrated: Boolean(migrated && wrote) };
 }

@@ -88,7 +88,7 @@ try {
   const governorMoved = budgetMode !== "green" || Boolean(gov && gov.surplus);
   // Status describes the state AFTER auto-apply in this same run. A different model chosen by the user is respected once the one-time Opus-default migration has been decided (marker).
   const enforced = governorMoved ? Boolean(settings.model) : settings.model === expected && opusAlias === expectedOpusAlias;
-  const userModel = !enforced && !governorMoved && Boolean(gov && gov.opusDefaultMigrated) && Boolean(settings.model) && opusAlias === expectedOpusAlias;
+  const userModel = !enforced && !governorMoved && Boolean(gov && gov.opusDefaultMigrated) && Boolean(settings.model) && Boolean(opusAlias); // an alias pin that differs from the profile's is the user's choice too; an ABSENT pin stays not-applied
   if (!enforced && !userModel) notes.push("profile not applied; run /usage-max rescue apply --write");
   if (aboveCeiling(model)) notes.push(`model ${model} is ABOVE the Opus 5.5 ceiling — switch with /model ${expected}`);
   if (!calibrated && !live) notes.push("budget is still learning: real plan % appears once the status line has rendered a reply (or /usage-max budget calibrate <pct> --resets <date>)");

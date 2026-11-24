@@ -167,6 +167,18 @@ check("session-start: opus 6 flagged above ceiling", ss(JSON.stringify({ model: 
   check("migrate (d2): RED -> no marker", gv(dr).opusDefaultMigrated, undefined);
   const da = mk({ model: "claude-opus-5-5" }, { mode: "amber" }); const da1 = run(da);
   check("migrate (d3): AMBER migrates", [sm(da), da1.includes(MIG), typeof gv(da).opusDefaultMigrated], ["claude-sonnet-5-5", true, "string"]);
+  // (a2) custom alias pin differing from the profile's, marker present -> user choice
+  const ap = JSON.parse(bBefore); ap.model = "claude-sonnet-5-5"; ap.env.ANTHROPIC_DEFAULT_OPUS_MODEL = "claude-opus-4-9"; const apTxt = JSON.stringify(ap);
+  fs.writeFileSync(path.join(a, ".claude", "settings.json"), apTxt); const apo = run(a);
+  check("migrate (b3): custom opus alias pin -> user-model, byte-identical, no rescue", [apo.includes("profile=user-model"), apo.includes("rescue"), fs.readFileSync(path.join(a, ".claude", "settings.json"), "utf8") === apTxt], [true, false, true]);
+  // (c2) [1m] is not the exact old default
+  const c1m = mk({ model: "claude-opus-5-5[1m]" }); const c1m1 = run(c1m);
+  check("migrate (c2): claude-opus-5-5[1m] not migrated -> user-model", [sm(c1m), c1m1.includes("migrated"), c1m1.includes("profile=user-model"), typeof gv(c1m).opusDefaultMigrated], ["claude-opus-5-5[1m]", false, true, "string"]);
+  // (d4) AMBER stash from old code holds the old default as "yours"; GREEN must not restore it
+  const st = mk({ model: "claude-sonnet-5-5" }, { mode: "amber" }); fs.writeFileSync(path.join(st, ".claude", "usage-max", "applied.json"), JSON.stringify({ model: "claude-sonnet-5-5", __prev: { model: "claude-opus-5-5" } }));
+  run(st); const stMarker = typeof gv(st).opusDefaultMigrated;
+  fs.writeFileSync(path.join(st, ".claude", "usage-max", "governor.json"), JSON.stringify({ ...gv(st), mode: "green", surplus: false })); const st2 = run(st);
+  check("migrate (d4): AMBER stash with old default is not restored in GREEN", [stMarker, sm(st), st2.includes("migrated")], ["string", "claude-sonnet-5-5", false]);
   // (e)
   const e = mk(JSON.stringify({ model: "claude-opus-5-5" }, null, 3)); const eBefore = fs.readFileSync(path.join(e, ".claude", "settings.json"));
   const e1 = run(e, { USAGE_MAX_AUTOAPPLY: "off" });

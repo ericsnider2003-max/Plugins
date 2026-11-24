@@ -1,5 +1,12 @@
 # usage-max
 
+## Unreleased (prepare 0.21.5) — one-time migration of the old Opus default
+
+- The first auto-apply in plain GREEN or AMBER changes the exact old default `claude-opus-5-5` in settings.json to the profile model (Sonnet 5.5), with a backup. SURPLUS, RED and auto-apply off never migrate.
+- Any other model id (including `claude-opus-5-5[1m]`, `opusplan`, `haiku` and custom ids) is treated as your choice and left alone. A different `ANTHROPIC_DEFAULT_OPUS_MODEL` pin is also your choice.
+- Session-start reports `profile=user-model` for such a choice (no rescue hint); a missing alias pin still reports `not-applied`.
+- A one-time `opusDefaultMigrated` timestamp is stored in governor.json; after it exists the migration never runs again. An old AMBER stash of `claude-opus-5-5` is replaced by the profile model so GREEN does not bring Opus back.
+
 ## 0.21.4 — enforced cheapest-capable routing
 
 - Claude, Codex and chat instructions now enforce cheapest-capable routing; the observation-only wording is removed.
