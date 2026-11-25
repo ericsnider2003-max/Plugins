@@ -24,7 +24,10 @@ export function runtimeCapabilities(details = []) {
   return { chatgptWebMcp: chatgpt.length ? (webmcp ? "enabled" : "not-observed") : "not-running", commandLineObserved: chatgpt.length > 0 };
 }
 
-export function discoverProviderProcesses({ platform = process.platform, now = Date.now(), includeCommandLines = false, run = (file, args) => execFileSync(file, args, { encoding: "utf8", windowsHide: true }), runDetails = (file, args) => execFileSync(file, args, { encoding: "utf8", windowsHide: true }) } = {}) {
+// Spawns tasklist/PowerShell (~3 s idle on Windows, unbounded under CPU load). USAGE_MAX_PROCESS_PROBE=off skips the spawn so hermetic tests do not depend on host load.
+function probe(file, args) { if (process.env.USAGE_MAX_PROCESS_PROBE === "off") throw new Error("process probe disabled by USAGE_MAX_PROCESS_PROBE=off"); return execFileSync(file, args, { encoding: "utf8", windowsHide: true }); }
+
+export function discoverProviderProcesses({ platform = process.platform, now = Date.now(), includeCommandLines = false, run = probe, runDetails = probe } = {}) {
   let source = platform === "win32" ? "tasklist" : "ps"; let raw = ""; let error = null;
   try { raw = platform === "win32" ? run("tasklist", ["/FO", "CSV", "/NH"]) : run("ps", ["-eo", "comm="]); } catch (e) { error = String(e?.message || e); }
   const processes = platform === "win32" ? parseTasklist(raw) : parsePs(raw); const present = {};
