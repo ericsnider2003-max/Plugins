@@ -34,14 +34,14 @@ try {
   const tempOut = `${out}.tmp-${process.pid}`;
   try { fs.rmSync(tempOut, { force: true }); } catch {}
   if (process.platform === "win32") {
-    execFileSync("powershell.exe", ["-NoProfile", "-Command", "Compress-Archive", "-Path", `${stage}\\*`, "-DestinationPath", tempOut, "-CompressionLevel", "Optimal"], { stdio: "inherit" });
+    execFileSync("powershell.exe", ["-NoProfile", "-Command", "Compress-Archive", "-Path", `${stage}\\*`, "-DestinationPath", tempOut, "-CompressionLevel", "Optimal"], { windowsHide: true, stdio: "inherit" });
   } else {
-    execFileSync("zip", ["-q", "-r", tempOut, "."], { cwd: stage, stdio: "inherit" });
+    execFileSync("zip", ["-q", "-r", tempOut, "."], { windowsHide: true, cwd: stage, stdio: "inherit" });
   }
   const required = [".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "browser-adapter/manifest.json", "browser-adapter/background.js", "browser-adapter/content.js", "mcp/usage-max-mcp-server.mjs", "mcpb/manifest.json", "scripts/architecture-graph.mjs", "scripts/failure-health.mjs", "data/model-registry.json", "contracts/observation.schema.json", "contracts/task.schema.json", "contracts/model.schema.json", "contracts/account.schema.json", "contracts/reservation.schema.json"];
   const archiveList = process.platform === "win32"
-    ? execFileSync("tar", ["-tf", tempOut], { encoding: "utf8" }).split(/\r?\n/)
-    : execFileSync("unzip", ["-Z1", tempOut], { encoding: "utf8" }).split(/\r?\n/);
+    ? execFileSync("tar", ["-tf", tempOut], { windowsHide: true, encoding: "utf8" }).split(/\r?\n/)
+    : execFileSync("unzip", ["-Z1", tempOut], { windowsHide: true, encoding: "utf8" }).split(/\r?\n/);
   const missing = required.filter((item) => !archiveList.includes(item));
   if (missing.length) fail(`archive is missing: ${missing.join(", ")}`);
   fs.rmSync(out, { force: true });

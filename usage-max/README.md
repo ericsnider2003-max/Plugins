@@ -6,6 +6,7 @@
 - `recover` continues past locked units instead of stopping at the first one.
 - Read-only commands (`list`, `show`, `verify`) create no folders.
 - Input errors exit with code 2.
+- No flashing console windows on Windows: every child_process call in the shipped scripts and hooks passes `windowsHide: true` (hooks run windowless, so console children opened a visible window on each tool call). New static test `test/windows-hide.mjs` fails on any call without it.
 
 ## 0.21.5 — one-time migration of the old Opus default; profile=user-model
 

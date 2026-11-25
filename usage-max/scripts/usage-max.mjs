@@ -62,7 +62,7 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const home = process.env.USAGE_MAX_HOME || os.homedir();
 const S = (f) => path.join(root, "scripts", f);
 const C = (f) => path.join(root, "codex", "scripts", f);
-const run = (file, args = []) => spawnSync(process.execPath, [file, ...args], { stdio: "inherit" }).status ?? 1;
+const run = (file, args = []) => spawnSync(process.execPath, [file, ...args], { windowsHide: true, stdio: "inherit" }).status ?? 1;
 const json = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
 const [sub = "status", ...rest] = process.argv.slice(2);
 

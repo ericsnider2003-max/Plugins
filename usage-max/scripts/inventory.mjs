@@ -20,7 +20,7 @@ function homeDir() {
 
 function runCommand(file, args, timeoutMs = 15000) {
   return new Promise((resolve) => {
-    execFile(file, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(file, args, { windowsHide: true, timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
       resolve({ error: error ? String(error.message).slice(0, 300) : null, stdout: String(stdout || ""), stderr: String(stderr || "").slice(0, 500) });
     });
   });

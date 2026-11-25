@@ -23,7 +23,7 @@ function main() {
   if (process.argv[2] !== "run" || !w.length || !w.every((x) => SAFE_WORD.test(x))) { console.error("usage-max run-trimmed: usage: run <plain words>; nothing run"); process.exit(2); }
   const cmd = w.join(" ");
   let c;
-  try { c = spawn(cmd, { shell: true, stdio: ["inherit", "pipe", "pipe"] }); } catch (e) { console.error("usage-max run-trimmed: could not start command: " + e.message); process.exit(127); }
+  try { c = spawn(cmd, { windowsHide: true, shell: true, stdio: ["inherit", "pipe", "pipe"] }); } catch (e) { console.error("usage-max run-trimmed: could not start command: " + e.message); process.exit(127); }
   // Output is printed as it arrives (the first lines at once, the rest as it scrolls out of a small window; see StreamTrimmer in trim.mjs), so a command that is killed,
   // times out, runs in the background or runs long still shows what it printed. The complete output is saved at the end (or when this wrapper gets SIGTERM/SIGINT/SIGHUP).
   const T = new StreamTrimmer({ pass: !canSave() }), srcs = [c.stdout, c.stderr], A = attach(T, srcs, (r, note) => { recordStats(r.rawBytes, r.outBytes + Buffer.byteLength(note)); });

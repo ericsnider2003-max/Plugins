@@ -20,7 +20,7 @@ export function summarize(transcriptPath, { maxPrompts = 5 } = {}) {
   }
   return { prompts: prompts.slice(-maxPrompts), files: [...files.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25), todos: todos ? todos.filter((x) => x.status !== "completed").slice(0, 15) : [], cwd, branch };
 }
-function git(cwd, ...a) { try { const r = spawnSync("git", a, { cwd, encoding: "utf8", timeout: 4000 }); return r.status === 0 ? r.stdout.trim() : ""; } catch { return ""; } }
+function git(cwd, ...a) { try { const r = spawnSync("git", a, { windowsHide: true, cwd, encoding: "utf8", timeout: 4000 }); return r.status === 0 ? r.stdout.trim() : ""; } catch { return ""; } }
 export function render(s, sid, { now = new Date() } = {}) {
   const g = s.cwd ? { st: git(s.cwd, "status", "--short").split("\n").slice(0, 20).join("\n"), log: git(s.cwd, "log", "--oneline", "-5") } : { st: "", log: "" };
   const L = [`# Auto handoff (${now.toISOString().slice(0, 16)}Z, session ${String(sid).slice(0, 8)})`, "", "Built from the transcript without a model call, so it lists WHAT happened, not why. Skim it, then continue.", "",

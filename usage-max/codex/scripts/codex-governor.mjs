@@ -298,9 +298,9 @@ export async function selftestTrim(platform = process.platform) {
   const res = [];
   const rawShells = platform === "win32" ? [["powershell", "powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "node noisy.mjs"], {}], ["cmd", "cmd.exe", ["/d", "/s", "/c", '"node noisy.mjs"'], { windowsVerbatimArguments: true }]] : [["sh", "sh", ["-c", "node noisy.mjs"], {}]];
   for (const [i, [name, exe, args, opt]] of shells.entries()) {
-    const r = spawnSync(exe, args, { env, cwd: tmpHome, encoding: "utf8", timeout: 60000, ...opt }); if (r.error && r.error.code === "ENOENT") { res.push({ name, skipped: true }); continue; }
+    const r = spawnSync(exe, args, { windowsHide: true, env, cwd: tmpHome, encoding: "utf8", timeout: 60000, ...opt }); if (r.error && r.error.code === "ENOENT") { res.push({ name, skipped: true }); continue; }
     // PowerShell -Command reports 1 for ANY failing command, trimmed or not, so the exit code is compared with the same command run WITHOUT the wrapper in the same shell.
-    const [, rexe, rargs, ropt] = rawShells[i]; const base = spawnSync(rexe, rargs, { env, cwd: tmpHome, encoding: "utf8", timeout: 60000, ...ropt });
+    const [, rexe, rargs, ropt] = rawShells[i]; const base = spawnSync(rexe, rargs, { windowsHide: true, env, cwd: tmpHome, encoding: "utf8", timeout: 60000, ...ropt });
     const out = (r.stdout || "") + (r.stderr || ""); const checks = { sameExitAsUntrimmed: base.status !== 0 && r.status === base.status, trimmed: /trimmed/.test(out), error: /ERROR boom/.test(out), tail: /line 399/.test(out) };
     res.push({ name, pass: Object.values(checks).every(Boolean), checks, status: r.status, want: base.status, bytes: out.length });
   }

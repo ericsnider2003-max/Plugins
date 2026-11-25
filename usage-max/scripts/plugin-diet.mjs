@@ -79,7 +79,7 @@ const usesFor = (name, counts) => {
 };
 
 // Claude Code's own projected cost for a plugin (`claude plugin details <name>`); null when unavailable.
-export function officialCost(name, run = (n) => spawnSync("claude", ["plugin", "details", n], { encoding: "utf8", timeout: 20000, stdio: ["ignore", "pipe", "ignore"] })) {
+export function officialCost(name, run = (n) => spawnSync("claude", ["plugin", "details", n], { windowsHide: true, encoding: "utf8", timeout: 20000, stdio: ["ignore", "pipe", "ignore"] })) {
   try {
     const r = run(name); const out = (r && r.stdout) || "";
     const m = out.match(/Always-on:\s*~?([\d,.]+)\s*(k)?\s*tok/i); if (!m) return null;

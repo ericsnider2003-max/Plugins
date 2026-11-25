@@ -180,12 +180,12 @@ if (fableViolations === 0) pass("no fable references");
 }
 
 // 7. Official validator (local, no model usage).
-const haveClaude = spawnSync(process.platform === "win32" ? "claude.cmd" : "claude", ["--version"], { stdio: "ignore", shell: process.platform === "win32" }).status === 0;
+const haveClaude = spawnSync(process.platform === "win32" ? "claude.cmd" : "claude", ["--version"], { windowsHide: true, stdio: "ignore", shell: process.platform === "win32" }).status === 0;
 if (!haveClaude && !process.argv.includes("--require-claude")) {
   console.log("skip claude plugin validate (claude CLI not installed here; CI runs the offline checks, validate runs locally)");
 } else try {
   const claudeBin = process.platform === "win32" ? "claude.cmd" : "claude";
-  execFileSync(claudeBin, ["plugin", "validate", root], { encoding: "utf8", stdio: "pipe", shell: process.platform === "win32" }); // .cmd requires a shell on Windows; args are fixed literals
+  execFileSync(claudeBin, ["plugin", "validate", root], { windowsHide: true, encoding: "utf8", stdio: "pipe", shell: process.platform === "win32" }); // .cmd requires a shell on Windows; args are fixed literals
   pass("claude plugin validate");
 } catch (error) {
   fail("claude plugin validate", String(error.message).slice(0, 200));
