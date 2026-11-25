@@ -1,5 +1,12 @@
 # usage-max
 
+## 0.21.6 — work command over the governance durable queue
+
+- New `usage-max work enqueue|list|show|verify|recover` command over the governance durable queue; state lives under `~/.claude/usage-max/work`.
+- `recover` continues past locked units instead of stopping at the first one.
+- Read-only commands (`list`, `show`, `verify`) create no folders.
+- Input errors exit with code 2.
+
 ## 0.21.5 — one-time migration of the old Opus default; profile=user-model
 
 - The first auto-apply in plain GREEN or AMBER changes the exact old default `claude-opus-5-5` in settings.json to the profile model (Sonnet 5.5), with a backup. SURPLUS, RED and auto-apply off never migrate.
