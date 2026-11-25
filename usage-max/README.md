@@ -1,5 +1,10 @@
 # usage-max
 
+## 0.21.7 — status call can no longer stall
+
+- Each process check behind `usage_max_get_status` (tasklist / ps, PowerShell process list) now stops after 8 s and reports process data as unavailable instead of blocking; on a busy Windows machine these checks could take over 20 s.
+- The MCP server test is hermetic (sandbox home, process checks off via `USAGE_MAX_PROCESS_PROBE=off`), which fixes an intermittent `test/run.mjs` failure.
+
 ## 0.21.6 — work command over the governance durable queue
 
 - New `usage-max work enqueue|list|show|verify|recover` command over the governance durable queue; state lives under `~/.claude/usage-max/work`.
