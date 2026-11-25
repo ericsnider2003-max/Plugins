@@ -24,8 +24,13 @@ export function runtimeCapabilities(details = []) {
   return { chatgptWebMcp: chatgpt.length ? (webmcp ? "enabled" : "not-observed") : "not-running", commandLineObserved: chatgpt.length > 0 };
 }
 
-// Spawns tasklist/PowerShell (~3 s idle on Windows, unbounded under CPU load). USAGE_MAX_PROCESS_PROBE=off skips the spawn so hermetic tests do not depend on host load.
-function probe(file, args) { if (process.env.USAGE_MAX_PROCESS_PROBE === "off") throw new Error("process probe disabled by USAGE_MAX_PROCESS_PROBE=off"); return execFileSync(file, args, { encoding: "utf8", windowsHide: true }); }
+// Spawns tasklist/PowerShell (~3 s idle on Windows, each probe is capped at PROBE_TIMEOUT_MS so a loaded host cannot stall callers). USAGE_MAX_PROCESS_PROBE=off skips the spawn so hermetic tests do not depend on host load.
+export const PROBE_TIMEOUT_MS = 8000;
+export function probe(file, args, { timeoutMs = PROBE_TIMEOUT_MS } = {}) {
+  if (process.env.USAGE_MAX_PROCESS_PROBE === "off") throw new Error("process probe disabled by USAGE_MAX_PROCESS_PROBE=off");
+  try { return execFileSync(file, args, { encoding: "utf8", windowsHide: true, timeout: timeoutMs, killSignal: "SIGKILL" }); }
+  catch (e) { if (e?.code === "ETIMEDOUT" || e?.signal) throw new Error(`process probe timed out after ${timeoutMs} ms: ${file}`); throw e; }
+}
 
 export function discoverProviderProcesses({ platform = process.platform, now = Date.now(), includeCommandLines = false, run = probe, runDetails = probe } = {}) {
   let source = platform === "win32" ? "tasklist" : "ps"; let raw = ""; let error = null;
