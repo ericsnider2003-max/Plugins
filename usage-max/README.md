@@ -1,6 +1,6 @@
 # usage-max
 
-## Unreleased — checked local route
+## 0.21.8 — checked local route
 
 - `offload <job>` output starts with "UNCHECKED DRAFT", returns checked:false and exits 2; `offload status` lists the checked workbench route first when available.
 
