@@ -103,7 +103,7 @@ export async function localWorkbenchRoute(options = {}) {
     kind: 'local',
     tier: 'local',
     estimatedUnits: 21.4,
-    qualityFloor: 0.83,
+    qualityFloor: 0.82,
     capabilities: ['code-change-with-check', 'bulk-code-shared-check', 'offline-code', 'code-map-lookup'],
     available: status.available,
     profileStatus: 'measured',

@@ -51,7 +51,7 @@ At a task boundary or before an explicit continuation handoff, write `handoff.md
 
 ## Local workbench (measured 2026-11-25)
 
-Measured on 27 tasks: the local model passes 0.83 within 3 tries (0.59 first try). Claude tokens per small task: direct 8.3k, check-and-delegate 21.4k, quick lane 6.1k vs 6.9k direct.
+Measured on 27 tasks: the local model passes 0.826 within 3 tries (0.59 first try). Claude tokens per small task: direct 8.3k, check-and-delegate 21.4k, quick lane 6.1k vs 6.9k direct.
 
 - Workbench available (`usage-max offload status`): use `kb_search` or `kb_get` before reading files. Lookups cost -14% tokens overall, -35% on vague questions.
 - Delegate to the workbench only when the code is much larger than its check (big implementations, boilerplate batches sharing one check) or when working offline.

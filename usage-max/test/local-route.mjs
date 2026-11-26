@@ -64,7 +64,7 @@ await t("local-workbench route: in the registry, measured, evidence verifies, un
   const up = await R.localWorkbenchRoute({ file: okWb }), down = await R.localWorkbenchRoute({ file: missing });
   assert.equal(up.available, true); assert.equal(down.available, false);
   const reg = R.createRouteRegistry([up]); const p = R.getRouteProfile(reg, "local-workbench");
-  assert.equal(p.tier, "local"); assert.equal(p.kind, "local"); assert.equal(p.profileStatus, "measured"); assert.equal(p.qualityFloor, 0.83); assert.equal(p.executorKey, "workbench");
+  assert.equal(p.tier, "local"); assert.equal(p.kind, "local"); assert.equal(p.profileStatus, "measured"); assert.equal(p.qualityFloor, 0.82); assert.equal(p.executorKey, "workbench");
   assert.equal(p.evidencePath, "data/evidence/local-workbench-2026-11-25.json");
   assert.ok(p.estimatedUnits > 0 && p.estimatedUnits <= 25, "low, but includes the Claude-side brief and review cost: " + p.estimatedUnits);
   for (const c of ["code-change-with-check", "bulk-code-shared-check", "offline-code", "code-map-lookup"]) assert.ok(p.capabilities.includes(c), c);
