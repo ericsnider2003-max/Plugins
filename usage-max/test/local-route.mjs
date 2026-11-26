@@ -59,5 +59,33 @@ await t("offload <job>: answer starts with the UNCHECKED DRAFT line, checked:fal
   } finally { srv.close(); delete process.env.USAGE_MAX_OLLAMA; }
 });
 
+await t("local-workbench route: in the registry, measured, evidence verifies, unavailable without the workbench", async () => {
+  const R = await imp("scripts/governance/route-registry.mjs");
+  const up = await R.localWorkbenchRoute({ file: okWb }), down = await R.localWorkbenchRoute({ file: missing });
+  assert.equal(up.available, true); assert.equal(down.available, false);
+  const reg = R.createRouteRegistry([up]); const p = R.getRouteProfile(reg, "local-workbench");
+  assert.equal(p.tier, "local"); assert.equal(p.kind, "local"); assert.equal(p.profileStatus, "measured"); assert.equal(p.qualityFloor, 0.83); assert.equal(p.executorKey, "workbench");
+  assert.equal(p.evidencePath, "data/evidence/local-workbench-2026-11-25.json");
+  assert.ok(p.estimatedUnits > 0 && p.estimatedUnits <= 25, "low, but includes the Claude-side brief and review cost: " + p.estimatedUnits);
+  for (const c of ["code-change-with-check", "bulk-code-shared-check", "offline-code", "code-map-lookup"]) assert.ok(p.capabilities.includes(c), c);
+  const v = R.verifyRouteEvidence(reg, root); assert.equal(v.pass, true);
+  const ev = JSON.parse(fs.readFileSync(path.join(root, p.evidencePath), "utf8")); assert.match(ev.source, /ACCURACY.md/); assert.equal(ev.claudeTokensPerSmallTask.direct, 8300); assert.equal(ev.claudeTokensPerSmallTask.delegated, 21400);
+  assert.equal(R.routesForTask(R.createRouteRegistry([down, { id: "claude", estimatedUnits: 8.3, qualityFloor: 0.9, capabilities: ["code-edit"], profileStatus: "fixture", evidencePath: "x.json" }]), { requiredCapabilities: ["code-edit"] }).some((r) => r.id === "local-workbench"), false);
+  assert.equal(R.routesForTask(R.createRouteRegistry([down]), { requiredCapabilities: ["offline-code"] }).length, 0, "unavailable route is never offered");
+});
+
+await t("planUsageRoute: small edit without a check stays with Claude; bulk code with a shared check can pick the workbench", async () => {
+  const R = await imp("scripts/governance/route-registry.mjs"), C = await imp("scripts/governance/controller.mjs");
+  const wb = await R.localWorkbenchRoute({ file: okWb });
+  const claude = { id: "claude-sonnet", kind: "model", tier: "sonnet", estimatedUnits: 60, qualityFloor: 0.9, capabilities: ["code-edit", "bulk-code-shared-check", "offline-code"], available: true };
+  const plan = (id, caps, routes) => C.planUsageRoute({ task: { id, requiredCapabilities: caps, qualityThreshold: 0.8 }, routes, observation: { state: "unknown" } });
+  const small = plan("edit-one-function", ["code-edit"], [claude, wb]);
+  assert.equal(small.decision, "admit"); assert.equal(small.selectedRoute.id, "claude-sonnet");
+  const bulk = plan("bulk-with-shared-check", ["bulk-code-shared-check"], [claude, wb]);
+  assert.equal(bulk.selectedRoute.id, "local-workbench");
+  const bulkDown = plan("bulk-with-shared-check", ["bulk-code-shared-check"], [claude, { ...wb, available: false }]);
+  assert.equal(bulkDown.selectedRoute.id, "claude-sonnet");
+});
+
 console.log(failed ? `\n${failed} FAILED` : "\nlocal-route checks passed");
 process.exit(failed ? 1 : 0);

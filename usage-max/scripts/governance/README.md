@@ -7,7 +7,7 @@ Library, plus `verify-receipts.mjs <root> <workId> <attemptId>` and the `usage-m
 ## Modules
 - `identifiers.mjs`: `assertSafeIdentifier` rejects path characters, over 128 chars, empty.
 - `controller.mjs`: `planUsageRoute`, `verifyUsageOutcome` (route choice, batch gate, quality floor).
-- `route-registry.mjs`: `createRouteRegistry`, `routesForTask`, `verifyRouteEvidence`, `getRouteProfile`.
+- `route-registry.mjs`: `createRouteRegistry`, `routesForTask`, `verifyRouteEvidence`, `getRouteProfile`, `localWorkbenchRoute` (the measured, checked local-workbench profile; evidence in data/evidence/).
 - `queue-gate.mjs`: `admitWorkUnit`, `verifyAdmission`, `recordUsageOutcome`, `UsageAdmissionError`.
 - `requirement-verifier.mjs`: `verifyTaskArtifact` (required fields / work contract).
 - `work-contract.mjs`: work-contract compile/verify (from Umbrella `skills/capability-routing/`).
