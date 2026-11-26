@@ -1,5 +1,5 @@
 // Tests for the roundtrip audit fixes (one block per finding id). `node test/fix.mjs BUG-014` runs just that block.
-import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import assert from "node:assert/strict"; import { spawnSync } from "node:child_process"; import { fileURLToPath, pathToFileURL } from "node:url";
+import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import assert from "node:assert/strict"; import { spawnSync } from "node:child_process"; import { fileURLToPath, pathToFileURL } from "node:url"; import { shEnv, python } from "./_sh.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const only = process.argv[2] || null; let n = 0;
 const imp = (f) => import(pathToFileURL(path.join(root, f)).href);
@@ -228,7 +228,7 @@ await t("BUG-008", "a Stop inside the one-minute gap does no transcript read or 
 await t("BUG-010", "the loop-note wrapper works for commands that end in a # comment", async () => {
   const CG = await imp("codex/scripts/codex-guards.mjs"); const dir = tmp(), cmd = "echo hello # trailing comment";
   let w = null; for (let i = 0; i < 4; i++) w = CG.guard(dir, "s", cmd, dir, "linux", {}) || w; assert.ok(w, "wrapped on the 3rd repeat");
-  const r = spawnSync("sh", ["-c", w], { encoding: "utf8" }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /hello/); assert.match(r.stdout, /this exact command has now run/);
+  const r = spawnSync("sh", ["-c", w], { encoding: "utf8", env: shEnv() }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /hello/); assert.match(r.stdout, /this exact command has now run/);
 });
 
 await t("BUG-011", "a failed or interrupted subagent frees its slot, and parallel starts cannot exceed the cap", async () => {
@@ -255,14 +255,15 @@ await t("BUG-013", "kit scripts pick the newest installed plugin folder, and the
   for (const [v, age] of [["0.9.0", 0], ["0.17.1", 100]]) { const d = path.join(base, v, "codex/scripts"); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, "install.mjs"), `console.log("PICKED ${v}")`); const tt = new Date(Date.now() - (200 - age) * 1000); fs.utimesSync(path.join(base, v), tt, tt); }
   // 0.17.1 is the newer folder but sorts BEFORE 0.9.0 alphabetically
   const kit = path.join(root, "..", "install/kit"); const runDir = tmp("umkit-"); fs.copyFileSync(path.join(kit, "2-INSTALL-CODEX.sh"), path.join(runDir, "2-INSTALL-CODEX.sh"));
-  const r = spawnSync("sh", [path.join(runDir, "2-INSTALL-CODEX.sh")], { env: { ...process.env, HOME: home }, encoding: "utf8" }); assert.match(r.stdout, /PICKED 0\.17\.1/, r.stdout + r.stderr);
+  const r = spawnSync("sh", [path.join(runDir, "2-INSTALL-CODEX.sh")], { env: shEnv({ HOME: home }), encoding: "utf8" }); assert.match(r.stdout, /PICKED 0\.17\.1/, r.stdout + r.stderr);
   for (const f of ["0-DO-EVERYTHING.cmd", "2-INSTALL-CODEX.cmd", "3-CHECK-EVERYTHING.cmd", "4-CALIBRATE-CLAUDE.cmd"]) assert.match(fs.readFileSync(path.join(kit, f), "utf8"), /dir \/b \/ad \/o-d/, f + " takes the newest folder");
   // build the kit from a copy whose .sh file was checked out with CRLF
   const copy = tmp("umrepo-"); const cl = spawnSync("git", ["clone", "-q", path.join(root, ".."), copy], { encoding: "utf8" }); assert.equal(cl.status, 0, cl.stderr);
   fs.copyFileSync(path.join(root, "..", "install/build-kit.py"), path.join(copy, "install/build-kit.py")); // the version under test, not the last commit
   for (const f of fs.readdirSync(path.join(copy, "install/kit"))) if (f.endsWith(".sh")) fs.writeFileSync(path.join(copy, "install/kit", f), fs.readFileSync(path.join(copy, "install/kit", f), "utf8").replace(/\n/g, "\r\n"));
-  const out = tmp("umout-"); const b = spawnSync(process.platform === "win32" ? "python" : "python3", [path.join(copy, "install/build-kit.py"), "--out", out], { encoding: "utf8" }); assert.equal(b.status, 0, b.stderr);
-  const zl = spawnSync("unzip", ["-p", path.join(out, "usage-max-desktop.zip"), "usage-max-desktop/2-INSTALL-CODEX.sh"], { encoding: "buffer" }); assert.ok(zl.stdout.length > 50 && !zl.stdout.includes(13), "no carriage returns in the .sh inside the kit");
+  const py = python(); if (!py) { console.log("SKIPPED the kit build half of BUG-013: no Python 3 on PATH (set UM_TEST_PYTHON to one)"); return; }
+  const out = tmp("umout-"); const b = spawnSync(py, [path.join(copy, "install/build-kit.py"), "--out", out], { encoding: "utf8" }); assert.equal(b.status, 0, b.stderr);
+  const zp = path.join(out, "usage-max-desktop.zip"), zf = "usage-max-desktop/2-INSTALL-CODEX.sh"; let zl = spawnSync("unzip", ["-p", zp, zf], { encoding: "buffer" }); if (zl.error) zl = spawnSync("tar", ["-xOf", zp, zf], { encoding: "buffer" }); // no unzip on a bare Windows PC; its tar reads zip files assert.ok(zl.stdout.length > 50 && !zl.stdout.includes(13), "no carriage returns in the .sh inside the kit");
 });
 
 await t("BUG-017", "an old or missing plan reading is shown as old/unknown, never as current", async () => {

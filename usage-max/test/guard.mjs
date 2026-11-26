@@ -1,4 +1,4 @@
-import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import assert from "node:assert/strict"; import { spawnSync } from "node:child_process"; import { fileURLToPath, pathToFileURL } from "node:url";
+import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import assert from "node:assert/strict"; import { spawnSync } from "node:child_process"; import { fileURLToPath, pathToFileURL } from "node:url"; import { shEnv } from "./_sh.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "umg-")); process.env.USAGE_MAX_HOME = home; delete process.env.CODEX_HOME; // a CODEX_HOME in your own environment must not leak in: the default then follows USAGE_MAX_HOME, never the real ~/.codex
 const dir = path.join(home, ".claude", "usage-max"); fs.mkdirSync(dir, { recursive: true });
@@ -192,9 +192,9 @@ await t("codex guards: 3rd identical command gets a note and keeps its exit code
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "cgd-")); const big = path.join(d, "big file.txt"), big2 = path.join(d, "big.txt"); fs.writeFileSync(big2, Array.from({ length: 8000 }, (_, i) => "line " + i).join("\n"));
   assert.equal(CG.guard(d, "s", "make test-all", d, "linux"), null); assert.equal(CG.guard(d, "s", "make test-all", d, "linux"), null);
   const c3 = CG.guard(d, "s", "make test-all", d, "linux"); assert.match(c3, /rc=\$\?/); assert.match(c3, /run 3 times in a row/);
-  const r = spawnSync("sh", ["-c", c3.replace("make test-all", "sh -c 'echo hi; exit 7'")], { encoding: "utf8" }); assert.equal(r.status, 7, "original exit code kept"); assert.match(r.stdout, /hi/); assert.match(r.stdout, /run 3 times/);
+  const r = spawnSync("sh", ["-c", c3.replace("make test-all", "sh -c 'echo hi; exit 7'")], { encoding: "utf8", env: shEnv() }); assert.equal(r.status, 7, "original exit code kept"); assert.match(r.stdout, /hi/); assert.match(r.stdout, /run 3 times/);
   assert.equal(CG.guard(d, "s", "make other-thing", d, "linux"), null, "a different command resets the streak");
-  const bc = CG.guard(d, "s2", "cat big.txt", d, "linux"); assert.ok(bc.startsWith("sed -n '1,200p'")); const o = spawnSync("sh", ["-c", bc], { encoding: "utf8" }); assert.equal(o.stdout.split("\n").filter((x) => x.startsWith("line ")).length, 200); assert.match(o.stdout, /only the first 200 lines are shown/);
+  const bc = CG.guard(d, "s2", "cat big.txt", d, "linux"); assert.ok(bc.startsWith("sed -n '1,200p'")); const o = spawnSync("sh", ["-c", bc], { encoding: "utf8", env: shEnv() }); assert.equal(o.stdout.split("\n").filter((x) => x.startsWith("line ")).length, 200); assert.match(o.stdout, /only the first 200 lines are shown/);
   fs.writeFileSync(path.join(d, "small.txt"), "hi"); assert.equal(CG.guard(d, "s2", "cat small.txt", d, "linux"), null); assert.equal(CG.guard(d, "s2", "cat big.txt | head", d, "linux"), null); assert.equal(CG.guard(d, "s2", "cat big.txt", d, "win32"), null);
   assert.equal(CG.guard(d, "s2", "cat big.txt", d, "linux", { USAGE_MAX_GUARDS: "off" }), null); assert.ok(CG.stats(d).bigCats >= 1);
 });
