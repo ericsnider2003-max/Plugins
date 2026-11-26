@@ -92,7 +92,7 @@ await t("routing skill: Local workbench (measured 2026-11-25) section, under 15 
   const m = txt.match(/^## Local workbench \(measured 2026-11-25\)\n([\s\S]*?)(?=\n## |(?![\s\S]))/m); assert.ok(m, "section missing");
   const body = m[1].trim(); assert.ok(body.split("\n").length < 15, "section is " + body.split("\n").length + " lines");
   assert.match(body, /kb_search/); assert.match(body, /kb_get/); assert.match(body, /before reading files/);
-  assert.match(body, /much larger than its check/); assert.match(body, /offline/); assert.match(body, /2\.6x/); assert.match(body, /break-even/); assert.match(body, /never use unchecked/i);
+  assert.match(body, /much larger than its check/); assert.match(body, /offline/); assert.match(body, /2\.6x/); assert.match(body, /only slightly cheaper \(6\.1k vs 6\.9k\)/); assert.match(body, /never use unchecked/i);
   assert.match(txt, /Cheap first, verify, then escalate/);
 });
 

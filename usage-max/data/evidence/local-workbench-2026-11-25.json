@@ -2,7 +2,7 @@
   "routeId": "local-workbench",
   "profileStatus": "measured",
   "measurementId": "workbench-accuracy-2026-11-25",
-  "source": "C:/Users/erics/OneDrive/Workbench-Plans/ACCURACY.md",
+  "source": "Workbench-Plans/ACCURACY.md (owner's private measurement notes; not published)",
   "measuredOn": "2026-11-25",
   "capabilities": [
     "bulk-code-shared-check",

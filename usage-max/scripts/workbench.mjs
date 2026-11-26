@@ -3,6 +3,7 @@
 // File: env USAGE_MAX_WORKBENCH, else ~/.claude/workpc/wb-mcp.mjs. Nothing here starts, installs or changes anything.
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import { pathToFileURL } from "node:url";
 export const workbenchFile = () => process.env.USAGE_MAX_WORKBENCH || path.join(os.homedir(), ".claude", "workpc", "wb-mcp.mjs");
+// The timeout covers async waits only; a module that blocks synchronously at import cannot be interrupted.
 export async function workbenchAvailable({ file = workbenchFile(), timeoutMs = 15000 } = {}) {
   if (!fs.existsSync(file)) return { available: false, file, why: `no workbench at ${file}` };
   let timer;

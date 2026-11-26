@@ -55,7 +55,7 @@ Measured on 27 tasks: the local model passes 0.826 within 3 tries (0.59 first tr
 
 - Workbench available (`usage-max offload status`): use `kb_search` or `kb_get` before reading files. Lookups cost -14% tokens overall, -35% on vague questions.
 - Delegate to the workbench only when the code is much larger than its check (big implementations, boilerplate batches sharing one check) or when working offline.
-- Keep small tasks with Claude: delegating cost 2.6x, and the quick lane is break-even.
+- Keep small tasks with Claude: delegating cost 2.6x, and the quick lane is only slightly cheaper (6.1k vs 6.9k).
 - Never use unchecked local output: only a workbench PASS counts.
 
 ## Maximize the plan

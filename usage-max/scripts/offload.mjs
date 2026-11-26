@@ -50,7 +50,7 @@ export async function run(job, text, { host = HOST(), model = null, name = "stdi
 export async function main(args) {
   const [job, ...rest] = args;
   if (!job || job === "status") {
-    const [w, s] = [await workbenchAvailable(), await status()], L = [];
+    const [w, s] = await Promise.all([workbenchAvailable(), status()]), L = [];
     L.push(w.available ? `1. workbench (preferred, CHECKED): available. Use the workbench MCP tools: wb_quick for a one-file change with examples, wb_delegate with tests for bigger work; kb_search for code-map lookups. Results come back PASS only after tests ran.` : `1. workbench (preferred, CHECKED): not available (${w.why}). Do the work with Claude tiers.`);
     L.push(s.ready ? `2. Ollama (unchecked drafts only): ready: ${s.models.join(", ")} at ${s.host}. Jobs: ${Object.keys(JOBS).join(", ")}, convert:<format>. Every answer is labelled UNCHECKED DRAFT and exits with status ${EXIT_UNCHECKED}. usage: usage-max offload <job> <file...> (or pipe text in)` : "2. Ollama (unchecked drafts only): NOT ready: " + s.why);
     console.log(L.join("\n")); return w.available || s.ready ? 0 : 1;

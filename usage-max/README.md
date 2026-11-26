@@ -1,5 +1,9 @@
 # usage-max
 
+## Unreleased — checked local route
+
+- `offload <job>` output starts with "UNCHECKED DRAFT", returns checked:false and exits 2; `offload status` lists the checked workbench route first when available.
+
 ## 0.21.7 — status call can no longer stall
 
 - Each process check behind `usage_max_get_status` (tasklist / ps, PowerShell process list) now stops after 8 s and reports process data as unavailable instead of blocking; on a busy Windows machine these checks could take over 20 s.
@@ -263,6 +267,7 @@ Found by auditing every effect the plugin has on a live session, after a report 
 - Built-in safety: loopback addresses only (refuses anything not 127.0.0.1/localhost), refuses secrets files and text containing private keys or tokens, input capped at 60k characters, output labelled "unverified". It never installs or downloads a model: `offload status` tells you what to install (Ollama, then e.g. `ollama pull qwen2.5-coder:7b`).
 - The Claude routing skill and the Codex AGENTS block tell the agent to use it when it reports ready. `savings` shows jobs run and the input tokens kept off your plan (an estimate: characters/4).
 - Tested against a stub Ollama server only; not yet tried with a real model.
+- **Current behaviour (checked route).** `offload <job>` output starts with "UNCHECKED DRAFT", returns `checked:false` and exits 2; `offload status` lists the checked workbench route first when available.
 
 ## 0.12.0 (Oct 10 2026) — where Codex usage really goes, and four new brakes
 - **`/usage-max codex diagnose`** (also summarised in `savings`): Codex logs the plan's real rate-limit percentages on every call, so the weekly % that moved between two calls is attributed to the session, model/effort, folder, day and start type (interactive vs `codex exec`/automation) that made it. Measured, not estimated; resets are ignored. Plus token mix (fresh vs cached input, output, reasoning), context size per call, and plain "what stands out" findings.
