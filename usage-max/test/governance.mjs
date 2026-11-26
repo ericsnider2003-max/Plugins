@@ -200,6 +200,12 @@ check("live-observation rejects non provider-live capture", matches(throwsMsg(()
 if (savedEnv === undefined) delete process.env.USAGE_MAX_PROVIDER_CACHE; else process.env.USAGE_MAX_PROVIDER_CACHE = savedEnv;
 if (savedSlot !== undefined) process.env.USAGE_MAX_ACCOUNT_SLOT = savedSlot;
 
+// README is the single home of the governance rules (Umbrella skills/usage-max/SKILL.md points here).
+const readme = fs.readFileSync(path.join(G, "README.md"), "utf8");
+check("README documents enforced behavior", /^## Enforced behavior$/m.test(readme), true);
+check("README documents acceptance boundary", /^## Acceptance boundary$/m.test(readme), true);
+check("README names every governance module", fs.readdirSync(G).filter((f) => f.endsWith(".mjs")).filter((f) => !readme.includes(f)), []);
+
 for (const r of roots) fs.rmSync(r, { recursive: true, force: true });
 console.log(`\n${total - failures}/${total} governance checks passed`);
 process.exit(failures ? 1 : 0);

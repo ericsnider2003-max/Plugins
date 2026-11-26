@@ -91,3 +91,23 @@ export function getRouteProfile(registry, routeId) {
   assert(route, `route is not registered: ${routeId}`);
   return route;
 }
+
+// The checked local route (the owner's workbench MCP: Qwen on a second PC, every code result verified by tests).
+// Added after the Umbrella port; measured numbers are in data/evidence/local-workbench-2026-11-25.json.
+// Capabilities say what it is FOR: a task that needs plain "code-edit" does not match it, so small tasks stay with Claude.
+export async function localWorkbenchRoute(options = {}) {
+  const { workbenchAvailable } = await import('../workbench.mjs');
+  const status = await workbenchAvailable(options);
+  return {
+    id: 'local-workbench',
+    kind: 'local',
+    tier: 'local',
+    estimatedUnits: 21.4,
+    qualityFloor: 0.82,
+    capabilities: ['code-change-with-check', 'bulk-code-shared-check', 'offline-code', 'code-map-lookup'],
+    available: status.available,
+    profileStatus: 'measured',
+    evidencePath: 'data/evidence/local-workbench-2026-11-25.json',
+    executorKey: 'workbench',
+  };
+}

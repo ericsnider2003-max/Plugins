@@ -1,0 +1,40 @@
+{
+  "routeId": "local-workbench",
+  "profileStatus": "measured",
+  "measurementId": "workbench-accuracy-2026-11-25",
+  "source": "Workbench-Plans/ACCURACY.md (owner's private measurement notes; not published)",
+  "measuredOn": "2026-11-25",
+  "capabilities": [
+    "bulk-code-shared-check",
+    "code-change-with-check",
+    "code-map-lookup",
+    "offline-code"
+  ],
+  "qualityFloor": 0.82,
+  "estimatedUnits": 21.4,
+  "unitsMeaning": "thousands of Claude tokens per small delegated task, including writing the check, the brief and the review",
+  "observedMinQuality": 0.826,
+  "observedMinQualityNote": "22.3 of 27 tasks pass within 3 tries = 0.826 (mean of 3 runs: 23, 22, 22); floor set to 0.82 so the measured figure clears it without rounding",
+  "passWithin3Tries": {
+    "meanTasksPassed": 22.3,
+    "of": 27,
+    "rate": 0.826
+  },
+  "passFirstTry": {
+    "tasksPassed": 16,
+    "of": 27,
+    "rate": 0.59
+  },
+  "claudeTokensPerSmallTask": {
+    "direct": 8300,
+    "delegated": 21400,
+    "delegatedVsDirect": 2.6,
+    "quickLane": 6100,
+    "quickLaneDirectComparison": 6900
+  },
+  "kbSearch": {
+    "tokenChangeOverall": -0.14,
+    "tokenChangeVagueQuestions": -0.35
+  },
+  "verdict": "delegate only when the code is much larger than its check (big implementations, boilerplate batches sharing one check) or offline; small tasks stay with Claude; never use unchecked local output"
+}
