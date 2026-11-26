@@ -87,5 +87,14 @@ await t("planUsageRoute: small edit without a check stays with Claude; bulk code
   assert.equal(bulkDown.selectedRoute.id, "claude-sonnet");
 });
 
+await t("routing skill: Local workbench (measured 2026-11-25) section, under 15 lines, with the four rules", async () => {
+  const txt = fs.readFileSync(path.join(root, "skills/routing/SKILL.md"), "utf8").replace(/\r\n/g, "\n");
+  const m = txt.match(/^## Local workbench \(measured 2026-11-25\)\n([\s\S]*?)(?=\n## |(?![\s\S]))/m); assert.ok(m, "section missing");
+  const body = m[1].trim(); assert.ok(body.split("\n").length < 15, "section is " + body.split("\n").length + " lines");
+  assert.match(body, /kb_search/); assert.match(body, /kb_get/); assert.match(body, /before reading files/);
+  assert.match(body, /much larger than its check/); assert.match(body, /offline/); assert.match(body, /2\.6x/); assert.match(body, /break-even/); assert.match(body, /never use unchecked/i);
+  assert.match(txt, /Cheap first, verify, then escalate/);
+});
+
 console.log(failed ? `\n${failed} FAILED` : "\nlocal-route checks passed");
 process.exit(failed ? 1 : 0);

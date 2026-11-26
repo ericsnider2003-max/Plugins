@@ -49,6 +49,15 @@ At a task boundary or before an explicit continuation handoff, write `handoff.md
 - `usage-max offload status` names the route. The workbench (wb_quick, wb_delegate, kb_search) is the CHECKED local route: its code comes back PASS only after tests ran. Prefer it whenever status says it is available.
 - Ollama jobs (summarize a file/log/diff, commit message, explain a log, draft docstrings, convert formats) are UNCHECKED drafts: the answer starts with `UNCHECKED DRAFT` and the command exits 2. Use them for text you will read anyway, never as code that ships without a test, and never for security, money or architecture decisions. Secrets files are refused automatically.
 
+## Local workbench (measured 2026-11-25)
+
+Measured on 27 tasks: the local model passes 0.83 within 3 tries (0.59 first try). Claude tokens per small task: direct 8.3k, check-and-delegate 21.4k, quick lane 6.1k vs 6.9k direct.
+
+- Workbench available (`usage-max offload status`): use `kb_search` or `kb_get` before reading files. Lookups cost -14% tokens overall, -35% on vague questions.
+- Delegate to the workbench only when the code is much larger than its check (big implementations, boilerplate batches sharing one check) or when working offline.
+- Keep small tasks with Claude: delegating cost 2.6x, and the quick lane is break-even.
+- Never use unchecked local output: only a workbench PASS counts.
+
 ## Maximize the plan
 
 The goal is the most finished work per week: no waste, and no unused allowance at reset.
