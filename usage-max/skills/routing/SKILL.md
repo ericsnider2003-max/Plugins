@@ -44,10 +44,10 @@ At a task boundary or before an explicit continuation handoff, write `handoff.md
 - Pass: done. Fail: one retry with the failure output, then escalate one tier with the failure history (never straight to the top). Design, ambiguous bugs and anything without a way to check stay on the hub from the start: a cascade only pays when a cheap check can tell right from wrong.
 - Count it: a task that needed escalation twice in a row means the tier was wrong; start that kind of task one tier up next time.
 
-## Local model first for bounded text jobs
+## Local model: checked route first
 
-- If `usage-max offload status` says a local model is ready, send these to it instead of any plan model: summarize a file/log/diff, draft a commit message (`git diff --staged | usage-max offload commit`), explain a log, draft docstrings, convert formats. Cost to the plan: zero; code stays on this machine.
-- Its output is unverified: skim it, and never use it for security, money or architecture decisions. Secrets files are refused automatically.
+- `usage-max offload status` names the route. The workbench (wb_quick, wb_delegate, kb_search) is the CHECKED local route: its code comes back PASS only after tests ran. Prefer it whenever status says it is available.
+- Ollama jobs (summarize a file/log/diff, commit message, explain a log, draft docstrings, convert formats) are UNCHECKED drafts: the answer starts with `UNCHECKED DRAFT` and the command exits 2. Use them for text you will read anyway, never as code that ships without a test, and never for security, money or architecture decisions. Secrets files are refused automatically.
 
 ## Maximize the plan
 

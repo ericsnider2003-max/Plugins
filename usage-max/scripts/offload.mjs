@@ -3,13 +3,16 @@
 //   usage-max offload <job> <file...> [--model m]  job = summarize | commit | explain | docstrings | convert:<format>
 //   (also reads stdin: git diff | usage-max offload commit)
 // Safety, on purpose: loopback endpoints only (127.0.0.1/localhost/::1), so code never leaves your machine; refuses files that look like
-// secrets; input capped; output is labelled "local model, unverified". Nothing here installs or downloads a model.
+// secrets; input capped; output starts with an UNCHECKED DRAFT line and exits with status 2 (the checked route is the workbench: scripts/workbench.mjs). Nothing here installs or downloads a model.
 import fs from "node:fs"; import path from "node:path";
 import { dataDir } from "./meter.mjs";
 import { bump } from "./guard.mjs";
 import { looksSecret } from "./memory.mjs";
+import { workbenchAvailable } from "./workbench.mjs";
 export const HOST = () => process.env.USAGE_MAX_OLLAMA || "http://127.0.0.1:11434";
 export const MAX_IN = 60000;
+export const EXIT_UNCHECKED = 2; // distinct from 0 (ok) and 1 (error): the answer was produced but nothing checked it
+export const UNCHECKED_LINE = "UNCHECKED DRAFT: verify with a test before use; for checked local work use the workbench (wb_quick / wb_delegate)";
 export const JOBS = {
   summarize: "Summarize the text below for a developer in at most 12 short bullet points. Keep names, numbers and error messages exact. Do not invent anything that is not in the text.",
   commit: "Write a git commit message for the diff below: a subject line of at most 72 characters in the imperative mood, a blank line, then at most 5 short bullets saying what changed and why. Mention only changes that are in the diff.",
@@ -41,15 +44,21 @@ export async function run(job, text, { host = HOST(), model = null, name = "stdi
     const r = await j(host + "/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: m, prompt: p, stream: false, options: { temperature: 0.2, num_predict: 900 } }) }, 180000);
     const out = String(r.response || "").trim(); if (!out) return { error: "the local model returned nothing" };
     try { bump(dataDir(), "offloadJobs"); bump(dataDir(), "offloadInputChars", text.length); bump(dataDir(), "offloadOutputChars", out.length); } catch {}
-    return { ok: true, model: m, out };
+    return { ok: true, checked: false, model: m, out: UNCHECKED_LINE + "\n" + out };
   } catch (e) { return { error: "local model call failed: " + (e && e.message) }; }
 }
 export async function main(args) {
-  const [job, ...rest] = args; if (!job || job === "status") { const s = await status(); console.log(s.ready ? `local model ready: ${s.models.join(", ")} at ${s.host}\njobs: ${Object.keys(JOBS).join(", ")}, convert:<format>\nusage: usage-max offload <job> <file...>   (or pipe text in)` : "local model NOT ready: " + s.why); return s.ready ? 0 : 1; }
+  const [job, ...rest] = args;
+  if (!job || job === "status") {
+    const [w, s] = [await workbenchAvailable(), await status()], L = [];
+    L.push(w.available ? `1. workbench (preferred, CHECKED): available. Use the workbench MCP tools: wb_quick for a one-file change with examples, wb_delegate with tests for bigger work; kb_search for code-map lookups. Results come back PASS only after tests ran.` : `1. workbench (preferred, CHECKED): not available (${w.why}). Do the work with Claude tiers.`);
+    L.push(s.ready ? `2. Ollama (unchecked drafts only): ready: ${s.models.join(", ")} at ${s.host}. Jobs: ${Object.keys(JOBS).join(", ")}, convert:<format>. Every answer is labelled UNCHECKED DRAFT and exits with status ${EXIT_UNCHECKED}. usage: usage-max offload <job> <file...> (or pipe text in)` : "2. Ollama (unchecked drafts only): NOT ready: " + s.why);
+    console.log(L.join("\n")); return w.available || s.ready ? 0 : 1;
+  }
   const mi = rest.indexOf("--model"), model = mi >= 0 ? rest[mi + 1] : null, files = rest.filter((x, i) => !x.startsWith("--") && !(mi >= 0 && i === mi + 1));
   let text = "", name = "stdin";
   if (files.length) { name = files.join(","); for (const f of files) { const reason = secretReason(path.basename(f), ""); if (reason) { console.error(`refused: ${reason}.`); return 1; } try { text += `\n### ${f}\n` + fs.readFileSync(f, "utf8"); } catch { console.error("cannot read " + f); return 1; } } }
   else if (!process.stdin.isTTY) { for await (const c of process.stdin) text += c; } else { console.error("give a file, or pipe text in"); return 1; }
   const r = await run(job, text, { model, name }); if (r.error) { console.error(r.error); return 1; }
-  console.log(r.out + `\n\n[local model ${r.model}: unverified, check before relying on it]`); return 0;
+  console.log(r.out + `\n\n[local model ${r.model}: unchecked draft, verify with a test before relying on it]`); return EXIT_UNCHECKED;
 }
