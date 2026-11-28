@@ -13,7 +13,7 @@ const EXT = "js|mjs|cjs|ts|tsx|jsx|py|rs|go|md|json|ya?ml|toml|ps1|sh|css|html|j
 // a file path: dir/name.ext, ./x, ../x, or a bare name.ext (not "and/or", "I/O", dates, or product names such as Node.js)
 const PATH = new RegExp(String.raw`(?:\.{1,2}\/)?(?:[\w.-]+\/)*[\w-]+\.(?:${EXT})\b|\.{1,2}\/[\w./-]+`, "g");
 const PRODUCT = /^[A-Z][a-z]*\.js$/;
-const COMMON = new Set(["macOS", "iOS", "iPhone", "iPad", "eBay", "snake_case", "camelCase"]);
+const COMMON = new Set(["macOS", "iOS", "iPhone", "iPad", "eBay", "snake_case", "camelCase", "gRPC", "mTLS", "eBPF", "jQuery"]);
 const JOBS_WITH_CHECK = ["commit", "docstrings", "summarize", "explain"], FORMATS = ["json", "csv", "tsv"];
 export const hasCheck = (job) => JOBS_WITH_CHECK.includes(job) || (/^convert:/.test(job) && FORMATS.includes(job.slice(8).toLowerCase()));
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -31,19 +31,28 @@ function missing(out, input) {
 const grounded = (out, input) => { const t = missing(out, input); return t === undefined ? "" : `"${t}" is not in the input`; };
 
 // docstrings: every original line must come back unchanged and in order; the only additions allowed are comment lines and blank lines.
-const COMMENT = /^\s*(\/\/|#|\/\*|\*|\*\/|--|<!--|-->|"""|''')/;
+// A comment line: "// x", "# x" (not #define/#priv), " * x" (not *p = 0), "-- x" (not --i), "/* x", "*/", HTML comments.
+const COMMENT = /^\s*(\/\/|#(\s|#|!|$)|\/\*|\*(\s|\/|$)|--(\s|$)|<!--|-->)/;
+const TRAIL = /^\s+(\/\/|#)\s/; // an inline comment appended to an unchanged code line
 const lines = (s) => nl(s).split("\n").map((l) => l.replace(/\s+$/, "")).filter((l) => !/^### /.test(l)); // offload adds "### <file>" headers
 function docstrings(input, out) {
   const a = lines(input), b = lines(out); let i = 0, added = 0, block = null;
   for (const l of b) {
-    if (block) { added++; if (l.includes(block)) block = null; continue; }
+    if (block) { added++; if (l.includes(block)) { if (l.slice(l.indexOf(block) + block.length).trim()) return "the code itself was changed"; block = null; } continue; }
     if (i < a.length && l === a[i]) { i++; continue; }
     if (!l.trim()) continue;
     while (i < a.length && !a[i].trim()) i++; // dropped blank lines are fine
     if (i < a.length && l === a[i]) { i++; continue; }
+    if (i < a.length && a[i].trim() && l.startsWith(a[i]) && TRAIL.test(l.slice(a[i].length))) { i++; added++; continue; }
+    const t = l.trim(), q = t.slice(0, 3);
+    if (q === '"""' || q === "'''") { // python docstring: one line ("""x""") with nothing after it, or an opening line
+      const n = t.split(q).length - 1;
+      if (n === 1) block = q; else if (n !== 2 || !t.endsWith(q)) return "the code itself was changed";
+      added++; continue;
+    }
     if (!COMMENT.test(l)) return "the code itself was changed";
-    added++; const q = l.trim().slice(0, 3);
-    if ((q === '"""' || q === "'''") && l.trim().split(q).length === 2) block = q; // opens a multi-line docstring
+    added++;
+    if (/^\s*\/\*/.test(l) && !l.includes("*/")) block = "*/"; // multi-line block comment
   }
   while (i < a.length && !a[i].trim()) i++;
   if (i < a.length) return "part of the code is missing from the answer";
@@ -64,7 +73,9 @@ function parseCsv(text, sep) { // RFC 4180-style: quoted fields may hold the sep
   if (f !== "" || row.length) { row.push(f); rows.push(row); }
   return rows.filter((r) => r.some((x) => x.trim()));
 }
-const leaves = (v, acc = []) => { if (v && typeof v === "object") { for (const [k, x] of Object.entries(v)) { if (!Array.isArray(v)) acc.push(k); leaves(x, acc); } } else if (v !== null && v !== undefined && typeof v !== "boolean") acc.push(String(v)); return acc; };
+// values only: keys and header names may be chosen by the model; values (strings, numbers) must come from the input
+const leaves = (v, acc = []) => { if (v && typeof v === "object") { for (const x of Object.values(v)) leaves(x, acc); } else if (typeof v === "string" || typeof v === "number") acc.push(String(v)); return acc; };
+const fromInput = (x, input) => input.includes(x) || input.replace(/\\(.)/g, "$1").includes(x) || (/^-?\d+(\.\d+)?$/.test(x) && inText(x, input.replace(/(\d),(?=\d{3}\b)/g, "$1")));
 
 export function checkAnswer(job, input, out) {
   out = stripFence(out, job); input = nl(input);
@@ -85,15 +96,15 @@ export function checkAnswer(job, input, out) {
       let v; try { v = JSON.parse(out); } catch (e) { return res(c, "not valid JSON: " + e.message); }
       const vals = leaves(v).filter((x) => x.length > 1);
       if (!vals.length && /\w{2,}/.test(input)) return res(c, "the JSON is empty");
-      const bad = vals.find((x) => !input.includes(x)); return res(c, bad === undefined ? "" : `"${bad.slice(0, 60)}" is not in the input`);
+      const bad = vals.find((x) => !fromInput(x, input)); return res(c, bad === undefined ? "" : `"${bad.slice(0, 60)}" is not in the input`);
     }
     if (f === "csv" || f === "tsv") {
-      const rows = parseCsv(out, f === "csv" ? "," : "\t");
+      const rows = f === "csv" ? parseCsv(out, ",") : out.split("\n").filter((x) => x.trim()).map((x) => x.split("\t")); // TSV has no quoting
       if (!rows) return res(c, "a quoted field is never closed");
       if (!rows.length) return res(c, "no rows");
       const n = rows[0].length, bad = rows.findIndex((r) => r.length !== n);
       if (bad >= 0) return res(c, `row ${bad + 1} has ${rows[bad].length} fields, expected ${n}`);
-      const v = rows.flat().map((x) => x.trim()).find((x) => x.length > 1 && !input.includes(x));
+      const v = rows.slice(1).flat().map((x) => x.trim()).find((x) => x.length > 1 && !fromInput(x, input)); // row 1 is the header
       return res(c, v === undefined ? "" : `"${v.slice(0, 60)}" is not in the input`);
     }
     return { ok: false, why: `no check for format "${f}"`, check: "none" };
@@ -109,7 +120,7 @@ export function checkAnswer(job, input, out) {
     const c = "length, no names, numbers or paths missing from the input";
     const n = (out.replace(/\b(e\.g|i\.e|etc|vs|cf)\./gi, "x").replace(/^\s*\d+\.\s/gm, "").match(/[^\s\d][.!?](\s|$)/g) || []).length;
     if (n > 10) return res(c, `${n} sentences (max 10)`);
-    if (out.length > 2000) return res(c, `${out.length} characters (max 2000)`);
+    if (out.length > 4000) return res(c, `${out.length} characters (max 4000)`);
     return res(c, grounded(out, input));
   }
   return { ok: false, why: `no check for job "${job}"`, check: "none" };

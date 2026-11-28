@@ -149,7 +149,7 @@ await t("checkAnswer review holes: wrong answers fail, ordinary correct answers 
   assert.equal(ok("summarize", src, "- loads files\n  continuing the bullet").ok, true, "wrapped bullet");
   assert.equal(ok("summarize", src, "**Heading**\n- loads").ok, false, "bold heading is not a bullet");
   assert.equal(ok("explain", src, "It reads files, e.g. with readFile. 1. First it loads. 2. Then it retries 120 times.").ok, true, "e.g. and numbered list");
-  assert.match(ok("explain", src, "x".repeat(2001)).why, /max 2000/);
+  assert.match(ok("explain", src, "x".repeat(4001)).why, /max 4000/);
   // commit
   const diff = "diff --git a/usage-max/scripts/offload.mjs b/usage-max/scripts/offload.mjs\n+x";
   assert.equal(ok("commit", diff, "Check offload answers\n\n- offload.mjs: works with I/O and Node.js").ok, true, "basename, I/O, Node.js");
@@ -158,9 +158,22 @@ await t("checkAnswer review holes: wrong answers fail, ordinary correct answers 
   assert.match(ok("convert:json", "name: Ann\nage: 30\n", "{}").why, /empty/);
   assert.match(ok("convert:json", "name: Ann\nage: 30\n", '{"name":"Bob","age":30}').why, /"Bob"/);
   assert.equal(ok("convert:json", "name: Ann\nage: 30\n", '{"name":"Ann","age":30}').ok, true);
-  assert.equal(ok("convert:csv", "Smith, John is 42", 'name,age\n"Smith, John",42').ok, false, "header words not in input");
+  assert.equal(ok("convert:csv", "Smith, John is 42", 'name,age\n"Smith, Jane",42').ok, false, "invented value");
+  assert.equal(ok("convert:csv", "Smith, John is 42", 'name,age\n"Smith, John",42').ok, true, "header names may be chosen");
   assert.equal(ok("convert:csv", "name age: Smith, John 42", 'name,age\n"Smith, John",42').ok, true, "quoted comma");
   assert.equal(ok("convert:tsv", "a b 1 2", "\ta\tb\n1\t2\t").ok, true, "leading and trailing empty tsv fields kept");
+  assert.equal(ok("convert:tsv", 'say "hi" there, ok', 'msg\tx\n"hi" there\tok').ok, true, "tsv cell starting with a quote");
+  assert.equal(ok("convert:json", "Alice 30", '{"name":"Alice","age":30}').ok, true, "keys may be chosen");
+  assert.equal(ok("convert:json", "total 1,234", '{"total":1234}').ok, true, "1,234 is 1234");
+  // second review: added code disguised as a comment fails; real comment forms pass
+  for (const bad of ["#define X 1", "*p = 0;", "--i;", "#priv = 1", '"""doc""" x = 1']) assert.equal(ok("docstrings", "int a;", bad + "\nint a;").why, "the code itself was changed", bad);
+  assert.equal(ok("docstrings", "x = 1", "x = 1  // why").ok, true, "inline comment on an unchanged line");
+  assert.equal(ok("docstrings", "x = 1", "x = 2  // why").ok, false, "inline comment on a changed line");
+  assert.equal(ok("docstrings", "int a;", "/*\n  plain text line\n*/\nint a;").ok, true, "multi-line block comment");
+  assert.equal(ok("docstrings", "int a;", "/*\n  text\n*/ int b;\nint a;").ok, false, "code after a closing */");
+  assert.equal(ok("docstrings", "def f():\n    pass", 'def f():\n    """One line."""\n    pass').ok, true, "one-line python docstring");
+  assert.equal(ok("docstrings", "a()", "# note\na()").ok, true, "# comment");
+  assert.equal(ok("docstrings", "a()", "#!/usr/bin/env node\na()").ok, true, "shebang counts as a comment line");
 });
 
 await t("offload: an answer cut off by the token limit is rejected and retried", async () => {
