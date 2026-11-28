@@ -117,6 +117,17 @@ await t("checkAnswer: convert json, csv, tsv; unknown format and job have no che
   assert.equal(C.hasCheck("convert:JSON"), true); assert.equal(C.hasCheck("convert:yaml"), false);
 });
 
+await t("checkAnswer docstrings: file headers from offload are ignored; blank lines are not comments", async () => {
+  const K = await imp("scripts/offload-check.mjs");
+  const one = "\n### C:\\x\\in.js\nfunction a(){}";
+  assert.equal(K.checkAnswer("docstrings", one, "// adds\nfunction a(){}").ok, true, "header in input, not in answer");
+  assert.equal(K.checkAnswer("docstrings", one, "### C:\\x\\in.js\n// adds\nfunction a(){}").ok, true, "header kept in answer");
+  assert.equal(K.checkAnswer("docstrings", one, "function a(){}\n\n").why, "no comments were added");
+  assert.equal(K.checkAnswer("docstrings", one, "// adds\nfunction a(){ return 1 }").why, "the code itself was changed");
+  const two = "\n### a.py\ndef a():\n    return 1\n### b.py\ndef b():\n    return 2";
+  assert.equal(K.checkAnswer("docstrings", two, 'def a():\n    """One."""\n    return 1\ndef b():\n    return 2').ok, true, "python docstring, headers dropped");
+});
+
 await t("local-workbench route: in the registry, measured, evidence verifies, unavailable without the workbench", async () => {
   const R = await imp("scripts/governance/route-registry.mjs");
   const up = await R.localWorkbenchRoute({ file: okWb }), down = await R.localWorkbenchRoute({ file: missing });

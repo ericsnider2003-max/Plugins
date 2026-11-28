@@ -32,8 +32,9 @@ export function checkAnswer(job, input, out) {
   }
   if (job === "docstrings") {
     const c = "code unchanged except comments";
-    if (code(out) !== code(input)) return res(c, "the code itself was changed");
-    if (out.length <= input.trim().length) return res(c, "no comments were added");
+    const src = input.replace(/^### .*$/gm, ""), notes = (s) => s.replace(/s+/g, "").length - code(s).length; // offload adds "### <file>" headers
+    if (code(out) !== code(src)) return res(c, "the code itself was changed");
+    if (notes(out) <= notes(src)) return res(c, "no comments were added");
     return res(c, "");
   }
   if (/^convert:/.test(job)) {
