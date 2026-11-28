@@ -26,13 +26,13 @@ await t("workbenchAvailable: file present and wb_status ok; missing, err and han
   process.env.USAGE_MAX_WORKBENCH = okWb; try { assert.equal((await W.workbenchAvailable()).available, true, "env path is used"); } finally { delete process.env.USAGE_MAX_WORKBENCH; }
 });
 
-await t("offload status: workbench is the preferred CHECKED route, Ollama second as unchecked drafts only", async () => {
+await t("offload status: workbench is the preferred CHECKED route, Ollama second as checked jobs", async () => {
   const O = await imp("scripts/offload.mjs");
   process.env.USAGE_MAX_WORKBENCH = okWb; process.env.USAGE_MAX_OLLAMA = "http://127.0.0.1:1";
   try {
     const r = await capture(() => O.main(["status"]));
     assert.match(r.text, /workbench/i); assert.match(r.text, /CHECKED/); assert.match(r.text, /wb_quick/); assert.match(r.text, /wb_delegate/);
-    assert.match(r.text, /unchecked drafts only/i);
+    assert.match(r.text, /checked jobs/i);
     assert.ok(r.text.search(/workbench/i) < r.text.search(/ollama|local model/i), "workbench is listed first");
     assert.equal(r.code, 0, "status is ok when the workbench is up even if Ollama is down");
     process.env.USAGE_MAX_WORKBENCH = missing;
@@ -41,22 +41,80 @@ await t("offload status: workbench is the preferred CHECKED route, Ollama second
   } finally { delete process.env.USAGE_MAX_WORKBENCH; delete process.env.USAGE_MAX_OLLAMA; }
 });
 
-await t("offload <job>: answer starts with the UNCHECKED DRAFT line, checked:false, distinct exit status 2", async () => {
-  const O = await imp("scripts/offload.mjs");
-  const srv = http.createServer((req, res) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { res.setHeader("content-type", "application/json"); res.end(req.url === "/api/tags" ? JSON.stringify({ models: [{ name: "qwen2.5-coder:7b" }] }) : JSON.stringify({ response: "function a() {}" })); }); });
-  await new Promise((r) => srv.listen(0, "127.0.0.1", r)); const host = "http://127.0.0.1:" + srv.address().port;
+const stubOllama = async (queue) => {
+  const reqs = [];
+  const srv = http.createServer((req, res) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { res.setHeader("content-type", "application/json"); if (req.url === "/api/tags") return res.end(JSON.stringify({ models: [{ name: "qwen2.5-coder:7b" }] })); reqs.push(JSON.parse(b)); res.end(JSON.stringify({ response: queue.shift() ?? "" })); }); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  return { srv, reqs, host: "http://127.0.0.1:" + srv.address().port };
+};
+
+await t("offload docstrings: fenced checked answer is returned, exit 0, check named", async () => {
+  const O = await imp("scripts/offload.mjs"); const s = await stubOllama(["```js\n// adds\nfunction a(){}\n```", "```js\n// adds\nfunction a(){}\n```"]);
   const f = path.join(tmp, "in.js"); fs.writeFileSync(f, "function a(){}");
   try {
-    const run = await O.run("docstrings", "function a(){}", { host, name: "a.js" });
-    assert.equal(run.ok, true); assert.equal(run.checked, false);
-    const first = run.out.split("\n")[0];
-    assert.equal(first, "UNCHECKED DRAFT: verify with a test before use; for checked local work use the workbench (wb_quick / wb_delegate)");
-    assert.match(run.out, /function a\(\) \{\}/);
-    process.env.USAGE_MAX_OLLAMA = host;
+    const run = await O.run("docstrings", "function a(){}", { host: s.host, name: "a.js" });
+    assert.equal(run.ok, true); assert.equal(run.checked, true); assert.equal(run.tries, 1); assert.equal(run.out, "// adds\nfunction a(){}");
+    process.env.USAGE_MAX_OLLAMA = s.host;
     const r = await capture(() => O.main(["docstrings", f]));
-    assert.equal(r.code, O.EXIT_UNCHECKED); assert.equal(O.EXIT_UNCHECKED, 2);
-    assert.ok(r.text.startsWith("UNCHECKED DRAFT:"), r.text.slice(0, 80));
-  } finally { srv.close(); delete process.env.USAGE_MAX_OLLAMA; }
+    assert.equal(r.code, 0); assert.match(r.text, /checked \(code unchanged except comments\)/);
+  } finally { s.srv.close(); delete process.env.USAGE_MAX_OLLAMA; }
+});
+
+await t("offload docstrings: rejected answers are retried with the reason; third try passes", async () => {
+  const O = await imp("scripts/offload.mjs"); const s = await stubOllama(["function b(){}", "function a(){}", "// adds\nfunction a(){}"]);
+  try {
+    const run = await O.run("docstrings", "function a(){}", { host: s.host, name: "a.js" });
+    assert.equal(run.ok, true); assert.equal(run.tries, 3); assert.equal(s.reqs.length, 3);
+    assert.ok(s.reqs[1].prompt.includes("Your previous answer was rejected: the code itself was changed"));
+    assert.equal(s.reqs[0].options.temperature, 0.2); assert.equal(s.reqs[1].options.temperature, 0.5);
+  } finally { s.srv.close(); }
+});
+
+await t("offload: three bad answers return an error and nothing else; main exits 1", async () => {
+  const O = await imp("scripts/offload.mjs"); const s = await stubOllama(["function b(){}", "function c(){}", "function d(){}", "function b(){}", "function c(){}", "function d(){}"]);
+  const f = path.join(tmp, "in2.js"); fs.writeFileSync(f, "function a(){}");
+  const origErr = console.error; const errs = [];
+  try {
+    const run = await O.run("docstrings", "function a(){}", { host: s.host, name: "a.js" });
+    assert.match(run.error, /failed its check after 3 tries/); assert.match(run.error, /do this job with Claude/); assert.equal(run.out, undefined);
+    process.env.USAGE_MAX_OLLAMA = s.host; console.error = (...a) => errs.push(a.join(" "));
+    const r = await capture(() => O.main(["docstrings", f]));
+    assert.equal(r.code, 1); assert.equal(r.text, ""); assert.match(errs.join("\n"), /do this job with Claude/);
+  } finally { console.error = origErr; s.srv.close(); delete process.env.USAGE_MAX_OLLAMA; }
+});
+
+await t("offload convert:yaml has no check: error, and the model is never called", async () => {
+  const O = await imp("scripts/offload.mjs"); const s = await stubOllama(["a: 1"]);
+  try {
+    const run = await O.run("convert:yaml", "{\"a\":1}", { host: s.host, name: "a.json" });
+    assert.match(run.error, /no check exists/); assert.equal(s.reqs.length, 0);
+  } finally { s.srv.close(); }
+});
+
+await t("checkAnswer: summarize and explain are grounded in the input", async () => {
+  const C = await imp("scripts/offload-check.mjs"); const input = "retryBlock timeout is 30 seconds";
+  assert.equal(C.checkAnswer("summarize", input, "- retryBlock times out after 30 seconds").ok, true);
+  const n = C.checkAnswer("summarize", input, "- retryBlock times out after 45 seconds"); assert.equal(n.ok, false); assert.match(n.why, /45/);
+  const w = C.checkAnswer("summarize", input, "- callsFooBar fails"); assert.equal(w.ok, false); assert.match(w.why, /callsFooBar/);
+  assert.equal(C.checkAnswer("summarize", input, "retryBlock times out").ok, false, "not a bullet");
+  assert.equal(C.checkAnswer("explain", input, "It sets `retryBlock` to 30 seconds.").ok, true);
+  assert.equal(C.checkAnswer("explain", input, "It sets `other` to 30 seconds.").ok, false);
+});
+
+await t("checkAnswer: commit format and file names", async () => {
+  const C = await imp("scripts/offload-check.mjs"); const diff = "diff --git a/src/a.js b/src/a.js\n+x";
+  assert.equal(C.checkAnswer("commit", diff, "Fix a\n\n- change src/a.js").ok, true);
+  const b = C.checkAnswer("commit", diff, "Fix a\n\n- change src/b.js"); assert.equal(b.ok, false); assert.match(b.why, /src\/b\.js/);
+  const l = C.checkAnswer("commit", diff, "x".repeat(73)); assert.equal(l.ok, false); assert.match(l.why, /73 characters/);
+});
+
+await t("checkAnswer: convert json, csv, tsv; unknown format and job have no check", async () => {
+  const C = await imp("scripts/offload-check.mjs");
+  assert.equal(C.checkAnswer("convert:json", "x", "{\"a\":1}").ok, true); assert.equal(C.checkAnswer("convert:json", "x", "{a:1}").ok, false);
+  assert.equal(C.checkAnswer("convert:csv", "x", "a,b\n1,2").ok, true); assert.equal(C.checkAnswer("convert:csv", "x", "a,b\n1").ok, false);
+  assert.equal(C.checkAnswer("convert:tsv", "x", "a\tb\n1\t2").ok, true);
+  assert.equal(C.checkAnswer("convert:yaml", "x", "a: 1").check, "none"); assert.equal(C.checkAnswer("zzz", "x", "y").ok, false);
+  assert.equal(C.hasCheck("convert:JSON"), true); assert.equal(C.hasCheck("convert:yaml"), false);
 });
 
 await t("local-workbench route: in the registry, measured, evidence verifies, unavailable without the workbench", async () => {

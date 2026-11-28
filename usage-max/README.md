@@ -1,8 +1,14 @@
 # usage-max
 
+## 0.21.9 (Nov 28 2026) — checked offload
+
+- `offload <job>` answers now pass a deterministic per-job check (commit format and file names, code unchanged except comments, JSON/CSV/TSV parse, bullets and grounding for summarize/explain) before they are returned.
+- A failing answer is retried up to 3 times with the reason; if all tries fail nothing is returned (exit 1) so Claude does the job. Jobs with no check (other convert formats) are refused.
+- Removed the "UNCHECKED DRAFT" label and exit status 2.
+
 ## 0.21.8 — checked local route
 
-- `offload <job>` output starts with "UNCHECKED DRAFT", returns checked:false and exits 2; `offload status` lists the checked workbench route first when available.
+- `offload <job>` output was labelled "UNCHECKED DRAFT" and exited 2 (replaced in 0.21.9); `offload status` lists the checked workbench route first when available.
 
 ## 0.21.7 — status call can no longer stall
 
@@ -267,7 +273,7 @@ Found by auditing every effect the plugin has on a live session, after a report 
 - Built-in safety: loopback addresses only (refuses anything not 127.0.0.1/localhost), refuses secrets files and text containing private keys or tokens, input capped at 60k characters, output labelled "unverified". It never installs or downloads a model: `offload status` tells you what to install (Ollama, then e.g. `ollama pull qwen2.5-coder:7b`).
 - The Claude routing skill and the Codex AGENTS block tell the agent to use it when it reports ready. `savings` shows jobs run and the input tokens kept off your plan (an estimate: characters/4).
 - Tested against a stub Ollama server only; not yet tried with a real model.
-- **Current behaviour (checked route).** `offload <job>` output starts with "UNCHECKED DRAFT", returns `checked:false` and exits 2; `offload status` lists the checked workbench route first when available.
+- **Current behaviour (checked route).** `offload <job>` answers are checked per job (up to 3 tries) and refused if they fail (exit 1); `offload status` lists the checked workbench route first when available.
 
 ## 0.12.0 (Oct 10 2026) — where Codex usage really goes, and four new brakes
 - **`/usage-max codex diagnose`** (also summarised in `savings`): Codex logs the plan's real rate-limit percentages on every call, so the weekly % that moved between two calls is attributed to the session, model/effort, folder, day and start type (interactive vs `codex exec`/automation) that made it. Measured, not estimated; resets are ignored. Plus token mix (fresh vs cached input, output, reasoning), context size per call, and plain "what stands out" findings.

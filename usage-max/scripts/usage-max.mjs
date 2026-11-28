@@ -15,7 +15,7 @@
 //   trim [on|off]   measured result of the Claude shell-output trim (bytes removed, re-run rate); switches itself off if it causes re-runs
 //   budgets [on|off]  opt-in: smaller skill-list and MCP description budgets (cuts first-turn context; rarely used skills may trigger less)
 //   cap <usd|off>   optional per-session spend cap (list-price dollars): warns at 80% and 100%, so one runaway session cannot eat the week
-//   offload status|<job> <file...>  checked local route (workbench) first; bounded jobs (summarize, commit, explain, docstrings, convert:<fmt>) on a model on THIS PC (Ollama) are UNCHECKED drafts, exit 2
+//   offload status|<job> <file...>  checked local route (workbench) first; bounded jobs (summarize, commit, explain, docstrings, convert:<fmt>) on a model on THIS PC (Ollama) are checked per job, retried, and refused (exit 1) if the check fails
 //   digest          what the guards did (counts) + Codex measured savings
 //   queue add|list|next|clear   low-priority tasks Claude offers when the plan has spare allowance
 //   work enqueue|list|show|verify|recover   durable work queue (governance): enqueue a task JSON, list units, show a verified record, verify receipts, recover expired leases (`work help`)
