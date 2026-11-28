@@ -47,7 +47,7 @@ At a task boundary or before an explicit continuation handoff, write `handoff.md
 ## Local model: checked route first
 
 - `usage-max offload status` names the route. The workbench (wb_quick, wb_delegate, kb_search) is the CHECKED local route: its code comes back PASS only after tests ran. Prefer it whenever status says it is available.
-- Ollama jobs (summarize a file/log/diff, commit message, explain a log, draft docstrings, convert formats) are UNCHECKED drafts: the answer starts with `UNCHECKED DRAFT` and the command exits 2. Use them for text you will read anyway, never as code that ships without a test, and never for security, money or architecture decisions. Secrets files are refused automatically.
+- Ollama jobs (summarize a file/log/diff, commit message, explain a log, draft docstrings, convert formats) pass a per-job check (up to 3 tries) or return nothing (exit 1). Even checked, never use them as code that ships without a test, and never for security, money or architecture decisions. Secrets files are refused automatically.
 
 ## Local workbench (measured 2026-11-25)
 

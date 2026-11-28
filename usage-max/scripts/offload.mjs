@@ -3,16 +3,16 @@
 //   usage-max offload <job> <file...> [--model m]  job = summarize | commit | explain | docstrings | convert:<format>
 //   (also reads stdin: git diff | usage-max offload commit)
 // Safety, on purpose: loopback endpoints only (127.0.0.1/localhost/::1), so code never leaves your machine; refuses files that look like
-// secrets; input capped; output starts with an UNCHECKED DRAFT line and exits with status 2 (the checked route is the workbench: scripts/workbench.mjs). Nothing here installs or downloads a model.
+// secrets; input capped. Every answer must pass its job's deterministic check (offload-check.mjs); a failing answer is retried, and if all tries
+// fail nothing is returned (exit 1) so Claude does the job. Jobs with no check are refused. Nothing here installs or downloads a model.
 import fs from "node:fs"; import path from "node:path";
 import { dataDir } from "./meter.mjs";
 import { bump } from "./guard.mjs";
 import { looksSecret } from "./memory.mjs";
 import { workbenchAvailable } from "./workbench.mjs";
+import { checkAnswer, hasCheck, stripFence } from "./offload-check.mjs";
 export const HOST = () => process.env.USAGE_MAX_OLLAMA || "http://127.0.0.1:11434";
 export const MAX_IN = 60000;
-export const EXIT_UNCHECKED = 2; // distinct from 0 (ok) and 1 (error): the answer was produced but nothing checked it
-export const UNCHECKED_LINE = "UNCHECKED DRAFT: verify with a test before use; for checked local work use the workbench (wb_quick / wb_delegate)";
 export const JOBS = {
   summarize: "Summarize the text below for a developer in at most 12 short bullet points. Keep names, numbers and error messages exact. Do not invent anything that is not in the text.",
   commit: "Write a git commit message for the diff below: a subject line of at most 72 characters in the imperative mood, a blank line, then at most 5 short bullets saying what changed and why. Mention only changes that are in the diff.",
@@ -34,25 +34,37 @@ export async function status(host = HOST()) {
   catch { return { ready: false, why: "no local model server found at " + host + ". Install Ollama (ollama.com), then `ollama pull qwen2.5-coder:7b` (or any model your PC can run)." }; }
 }
 export const pickModel = (models, want) => (want && models.includes(want) ? want : models.find((m) => /coder|qwen|llama|mistral|phi|gemma/i.test(m)) || models[0]);
-export async function run(job, text, { host = HOST(), model = null, name = "stdin" } = {}) {
+export async function run(job, text, { host = HOST(), model = null, name = "stdin", tries = 3 } = {}) {
   const p = buildPrompt(job, text); if (!p) return { error: `unknown job "${job}". Jobs: ${Object.keys(JOBS).join(", ")}, convert:<format>` };
   if (text.length > MAX_IN) return { error: `input is ${text.length} characters; offload takes at most ${MAX_IN}. Send a smaller piece (a diff of one area, one file)` };
   const bad = secretReason(name, text); if (bad) return { error: `refused: ${bad}. Offload is for ordinary code and logs.` };
   const s = await status(host); if (!s.ready) return { error: s.why };
-  const m = pickModel(s.models, model);
-  try {
-    const r = await j(host + "/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: m, prompt: p, stream: false, options: { temperature: 0.2, num_predict: 900 } }) }, 180000);
-    const out = String(r.response || "").trim(); if (!out) return { error: "the local model returned nothing" };
-    try { bump(dataDir(), "offloadJobs"); bump(dataDir(), "offloadInputChars", text.length); bump(dataDir(), "offloadOutputChars", out.length); } catch {}
-    return { ok: true, checked: false, model: m, out: UNCHECKED_LINE + "\n" + out };
-  } catch (e) { return { error: "local model call failed: " + (e && e.message) }; }
+  if (!hasCheck(job)) return { error: `no check exists for "${job}"; offload only returns checked answers. Formats with a check: json, csv, tsv` };
+  const m = pickModel(s.models, model), failures = [];
+  for (let n = 1; n <= tries; n++) {
+    const prompt = n === 1 ? p : p + `
+
+Your previous answer was rejected: ${failures[n - 2]}. Answer again, following every rule.`;
+    let out, cut = false;
+    try {
+      const r = await j(host + "/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: m, prompt, stream: false, options: { temperature: n === 1 ? 0.2 : 0.5, num_predict: 900 } }) }, 180000);
+      out = stripFence(r.response, job); cut = r.done_reason === "length";
+    } catch (e) { return { error: "local model call failed: " + (e && e.message) }; }
+    const c = !out ? { ok: false, why: "the local model returned nothing" } : cut ? { ok: false, why: "the answer was cut off before it finished" } : checkAnswer(job, text, out);
+    if (c.ok) {
+      try { bump(dataDir(), "offloadJobs"); bump(dataDir(), "offloadInputChars", text.length); bump(dataDir(), "offloadOutputChars", out.length); } catch {}
+      return { ok: true, checked: true, check: c.check, model: m, tries: n, maxTries: tries, out };
+    }
+    failures.push(c.why); try { bump(dataDir(), "offloadRejected"); } catch {}
+  }
+  return { error: `local answer failed its check after ${tries} tries (${failures[failures.length - 1]}); do this job with Claude`, checked: false, failures };
 }
 export async function main(args) {
   const [job, ...rest] = args;
   if (!job || job === "status") {
     const [w, s] = await Promise.all([workbenchAvailable(), status()]), L = [];
     L.push(w.available ? `1. workbench (preferred, CHECKED): available. Use the workbench MCP tools: wb_quick for a one-file change with examples, wb_delegate with tests for bigger work; kb_search for code-map lookups. Results come back PASS only after tests ran.` : `1. workbench (preferred, CHECKED): not available (${w.why}). Do the work with Claude tiers.`);
-    L.push(s.ready ? `2. Ollama (unchecked drafts only): ready: ${s.models.join(", ")} at ${s.host}. Jobs: ${Object.keys(JOBS).join(", ")}, convert:<format>. Every answer is labelled UNCHECKED DRAFT and exits with status ${EXIT_UNCHECKED}. usage: usage-max offload <job> <file...> (or pipe text in)` : "2. Ollama (unchecked drafts only): NOT ready: " + s.why);
+    L.push(s.ready ? `2. Ollama (checked jobs): ready: ${s.models.join(", ")} at ${s.host}. Jobs: commit, docstrings, summarize, explain, convert:json|csv|tsv. Each answer must pass its job's check (up to 3 tries) or nothing is returned. usage: usage-max offload <job> <file...> (or pipe text in)` : "2. Ollama (checked jobs): NOT ready: " + s.why);
     console.log(L.join("\n")); return w.available || s.ready ? 0 : 1;
   }
   const mi = rest.indexOf("--model"), model = mi >= 0 ? rest[mi + 1] : null, files = rest.filter((x, i) => !x.startsWith("--") && !(mi >= 0 && i === mi + 1));
@@ -60,5 +72,5 @@ export async function main(args) {
   if (files.length) { name = files.join(","); for (const f of files) { const reason = secretReason(path.basename(f), ""); if (reason) { console.error(`refused: ${reason}.`); return 1; } try { text += `\n### ${f}\n` + fs.readFileSync(f, "utf8"); } catch { console.error("cannot read " + f); return 1; } } }
   else if (!process.stdin.isTTY) { for await (const c of process.stdin) text += c; } else { console.error("give a file, or pipe text in"); return 1; }
   const r = await run(job, text, { model, name }); if (r.error) { console.error(r.error); return 1; }
-  console.log(r.out + `\n\n[local model ${r.model}: unchecked draft, verify with a test before relying on it]`); return EXIT_UNCHECKED;
+  console.log(r.out + `\n\n[local model ${r.model}: checked (${r.check}), try ${r.tries} of ${r.maxTries}]`); return 0;
 }

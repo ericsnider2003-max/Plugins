@@ -181,7 +181,7 @@ await t("local offload: loopback only, refuses secrets and oversize, runs a job 
   await new Promise((r) => srv.listen(0, "127.0.0.1", r)); const host = "http://127.0.0.1:" + srv.address().port;
   try {
     const st = await O.status(host); assert.equal(st.ready, true); assert.equal(O.pickModel(st.models, null), "llama3:8b"); assert.equal(O.pickModel(st.models, "qwen2.5-coder:7b"), "qwen2.5-coder:7b");
-    const ok = await O.run("summarize", "hello world", { host, name: "a.txt" }); assert.equal(ok.ok, true); assert.equal(ok.checked, false); assert.match(ok.out, /^UNCHECKED DRAFT: verify with a test before use/); assert.ok(ok.out.endsWith("- did a thing")); assert.match(bodies[0].prompt, /hello world/); assert.equal(bodies[0].stream, false);
+    const ok = await O.run("summarize", "hello world", { host, name: "a.txt" }); assert.equal(ok.ok, true); assert.equal(ok.checked, true); assert.equal(ok.out, "- did a thing"); assert.match(bodies[0].prompt, /hello world/); assert.equal(bodies[0].stream, false);
     assert.match((await O.run("summarize", "x".repeat(O.MAX_IN + 1), { host })).error, /at most/); assert.match((await O.run("summarize", "k", { host, name: ".env" })).error, /refused/); assert.match((await O.run("zzz", "k", { host })).error, /unknown job/);
     assert.equal(bodies.length, 1, "refused and oversize jobs never reach the model");
   } finally { srv.close(); }
