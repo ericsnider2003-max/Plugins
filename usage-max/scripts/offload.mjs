@@ -45,15 +45,15 @@ export async function run(job, text, { host = HOST(), model = null, name = "stdi
     const prompt = n === 1 ? p : p + `
 
 Your previous answer was rejected: ${failures[n - 2]}. Answer again, following every rule.`;
-    let out;
+    let out, cut = false;
     try {
       const r = await j(host + "/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: m, prompt, stream: false, options: { temperature: n === 1 ? 0.2 : 0.5, num_predict: 900 } }) }, 180000);
-      out = stripFence(r.response);
+      out = stripFence(r.response, job); cut = r.done_reason === "length";
     } catch (e) { return { error: "local model call failed: " + (e && e.message) }; }
-    const c = out ? checkAnswer(job, text, out) : { ok: false, why: "the local model returned nothing" };
+    const c = !out ? { ok: false, why: "the local model returned nothing" } : cut ? { ok: false, why: "the answer was cut off before it finished" } : checkAnswer(job, text, out);
     if (c.ok) {
       try { bump(dataDir(), "offloadJobs"); bump(dataDir(), "offloadInputChars", text.length); bump(dataDir(), "offloadOutputChars", out.length); } catch {}
-      return { ok: true, checked: true, check: c.check, model: m, tries: n, out };
+      return { ok: true, checked: true, check: c.check, model: m, tries: n, maxTries: tries, out };
     }
     failures.push(c.why); try { bump(dataDir(), "offloadRejected"); } catch {}
   }
@@ -72,5 +72,5 @@ export async function main(args) {
   if (files.length) { name = files.join(","); for (const f of files) { const reason = secretReason(path.basename(f), ""); if (reason) { console.error(`refused: ${reason}.`); return 1; } try { text += `\n### ${f}\n` + fs.readFileSync(f, "utf8"); } catch { console.error("cannot read " + f); return 1; } } }
   else if (!process.stdin.isTTY) { for await (const c of process.stdin) text += c; } else { console.error("give a file, or pipe text in"); return 1; }
   const r = await run(job, text, { model, name }); if (r.error) { console.error(r.error); return 1; }
-  console.log(r.out + `\n\n[local model ${r.model}: checked (${r.check}), try ${r.tries} of 3]`); return 0;
+  console.log(r.out + `\n\n[local model ${r.model}: checked (${r.check}), try ${r.tries} of ${r.maxTries}]`); return 0;
 }

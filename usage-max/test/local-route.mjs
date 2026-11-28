@@ -128,6 +128,53 @@ await t("checkAnswer docstrings: file headers from offload are ignored; blank li
   assert.equal(K.checkAnswer("docstrings", two, 'def a():\n    """One."""\n    return 1\ndef b():\n    return 2').ok, true, "python docstring, headers dropped");
 });
 
+await t("checkAnswer review holes: wrong answers fail, ordinary correct answers pass", async () => {
+  const K = await imp("scripts/offload-check.mjs"), ok = (j, i, o) => K.checkAnswer(j, i, o), hdr = "\n### a.js\n";
+  // docstrings: wrong answers that used to pass
+  assert.equal(ok("docstrings", "function a(){return 1}", "function a(){\n  return 1\n}").ok, false, "re-indent only");
+  assert.equal(ok("docstrings", hdr + "function a(){}", "### a.js\nfunction a(){}").why, "no comments were added", "header echoed, no comment");
+  assert.equal(ok("docstrings", "x = a // 2\n", "# halve\nx = a // 3").why, "the code itself was changed", "edit after //");
+  assert.equal(ok("docstrings", 'q = """select 1"""\n', '# query\nq = """select 2"""').why, "the code itself was changed", "edit inside a triple-quoted string");
+  assert.equal(ok("docstrings", "a()\nb()", "// x\na()").why, "part of the code is missing from the answer");
+  // docstrings: correct answers that used to fail
+  assert.equal(ok("docstrings", "a()\r\nb()\r\n", "// calls a\na()\nb()").ok, true, "CRLF input");
+  assert.equal(ok("docstrings", "select 1;", "-- one\nselect 1;").ok, true, "SQL comment");
+  assert.equal(ok("docstrings", "def f():\n    return 1", 'def f():\n    """\n    Returns one.\n    """\n    return 1').ok, true, "multi-line python docstring");
+  assert.equal(ok("docstrings", 'g = "src/**/*.js"\nh()', '// glob\ng = "src/**/*.js"\n// call\nh()').ok, true, "/* inside a string");
+  // grounding: false rejections fixed, invented tokens still caught
+  const src = "function readFile() in the JS loader; retries 120 times";
+  assert.equal(ok("summarize", src, "- The JavaScript loader calls readFile; works with I/O and Node.js").ok, true, "brand names, I/O, Node.js");
+  assert.match(ok("summarize", src, "- retries 12 times").why, /"12"/, "12 is not 120");
+  assert.match(ok("summarize", src, "- see lib/loader.js").why, /lib\/loader\.js/, "invented path");
+  assert.equal(ok("summarize", src, "- loads files\n  continuing the bullet").ok, true, "wrapped bullet");
+  assert.equal(ok("summarize", src, "**Heading**\n- loads").ok, false, "bold heading is not a bullet");
+  assert.equal(ok("explain", src, "It reads files, e.g. with readFile. 1. First it loads. 2. Then it retries 120 times.").ok, true, "e.g. and numbered list");
+  assert.match(ok("explain", src, "x".repeat(2001)).why, /max 2000/);
+  // commit
+  const diff = "diff --git a/usage-max/scripts/offload.mjs b/usage-max/scripts/offload.mjs\n+x";
+  assert.equal(ok("commit", diff, "Check offload answers\n\n- offload.mjs: works with I/O and Node.js").ok, true, "basename, I/O, Node.js");
+  assert.equal(ok("commit", diff, "Fix\n\n  - a\n  - b\n  - c\n  - d\n  - e\n  - f").ok, false, "indented bullets counted");
+  // convert
+  assert.match(ok("convert:json", "name: Ann\nage: 30\n", "{}").why, /empty/);
+  assert.match(ok("convert:json", "name: Ann\nage: 30\n", '{"name":"Bob","age":30}').why, /"Bob"/);
+  assert.equal(ok("convert:json", "name: Ann\nage: 30\n", '{"name":"Ann","age":30}').ok, true);
+  assert.equal(ok("convert:csv", "Smith, John is 42", 'name,age\n"Smith, John",42').ok, false, "header words not in input");
+  assert.equal(ok("convert:csv", "name age: Smith, John 42", 'name,age\n"Smith, John",42').ok, true, "quoted comma");
+  assert.equal(ok("convert:tsv", "a b 1 2", "\ta\tb\n1\t2\t").ok, true, "leading and trailing empty tsv fields kept");
+});
+
+await t("offload: an answer cut off by the token limit is rejected and retried", async () => {
+  const O = await imp("scripts/offload.mjs"), http = await import("node:http"), reqs = [];
+  const answers = [{ response: "// adds\nfunction a(){}", done_reason: "length" }, { response: "// adds\nfunction a(){}", done_reason: "stop" }];
+  const srv = http.createServer((req, res) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { res.setHeader("content-type", "application/json"); if (req.url === "/api/tags") return res.end(JSON.stringify({ models: [{ name: "qwen2.5-coder:7b" }] })); reqs.push(JSON.parse(b)); res.end(JSON.stringify(answers.shift() || { response: "" })); }); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  try {
+    const run = await O.run("docstrings", "function a(){}", { host: "http://127.0.0.1:" + srv.address().port, name: "a.js" });
+    assert.equal(run.ok, true); assert.equal(run.tries, 2); assert.equal(run.maxTries, 3);
+    assert.ok(reqs[1].prompt.includes("the answer was cut off before it finished"));
+  } finally { srv.close(); }
+});
+
 await t("local-workbench route: in the registry, measured, evidence verifies, unavailable without the workbench", async () => {
   const R = await imp("scripts/governance/route-registry.mjs");
   const up = await R.localWorkbenchRoute({ file: okWb }), down = await R.localWorkbenchRoute({ file: missing });
